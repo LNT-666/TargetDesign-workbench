@@ -88,7 +88,7 @@ k（例如 20 nt guide 使用 `k=10`），并在现有索引 k 不匹配时重�
 
 ## GRCh38 扩展路径
 
-机器上已存在 `example/GCF_000001405.40_GRCh38.p14_genomic.fna`（约 3.3 GB）。
+以 GRCh38 主 FASTA（约 3.3 GB）为例。
 人类基因组总长约 3.1 Gbp，低于 uint32 上限，索引位置数组可用 `u4`：
 
 ```text
@@ -97,10 +97,10 @@ GRCh38 估算：positions 约 12.4 GB + offsets 约 0.13 GB（k=12）；
 或先用单条染色体验证。
 ```
 
-本机 17 GB 内存不足以一次性构建全基因组索引，建议先用单条染色体验证：
+一次性构建全基因组索引的峰值内存约 50-64 GB，内存不足时建议先用单条染色体验证：
 
 ```powershell
-python tools\build_genome_index.py example\GCF_000001405.40_GRCh38.p14_genomic.fna `
+python tools\build_genome_index.py GCF_000001405.40_GRCh38.p14_genomic.fna `
   --output-dir outdir\genome_index --contigs NC_000021.9
 ```
 
@@ -111,9 +111,9 @@ GRCh38 的 `.fai` 首次生成需要数分钟；生成一次后索引和搜索�
 后续若需要更低内存/更快构建，可在同一 `indexed` 后端下替换为
 BWT/FM-index（ropebwt2、SeqAn3 或自研 Rust/C++ 扩展），调用方无需改动。
 
-## 当前实测（本机 2026-08-15）
+## 参考实测（2026-08-15）
 
-从 GRCh38 主 FASTA 抽出 21/22 号染色体（约 97.5 Mbp，`example/chr21_22.fa`）：
+从 GRCh38 主 FASTA 抽出 21/22 号染色体（约 97.5 Mbp，`chr21_22.fa`）：
 
 ```text
 构建：71.2 s，峰值内存 1478 MB，索引文件 451 MB，79.2M 个 k-mer 位置
@@ -122,8 +122,8 @@ BWT/FM-index（ropebwt2、SeqAn3 或自研 Rust/C++ 扩展），调用方无需�
       2386 个候选位点（该 guide 位于高度重复区）
 ```
 
-这些文件会留在 `example/genome_index/chr21_22.ggi` 和
-`example/genome_index/chr21_22.json`，后续搜索自动复用。
+这些文件会留在上面 `--output-dir` 指定的目录下（`chr21_22.ggi` 和
+`chr21_22.json`），后续搜索自动复用。
 
 ## Native C++ backend
 
@@ -164,5 +164,5 @@ PROGRAMFILE_NATIVE_INDEXED_FALLBACK=1
 最终 hit 仍按 qid 在内存中汇总。
 Python indexed 继续保留为 native 二进制缺失、不兼容或显式禁用时的 fallback，
 不会删除。`auto` 在 200 Mbp 以内优先 native indexed，大型基因组仍优先
-BLAST。native 与 Python 的差分测试、索引双向兼容测试和当前性能结果见
-`docs/NATIVE_INDEXED_BENCHMARK.md`。
+BLAST。native 与 Python 的差分测试和索引双向兼容测试见
+`tests/test_native_indexed.py`。

@@ -76,8 +76,8 @@ python shared\design\library_pipeline.py regions.tsv genome.fa outdir --engine e
 索引格式与扩展 GRCh38 的方法见 `docs/GENOME_INDEX.md`。
 
 不指定 `--engine` 时使用原有 `--search exact|blast|auto` 行为。
-`auto` 的优先级来自 `example/engine_benchmark_small/REPORT.md`，并由
-`shared/search/offtarget_backend.py` 的 `auto_engine_candidates` 逐行实现：
+`auto` 的优先级由本地基准测量决定，并由 `shared/search/offtarget_backend.py`
+的 `auto_engine_candidates` 逐行实现：
 
 - 提供 `--blastdb` 时 auto 只使用 blast，提供 `--index-path` 时 auto 只使用
   indexed。这两个参数是“独占”而不是“优先”：指定的资源不可用或运行失败时
@@ -113,8 +113,8 @@ GUI 和网页版可以直接显示当前搜索到第几条 guide。
 缺失或不兼容时继续使用 Python fallback；`auto` 在可用时优先 native
 `indexed`，大型基因组仍优先 BLAST。native search 的 `--threads` 会并行
 处理 guides；各 worker 独立使用 FASTA/cache，最终 hit 按输入顺序确定性合并。
-当前性能和 auto 排序依据见 `example/engine_benchmark_small/REPORT.md` 和
-`docs/NATIVE_INDEXED_BENCHMARK.md`。
+各引擎的当前性能可用 `tools/benchmark_all_engines.py` 与
+`tools/benchmark_search.py` 自行测量。
 
 ```powershell
 cmake -S native\offtarget_engine -B native\build -DCMAKE_BUILD_TYPE=Release

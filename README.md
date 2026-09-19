@@ -1,6 +1,6 @@
 # Motif 分析工具集
 
-本项目用于生物序列中的 motif 发现、候选区提取、Off-target search、评分排序和结果导出。当前代码已经完成一轮共享模块重构，README 和 `docs/` 是项目结构的**事实来源**；修改架构后请同步更新这里。
+本项目用于生物序列中的 motif 发现、候选区提取、Off-target search、评分排序和结果导出。
 
 ## 设计功能（补充）
 
@@ -59,13 +59,11 @@
 ├─ Target_xbp_Y_zbp_Target/
 ├─ tests/
 ├─ docs/
-├─ models/
-├─ example/
-├─ logs/
-├─ backup/
-├─ .venv/
-└─ .venv310/
+└─ models/
 ```
+
+`models/` 存放本地模型权重，权重文件不入库，获取方式见 `docs/MODELS.md`；
+基因组、索引和基准数据同样不入库，见 `docs/GENOME_INDEX.md`。
 
 ## 环境
 
@@ -269,20 +267,15 @@ Cas13 的 `rna_model`/MFE/accessibility 等 RNA 子特征只随 RNA on-target
 ## 文档
 
 - `docs/OUTPUTS.md`：结果文件与结果列说明（输出结果的单一入口）
-- `docs/refactor_plan.md`：当前重构阶段和已完成项
 - `docs/design_patterns_en.md`：pattern 定义说明
 - `docs/PAIR_RANKING.md`：双靶点必须同时成功时的 PairRank 排序规范
 - `docs/ENVIRONMENT.md`：Python 环境和模型转换
 - `docs/OFFTARGET_ENGINES.md`：Off-target 引擎说明
 - `docs/GENOME_INDEX.md`：本地 `.ggi` 索引格式、构建和 native/Python 关系
-- `example/engine_benchmark_small/REPORT.md`：各 Off-target 引擎的基准结果与 auto 规则依据
 - `docs/MODELS.md`：模型文件状态
 - `docs/TNPB.md`：TnpB/TEEP 模型公式、适用范围和参考文献（结果字段见 `docs/OUTPUTS.md`）
-
-## 修改约定
-
-1. 优先复用 `shared/` 下的模块，不要在 GUI 中复制命令行逻辑。
-2. 新增或修改 pattern 时，先更新 `shared/design/pattern_spec.py`，再由 `pattern_runner.py` 接入。
-3. 修改目录结构、命令或运行约定后，同步更新本 README 和 `docs/`。
-4. 不要依赖外部 skill 自动跟踪代码变化；skill 只负责指向本 README 和关键文档。
-5. library 管线（`shared/design/library_pipeline.py`，以及调用它的入口：`main.py` 的 Library 标签页、`unified_gui.py`、`webapp/`）已废弃：保留代码只是为了不影响其它功能正常使用，不继续开发，也不需要维护；不要为它修 bug、补测试或做重构。
+- `docs/GUI.md`：桌面工作台使用说明
+- `docs/WEBAPP.md`：本地 Web UI 使用说明
+- `docs/SCORING_GUIDE.md`：评分字段与候选优劣判断
+- `docs/CRISPAI.md`：crispAI 运行时环境准备
+- `docs/SERVER_DEPLOY.md`：Linux 服务器部署与全基因组索引构建

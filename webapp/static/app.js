@@ -707,7 +707,7 @@ function splitModelKeys(value) {
    keeps a second copy of the names. The first selected option is the primary
    one and gets a ``[P] `` prefix from the first user change on; the first
    render keeps the plain labels so the DOM stays comparable with
-   /api/schema (docs/handoff/webapp-model-labels/task.md section 6). */
+   /api/schema. */
 function paintModelOptions(select, markPrimary) {
   const selected = Array.prototype.slice.call(select.selectedOptions);
   Array.prototype.forEach.call(select.options, function (option) {
@@ -2065,7 +2065,7 @@ function updatePickerNav() {
 
 /* ---- crumbs, places, entry count ----------------------------------- */
 
-/* 'R:\songji\programfile' -> [{'R:\', 'R:\'}, {'songji', 'R:\songji'}, ...] */
+/* 'C:\data\programfile' -> [{'C:\', 'C:\'}, {'data', 'C:\data'}, ...] */
 function pickerCrumbs(dir) {
   const text = cleanText(dir);
   if (!text) {

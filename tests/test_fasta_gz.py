@@ -14,7 +14,7 @@ SHARED = os.path.join(ROOT, "shared")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, SHARED)
 
-ASSETS = os.path.join(ROOT, "docs", "handoff", "fasta-gz-prep", "assets")
+ASSETS = os.path.join(ROOT, "tests", "data", "fasta_gz")
 MINI_FNA = os.path.join(ASSETS, "mini.fna")
 MINI_FNA_GZ = os.path.join(ASSETS, "mini.fna.gz")
 MINI_GFF = os.path.join(ASSETS, "mini.gff")

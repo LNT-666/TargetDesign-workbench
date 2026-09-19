@@ -14,7 +14,7 @@ Linux 服务器上完成。服务器建议配置：
 ## 1. 上传代码（本机 PowerShell）
 
 ```powershell
-cd D:\songji\programfile
+cd <本地工程目录>
 scp -r shared tools requirements.txt user@server:/data/crispr_tool/
 ```
 
@@ -78,7 +78,7 @@ tail -f /data/grch38_build.log
 ## 5. 取回结果（本机 PowerShell）
 
 ```powershell
-scp -r user@server:/data/grch38_out D:\songji\programfile\example\grch38_server_result
+scp -r user@server:/data/grch38_out <本地工程目录>\example\grch38_server_result
 ```
 
 之后本机 Library 流程可以直接复用：

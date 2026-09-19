@@ -145,10 +145,7 @@ Designer 的三种 pattern 与桌面端一致：
   `已带入 / Loaded: genome_fasta, search_fasta, output_dir`；鼠标悬停可看到具体
   路径，被跳过的字段以 `· kept your values: …` 标出。
 - 字段对应关系与判定逻辑只有一份实现（`webapp/static/app.js` 的
-  `backfillPlan()`），探针脚本
-  `docs/handoff/webapp-single-page-layout/assets/probe_backfill_rule.js` 直接从
-  `app.js` 里抽出该函数做回归，`probe_backfill_http.py` 则跑一遍真实作业验证
-  “手填的 `output_dir` 不会被覆盖”。
+  `backfillPlan()`）；手填的 `output_dir` 不会被回填值覆盖。
 ## 作业模型
 
 - 作业目录：`webapp/jobs/<job_id>/`（`job_id` 形如 `^[a-z0-9-]{12}$`），包含

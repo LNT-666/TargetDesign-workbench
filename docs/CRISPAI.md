@@ -9,7 +9,7 @@ guide 在全基因组找脱靶位点，再对每个位点做物理特征注释
 
 ## 前置环境
 
-建议在 Linux 服务器（如 ms01）上运行；Windows 上上游脚本用到的
+建议在 Linux 服务器上运行；Windows 上上游脚本用到的
 `cp/rm/Rscript/cas-offinder` 路径通常不可用。
 
 ```bash

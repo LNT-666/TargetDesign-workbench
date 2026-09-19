@@ -15,7 +15,7 @@ SHARED = os.path.join(ROOT, "shared")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, SHARED)
 
-ASSETS = os.path.join(ROOT, "docs", "handoff", "gff-gz-annotation", "assets")
+ASSETS = os.path.join(ROOT, "tests", "data", "gff_gz")
 MINI_GFF = os.path.join(ASSETS, "mini.gff")
 MINI_GZ = os.path.join(ASSETS, "mini.gff.gz")
 

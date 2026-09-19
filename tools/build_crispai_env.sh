@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap the crispAI runtime environment (Linux server, e.g. ms01).
+# Bootstrap the crispAI runtime environment on a Linux server.
 #
 # Usage:  bash tools/build_crispai_env.sh
 #

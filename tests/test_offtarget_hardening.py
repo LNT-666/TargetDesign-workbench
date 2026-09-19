@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """Tests for the off-target engine hardening tasks.
 
-These cover ``docs/OFFTARGET_HARDENING_TASKS.md`` sections 3-7, plus the one
-gap left open in section 2 (the CONFIRM_REQUIRED handshake over a real child).
+These cover the off-target engine hardening work, plus the one
+gap left open originally (the CONFIRM_REQUIRED handshake over a real child).
 
 * Task 1 - native search progress must stream while the engine runs.
 * Task 2 - no orphaned engine processes; an opt-in timeout that does not

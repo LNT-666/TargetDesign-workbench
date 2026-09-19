@@ -70,3 +70,30 @@ native/bin/
 # ---- Internal-only documentation ----------------------------------------
 # Contains the lab server address and SSH tunnel instructions.
 docs/SSH_ACCESS.md
+
+# ---- Manuscript and submission material ---------------------------------
+# Kept on disk for the paper workflow, but not part of the published
+# repository; see docs/handoff for the internal task records.
+docs/PAPER_*.md
+docs/ALLEGRO_REFERENCE_ANALYSIS.md
+docs/EXPRESSIVENESS_MATRIX.md
+docs/expressiveness_matrix.tsv
+docs/FIGURE_TABLE_PLAN.md
+docs/GRAPHICAL_ABSTRACT_SPEC.md
+docs/NAR_FORMAT_CHECKLIST.md
+docs/NATIVE_INDEXED_BENCHMARK.md
+docs/NATIVE_INDEXED_ENGINE_DESIGN.md
+docs/SEED_PLAN_ANALYSIS.md
+docs/seed_plan_sweep.json
+docs/assets/
+docs/handoff/
+
+# ---- Internal process records -------------------------------------------
+docs/OFFTARGET_HARDENING_*.md
+docs/PHASE3_ACCEPTANCE.md
+docs/PHASE5_ADVANCED_MODES.md
+docs/refactor_plan.md
+docs/UPGRADE_REPORT.md
+
+# Probe that certifies the manuscript's capability matrix; kept on disk only.
+tools/expressiveness_probe.py
