@@ -1,0 +1,953 @@
+=== [1] Design request `S = (L, P, l, o, s)`; output is the complete solution set
+    note: 大纲 2.1 条原文（形式化与完备解集）；代码级：枚举、按身份键去重、按位置排序
+    docs/PAPER_OUTLINE.md:151
+       151| - 2.1 设计规格形式化：`S = (L, P, l, o, s)` 与解空间 `D(S)` 定义，说明输出是完备解集。
+    shared/design/guide_design.py:54-67
+        54| def find_guides(sequence, spacer_len=20, pam=None, pam_side="3prime",
+        55| motif=None, allow_reverse=True, seq_id=None):
+        56| """Enumerate guide candidates in a single sequence.
+        57| 
+        58| Parameters use the same conventions as the GUI:
+        59| pam_side='3prime' -> [spacer][PAM] on the scanned strand
+        60| pam_side='5prime' -> [PAM][spacer] on the scanned strand
+        61| Returns a list of candidate dicts sorted by genomic position.
+        62| """
+        63| seq = sequence.upper().replace("U", "T")
+        64| n = len(seq)
+        65| spacer_len = int(spacer_len) if spacer_len else 20
+        66| if spacer_len <= 0 or n < spacer_len:
+        67| return []
+    shared/design/guide_design.py:183-192
+       183| unique = []
+       184| for item in candidates:
+       185| key = (item["seq_id"], item["strand"], item["spacer_start"], item["spacer_end"],
+       186| item["pam_start"], item["pam_end"])
+       187| if key in seen:
+       188| continue
+       189| seen.add(key)
+       190| unique.append(item)
+       191| unique.sort(key=lambda x: (x["spacer_start"], x["spacer_end"], x["strand"]))
+       192| return unique
+=== [2] `MotifSpec(sequence, flank_length, side)`
+    note: 三个字段定义
+    shared/design/pattern_spec.py:23-26
+        23| class MotifSpec:
+        24| sequence: str
+        25| flank_length: int = 0
+        26| side: Side = Side.UPSTREAM
+=== [3] Flank side is `upstream` or `downstream`
+    note: `Side` 枚举与校验
+    shared/design/pattern_spec.py:14-16
+        14| class Side(str, Enum):
+        15| UPSTREAM = "upstream"
+        16| DOWNSTREAM = "downstream"
+    shared/design/pattern_spec.py:36
+        36| if self.side not in (Side.UPSTREAM, Side.DOWNSTREAM):
+=== [4] IUPAC alphabet `ACGTUNRYSWKMBDHV`
+    note: `_IUPAC_BASES`
+    shared/design/pattern_spec.py:19
+        19| _IUPAC_BASES = set("ACGTUNRYSWKMBDHV")
+=== [5] Three layout kinds
+    note: `PatternKind` 三个取值
+    shared/design/pattern_spec.py:8-11
+         8| class PatternKind(str, Enum):
+         9| SINGLE_MOTIF_FLANK = "single_motif_flank"
+        10| MOTIF_GAP_MOTIF = "motif_gap_motif"
+        11| Y_CENTERED_MOTIFS = "y_centered_motifs"
+=== [6] Validation is the admission gate
+    note: `validate()` 入口
+    shared/design/pattern_spec.py:56-60
+        56| def validate(self) -> None:
+        57| if self.kind not in PatternKind:
+        58| raise ValueError(f"unsupported pattern kind: {self.kind}")
+        59| 
+        60| if self.kind is PatternKind.SINGLE_MOTIF_FLANK:
+=== [7] Pattern A requires both motifs and a gap interval
+    note: `motif_gap_motif` 分支
+    shared/design/pattern_spec.py:65-68
+        65| if self.kind is PatternKind.MOTIF_GAP_MOTIF:
+        66| if self.left is None or self.right is None:
+        67| raise ValueError("motif_gap_motif requires left and right motifs")
+        68| self._validate_distance_range("gap", self.min_gap, self.max_gap)
+=== [8] Pattern B requires `y_sequence` and both intervals
+    note: `y_centered_motifs` 分支
+    shared/design/pattern_spec.py:71-84
+        71| if self.kind is PatternKind.Y_CENTERED_MOTIFS:
+        72| y_sequence = (self.y_sequence or "").strip().upper()
+        73| if not y_sequence:
+        74| raise ValueError("y_centered_motifs requires y_sequence")
+        75| if not set(y_sequence).issubset(_IUPAC_BASES):
+        76| raise ValueError(f"y_sequence contains unsupported characters: {y_sequence}")
+        77| object.__setattr__(self, "y_sequence", y_sequence)
+        78| if self.left is None or self.right is None:
+        79| raise ValueError("y_centered_motifs requires left and right motifs")
+        80| self._validate_distance_range(
+        81| "left", self.left_min_distance, self.left_max_distance
+        82| )
+        83| self._validate_distance_range(
+        84| "right", self.right_min_distance, self.right_max_distance
+=== [9] Distance intervals need both endpoints and `0 <= min <= max`
+    note: `_validate_distance_range`
+    shared/design/pattern_spec.py:89-96
+        89| def _validate_distance_range(
+        90| label: str, minimum: Optional[int], maximum: Optional[int]
+        91| ) -> None:
+        92| if minimum is None or maximum is None:
+        93| raise ValueError(f"{label} distance range requires min and max")
+        94| if minimum < 0 or maximum < 0:
+        95| raise ValueError(f"{label} distances must be >= 0")
+        96| if minimum > maximum:
+=== [10] Motif and `Y` sequences are checked against the IUPAC set
+    note: 非法字符即报错
+    shared/design/pattern_spec.py:31-32
+        31| raise ValueError("motif sequence cannot be empty")
+        32| if not set(sequence).issubset(_IUPAC_BASES):
+    shared/design/pattern_spec.py:74-75
+        74| raise ValueError("y_centered_motifs requires y_sequence")
+        75| if not set(y_sequence).issubset(_IUPAC_BASES):
+=== [11] Layout elements: PAM/TAM, target length, target position, distances
+    note: 三种布局的英文定义
+    docs/design_patterns_en.md:1-22
+         1| # Design Pattern Definitions (English)
+         2| 
+         3| ## 1. Single target design
+         4| 
+         5| - PAM/TAM Motif
+         6| - Target Length
+         7| - Target position to PAM/TAM
+         8| 
+         9| ## 2. Paired target design pattern A (Target-xbp-Target)
+        10| 
+        11| - Left PAM/TAM
+        12| - Left target length
+        13| - Left target position
+        14| - Relative position of left target to left PAM/TAM
+        15| - Minimum distance
+        16| - Minimum distance to left PAM/TAM
+        17| - Maximum distance
+        18| - Maximum distance to left PAM/TAM
+        19| - Right PAM/TAM
+        20| - Right target length
+        21| - Right target position
+        22| - Relative position of right target to right PAM/TAM
+=== [12] Four strand combinations `++ / +- / -+ / --`
+    note: 左右 motif 双链独立匹配
+    docs/design_patterns_en.md:24-26
+        24| During candidate extraction the left and right motifs are each matched on
+        25| both genomic strands independently, so the `++`, `+-`, `-+`, and `--`
+        26| combinations are all considered. Each extracted row records the actual
+=== [13] `left_strand` / `right_strand` and row-level `strand`
+    note: 跨链组合记为 plus
+    docs/design_patterns_en.md:26-29
+        26| combinations are all considered. Each extracted row records the actual
+        27| orientation in `left_strand` and `right_strand`; `strand` is `plus` for the
+        28| cross-strand combinations and `minus` only when both motifs are on the
+        29| minus strand. Extracted rows also report the left/right target intervals as
+=== [14] 0-based half-open target intervals
+    note: `left/right_target_start/end`
+    docs/design_patterns_en.md:29-30
+        29| minus strand. Extracted rows also report the left/right target intervals as
+        30| 0-based half-open `left_target_start/end` and `right_target_start/end`.
+=== [15] Candidate table carries the interval columns
+    note: `candidate_columns()` Pattern A 分支
+    shared/design/pattern_spec.py:147-160
+       147| if self.kind is PatternKind.MOTIF_GAP_MOTIF:
+       148| return common + [
+       149| "left_strand",
+       150| "right_strand",
+       151| "left_motif_seq",
+       152| "right_motif_seq",
+       153| "gap",
+       154| "left_target_start",
+       155| "left_target_end",
+       156| "right_target_start",
+       157| "right_target_end",
+       158| "left_flank_seq",
+       159| "right_flank_seq",
+       160| "left_side",
+=== [16] Index magic `CRISPRGGI` and format version 1
+    note: 常量定义
+    native/offtarget_engine/include/offtarget/genome_index.hpp:15-17
+        15| constexpr std::uint8_t kIndexFormatVersion = 1;
+        16| constexpr char kIndexMagic[] = "CRISPRGGI";
+        17| constexpr std::size_t kIndexMagicSize = sizeof(kIndexMagic) - 1;
+=== [17] Version 1 byte layout
+    note: 头 + contig 表 + offsets + positions
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:355-371
+       355| ```text
+       356| magic                9 bytes   "CRISPRGGI"
+       357| format_version       1 byte    uint8, value 1
+       358| k                    4 bytes   uint32
+       359| contig_count         4 bytes   uint32
+       360| total_bases          8 bytes   uint64
+       361| 
+       362| for each contig:
+       363| name_length        4 bytes   uint32
+       364| name               N bytes   UTF-8
+       365| start              8 bytes   uint64
+       366| length             8 bytes   uint64
+       367| 
+       368| valid_count          8 bytes   uint64
+       369| offsets              8 * (4^k + 1) bytes, uint64 little-endian
+       370| positions            valid_count * position_width bytes
+       371| ```
+=== [18] Offsets table has `4^k + 1` 64-bit entries
+    note: `offset_count()`
+    native/offtarget_engine/include/offtarget/genome_index.hpp:78-80
+        78| [[nodiscard]] std::uint64_t offset_count() const noexcept {
+        79| return (std::uint64_t{1} << (2 * k_)) + 1;
+        80| }
+=== [19] 4-byte or 8-byte position entries by genome size
+    note: `u4` / `u8` 自适应
+    native/offtarget_engine/include/offtarget/genome_index.hpp:75-77
+        75| [[nodiscard]] std::string position_dtype() const {
+        76| return total_bases_ < (std::uint64_t{1} << 32) ? "u4" : "u8";
+        77| }
+    native/offtarget_engine/include/offtarget/genome_index.hpp:94-96
+        94| [[nodiscard]] std::size_t position_width() const noexcept {
+        95| return total_bases_ < (std::uint64_t{1} << 32) ? 4U : 8U;
+        96| }
+=== [20] Contig records and sorted contig starts
+    note: 加载时校验递增
+    native/offtarget_engine/include/offtarget/genome_index.hpp:19-23
+        19| struct ContigRecord {
+        20| std::string name;
+        21| std::uint64_t start = 0;
+        22| std::uint64_t length = 0;
+        23| };
+    native/offtarget_engine/src/genome_index.cpp:483-487
+       483| if (!std::is_sorted(index.contig_starts_.begin(),
+       484| index.contig_starts_.end())) {
+       485| throw OfftargetError(ExitCode::io, "INVALID_CONTIGS",
+       486| "Index contig starts are not sorted");
+       487| }
+=== [21] Only `ACGT` k-mer windows are indexed
+    note: 非法窗口被排除
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:378-379
+       378| Invalid k-mer windows are excluded. A valid k-mer contains only `A`, `C`, `G`,
+       379| and `T` after uppercasing the FASTA sequence.
+=== [22] Metadata sidecar is UTF-8 JSON
+    note: 允许额外键
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:381-382
+       381| The metadata sidecar `PREFIX.json` is UTF-8 JSON. Extra keys are allowed.
+       382| Python's current loader ignores unknown metadata keys.
+=== [23] Metadata field list
+    note: `format`/`version`/`k`/指纹/contigs
+    native/offtarget_engine/src/build_index.cpp:628-642
+       628| json << "{\n"
+       629| << "  \"format\": \"crispr-genome-index\",\n"
+       630| << "  \"version\": 1,\n"
+       631| << "  \"k\": " << options.k << ",\n"
+       632| << "  \"genome\": "
+       633| << json_quote(std::filesystem::absolute(options.genome_path)
+       634| .string())
+       635| << ",\n"
+       636| << "  \"genome_fingerprint\": " << json_quote(fingerprint)
+       637| << ",\n"
+       638| << "  \"genome_bytes\": " << genome_bytes << ",\n"
+       639| << "  \"total_bases\": " << total_bases << ",\n"
+       640| << "  \"valid_kmer_positions\": " << valid_count << ",\n"
+       641| << "  \"contig_count\": " << selected.size() << ",\n"
+       642| << "  \"contigs\": [";
+=== [24] Stored fingerprint is compared with the current genome
+    note: `metadata_fingerprint` + `is_valid_for`
+    native/offtarget_engine/src/genome_index.cpp:605
+       605| return read_json_string_value(metadata_path(), "genome_fingerprint");
+    native/offtarget_engine/src/genome_index.cpp:619
+       619| return *expected == genome_fingerprint(genome_path);
+=== [25] Fingerprint = SHA-256 over FASTA prefix and suffix
+    note: `sha256_file_prefix_suffix`
+    native/offtarget_engine/src/genome_index.cpp:631
+       631| std::string sha256_file_prefix_suffix(
+    native/offtarget_engine/src/genome_index.cpp:646
+       646| std::string genome_fingerprint(const std::filesystem::path& genome_path) {
+=== [26] Index payload is mapped read-only and shared
+    note: `MappedFile` / `index_bytes()`
+    native/offtarget_engine/include/offtarget/genome_index.hpp:25-29
+        25| class MappedFile {
+        26| public:
+        27| MappedFile() = default;
+        28| explicit MappedFile(const std::filesystem::path& path);
+        29| ~MappedFile();
+    native/offtarget_engine/include/offtarget/genome_index.hpp:91-93
+        91| [[nodiscard]] std::uint64_t index_bytes() const noexcept {
+        92| return mapped_.size();
+        93| }
+    native/offtarget_engine/src/genome_index.cpp:450
+       450| index.mapped_ = MappedFile(ggi);
+=== [27] Malformed index diagnostics
+    note: `BAD_MAGIC` 等显式错误
+    native/offtarget_engine/src/genome_index.cpp:452-462
+       452| const std::string magic =
+       453| reader.read_string(kIndexMagicSize);
+       454| if (magic != std::string(kIndexMagic, kIndexMagicSize)) {
+       455| throw OfftargetError(ExitCode::io, "BAD_MAGIC",
+       456| "Not a CRISPR genome index file");
+       457| }
+       458| const std::uint8_t version = reader.read<std::uint8_t>();
+       459| if (version != kIndexFormatVersion) {
+       460| throw OfftargetError(
+       461| ExitCode::io, "UNSUPPORTED_INDEX_VERSION",
+       462| "Unsupported index version: " + std::to_string(version));
+    native/offtarget_engine/src/genome_index.cpp:499-500
+       499| throw OfftargetError(ExitCode::io, "TRUNCATED_OFFSETS",
+       500| "Index offsets table is truncated");
+    native/offtarget_engine/src/genome_index.cpp:520-521
+       520| throw OfftargetError(ExitCode::io, "TRUNCATED_POSITIONS",
+       521| "Index position table is truncated");
+=== [28] Temp file + rename publication
+    note: 不暴露半成品索引
+    native/offtarget_engine/src/build_index.cpp:453-462
+       453| const std::filesystem::path metadata_path =
+       454| std::filesystem::path(prefix.string() + ".json");
+       455| const std::filesystem::path positions_path =
+       456| std::filesystem::path(prefix.string() + ".positions.tmp");
+       457| const std::filesystem::path ggi_tmp =
+       458| std::filesystem::path(ggi_path.string() + ".tmp");
+       459| const std::filesystem::path metadata_tmp =
+       460| std::filesystem::path(metadata_path.string() + ".tmp");
+       461| TemporaryBuildFiles temporary_files(
+       462| {positions_path, ggi_tmp, metadata_tmp});
+    native/offtarget_engine/src/build_index.cpp:685
+       685| replace_file(metadata_tmp, metadata_path);
+=== [29] Native builds accept `k = 8..12`
+    note: 支持范围
+    native/offtarget_engine/README.md:97-98
+        97| - `k=8..12` is supported for native builds. Search can read any valid v1
+        98| index produced by Python.
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:179
+       179| - `--k INT`, default `12`. The first release accepts `8..12`.
+=== [30] Version 1 is read and written by Python and C++
+    note: 双向兼容
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:54-56
+        54| 3. Reuse the current `.ggi` version 1 layout. Python-built indexes must be
+        55| readable by C++, and native-built indexes must be readable by Python.
+        56| 4. Keep Python as the orchestration and fallback layer.
+=== [31] Output ordering is independent of worker scheduling
+    note: 设计决策 7
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:61
+        61| 7. Keep deterministic output ordering independent of worker scheduling.
+=== [32] Search contract: substitutions, bulges, both PAM sides, both strands, 0-based, exhaustive within plan
+    note: 契约清单
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:13-20
+        13| The implementation must preserve the current search contract:
+        14| 
+        15| - substitutions and small DNA/RNA bulges
+        16| - 3-prime and 5-prime PAM checks, including IUPAC PAM motifs
+        17| - plus-strand and reverse-complement searches
+        18| - 0-based genomic start coordinates
+        19| - unified hit fields consumed by scoring and export
+        20| - exhaustive behavior within the existing seed-plan contract
+=== [33] Minimum seed length is the index `k`
+    note: 有效种子长度
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:438
+       438| - minimum seed length is the index `k`
+    native/offtarget_engine/src/seed_plan.cpp:130
+       130| const int minimum_seed_len = std::max(1, kmer_size);
+=== [34] Minimum seed count `max_bulge + 1`; range up to `floor(L / k)`
+    note: 约束 (1)
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:439-440
+       439| - minimum non-overlapping seed count is `max_bulge + 1`
+       440| - seed count ranges from that minimum through `probe_len / k`
+    native/offtarget_engine/src/seed_plan.cpp:131-132
+       131| const int max_seed_count = probe_len / minimum_seed_len;
+       132| const int minimum_seed_count = std::max(1, max_bulge + 1);
+=== [35] `allowed = max_mismatch / (seed_count - max_bulge)`
+    note: 整除，约束 (2)
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:441
+       441| - allowed mismatches per seed is `max_mismatch / (seed_count - max_bulge)`
+    native/offtarget_engine/src/seed_plan.cpp:151
+       151| const int denominator = seed_count - max_bulge;
+    native/offtarget_engine/src/seed_plan.cpp:155
+       155| const int allowed = max_mismatch / denominator;
+=== [36] Default variant cap is 500 000
+    note: `kDefaultMaxSeedVariants`
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:442
+       442| - total variant work must stay under `DEFAULT_MAX_SEED_VARIANTS`
+    native/offtarget_engine/include/offtarget/seed_plan.hpp:10
+        10| constexpr std::uint64_t kDefaultMaxSeedVariants = 500000;
+=== [37] Plan minimises `(estimated_variants, seed_count)`
+    note: 字典序最小
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:443
+       443| - the selected plan minimizes `(estimated_variants, seed_count)`
+    native/offtarget_engine/src/seed_plan.cpp:180-190
+       180| const auto key = std::make_tuple(total_variants, seed_count);
+       181| if (!found ||
+       182| key < std::make_tuple(best_variants, best_count)) {
+       183| found = true;
+       184| best_variants = total_variants;
+       185| best_count = seed_count;
+       186| best_segments = std::move(segments);
+       187| }
+       188| }
+       189| 
+       190| if (!found) {
+=== [38] Behaviour when no guaranteed plan exists
+    note: 小基因组整段扫描，大基因组退出码 3
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:445-452
+       445| If no guaranteed plan exists:
+       446| 
+       447| - `index.total_bases <= 50,000,000`: perform the same exhaustive fallback
+       448| scan as Python.
+       449| - larger genome: fail with `SearchParameterError` equivalent behavior and
+       450| exit code 3.
+       451| 
+       452| Do not silently reduce sensitivity.
+    native/offtarget_engine/src/seed_plan.cpp:134-143
+       134| if (max_seed_count < minimum_seed_count) {
+       135| SeedPlan plan;
+       136| plan.segments = {SeedSegment{0, probe_len, max_mismatch}};
+       137| plan.reason =
+       138| "need at least " + std::to_string(minimum_seed_count) +
+       139| " non-overlapping " + std::to_string(minimum_seed_len) +
+       140| "-nt seeds to cover max_bulge=" + std::to_string(max_bulge) +
+       141| ", but the guide only fits " + std::to_string(max_seed_count);
+       142| return plan;
+       143| }
+    native/offtarget_engine/src/seed_plan.cpp:192-197
+       192| plan.segments = {SeedSegment{0, probe_len, max_mismatch}};
+       193| plan.reason =
+       194| "the exhaustive seed variants for max_mismatch=" +
+       195| std::to_string(max_mismatch) +
+       196| ", max_bulge=" + std::to_string(max_bulge) +
+       197| " exceed the configured cap " + std::to_string(max_variants);
+    native/offtarget_engine/src/search.cpp:46
+        46| constexpr std::uint64_t kMaxExhaustiveFallbackBases = 50000000ULL;
+    native/offtarget_engine/src/search.cpp:454-462
+       454| if (!plan.guaranteed) {
+       455| if (index.total_bases() > kMaxExhaustiveFallbackBases) {
+       456| throw OfftargetError(
+       457| ExitCode::unsupported, "UNSUPPORTED_SEARCH",
+       458| "Unsupported indexed search configuration: " +
+       459| plan.reason +
+       460| ". Use the exact backend, a smaller index k, or "
+       461| "reduce max_bulge/max_mismatch.");
+       462| }
+=== [39] `partition_lengths`
+    note: 尽量均分，余数给前面的段
+    native/offtarget_engine/src/seed_plan.cpp:54-61
+        54| std::vector<int> partition_lengths(int length, int count) {
+        55| std::vector<int> sizes(static_cast<std::size_t>(count), length / count);
+        56| const int remainder = length % count;
+        57| for (int index = 0; index < remainder; ++index) {
+        58| ++sizes[static_cast<std::size_t>(index)];
+        59| }
+        60| return sizes;
+        61| }
+=== [40] `segmented_variant_work` = k-mer window count x `variant_count(k, allowed)`
+    note: 与任务文本 W(s) 写法的差异说明见文末 Supplementary note S1
+    native/offtarget_engine/src/seed_plan.cpp:63-69
+        63| std::uint64_t segmented_variant_work(int segment_len, int kmer_size,
+        64| int max_mismatch) {
+        65| const std::int64_t window_count =
+        66| std::max<std::int64_t>(1, segment_len - kmer_size + 1);
+        67| const std::uint64_t variants = variant_count(kmer_size, max_mismatch);
+        68| return static_cast<std::uint64_t>(window_count) * variants;
+        69| }
+=== [41] `variant_count` = sum C(k, c) * 3^c
+    note: 单 k-mer 变体数
+    native/offtarget_engine/src/seed_plan.cpp:105-121
+       105| std::uint64_t variant_count(int seed_len, int max_mismatch) {
+       106| seed_len = std::max(0, seed_len);
+       107| max_mismatch = std::max(0, std::min(max_mismatch, seed_len));
+       108| const std::uint64_t cap =
+       109| std::numeric_limits<std::uint64_t>::max();
+       110| std::uint64_t count = 0;
+       111| for (int changes = 0; changes <= max_mismatch; ++changes) {
+       112| const std::uint64_t combinations =
+       113| binomial(static_cast<std::uint64_t>(seed_len),
+       114| static_cast<std::uint64_t>(changes), cap);
+       115| const std::uint64_t substitutions =
+       116| power_three(static_cast<std::uint64_t>(changes), cap);
+       117| count = capped_add(count, capped_mul(combinations, substitutions, cap),
+       118| cap);
+       119| }
+       120| return count;
+       121| }
+=== [42] Saturating add/multiply at the cap
+    note: 溢出返回 `cap + 1`
+    native/offtarget_engine/src/seed_plan.cpp:14-31
+        14| std::uint64_t capped_add(std::uint64_t left, std::uint64_t right,
+        15| std::uint64_t cap) {
+        16| if (left > cap || right > cap || left > cap - right) {
+        17| return cap + 1;
+        18| }
+        19| return left + right;
+        20| }
+        21| 
+        22| std::uint64_t capped_mul(std::uint64_t left, std::uint64_t right,
+        23| std::uint64_t cap) {
+        24| if (left == 0 || right == 0) {
+        25| return 0;
+        26| }
+        27| if (left > cap / right) {
+        28| return cap + 1;
+        29| }
+        30| return left * right;
+        31| }
+    native/offtarget_engine/src/seed_plan.cpp:33-44
+        33| std::uint64_t binomial(std::uint64_t n, std::uint64_t k,
+        34| std::uint64_t cap) {
+        35| if (k > n) {
+        36| return 0;
+        37| }
+        38| k = std::min(k, n - k);
+        39| std::uint64_t result = 1;
+        40| for (std::uint64_t index = 1; index <= k; ++index) {
+        41| result = capped_mul(result, n - k + index, cap) / index;
+        42| }
+        43| return result;
+        44| }
+    native/offtarget_engine/src/seed_plan.cpp:46-52
+        46| std::uint64_t power_three(std::uint64_t exponent, std::uint64_t cap) {
+        47| std::uint64_t result = 1;
+        48| for (std::uint64_t index = 0; index < exponent; ++index) {
+        49| result = capped_mul(result, 3, cap);
+        50| }
+        51| return result;
+        52| }
+=== [43] Variant enumeration over k-mer windows
+    note: `visit_variants` / `for_each_seed_variant`
+    native/offtarget_engine/src/seed_plan.cpp:71-95
+        71| void visit_variants(std::uint32_t code, int position, int k,
+        72| int remaining, std::uint32_t original,
+        73| const std::function<bool(std::uint32_t)>& callback,
+        74| bool& keep_going) {
+        75| if (!keep_going) {
+        76| return;
+        77| }
+        78| if (position == k) {
+        79| keep_going = callback(code);
+        80| return;
+        81| }
+        82| visit_variants(code, position + 1, k, remaining, original, callback,
+        83| keep_going);
+        84| if (!keep_going || remaining == 0) {
+        85| return;
+        86| }
+        87| const int shift = 2 * (k - 1 - position);
+        88| const std::uint32_t old_base = (original >> shift) & 3U;
+        89| for (std::uint32_t base = 0; base < 4; ++base) {
+        90| if (base == old_base) {
+        91| continue;
+        92| }
+        93| const std::uint32_t next =
+        94| (code & ~(3U << shift)) | (base << shift);
+        95| visit_variants(next, position + 1, k, remaining - 1, original,
+    native/offtarget_engine/src/seed_plan.cpp:239-247
+       239| void for_each_seed_variant(
+       240| std::uint32_t seed_code, int k, int max_mismatch,
+       241| const std::function<bool(std::uint32_t)>& callback) {
+       242| max_mismatch = std::max(0, std::min(max_mismatch, k));
+       243| bool keep_going = true;
+       244| visit_variants(seed_code, 0, k, max_mismatch, seed_code, callback,
+       245| keep_going);
+       246| }
+       247| 
+=== [44] `guaranteed = true` and `estimated_variants`
+    note: 计划成功时置位
+    native/offtarget_engine/src/seed_plan.cpp:201-205
+       201| SeedPlan plan;
+       202| plan.segments = std::move(best_segments);
+       203| plan.guaranteed = true;
+       204| plan.estimated_variants = best_variants;
+       205| return plan;
+=== [45] Each segment window is enumerated with the segment allowance
+    note: 段内 k-mer 窗口 + `allowed_mismatches`
+    native/offtarget_engine/src/search.cpp:538-552
+       538| for (const SeedSegment& segment : plan.segments) {
+       539| const std::string seed = probe.substr(
+       540| static_cast<std::size_t>(segment.start),
+       541| static_cast<std::size_t>(segment.length));
+       542| for (int offset = 0; offset <= static_cast<int>(seed.size()) - k;
+       543| ++offset) {
+       544| std::uint32_t seed_code = 0;
+       545| if (!encode_kmer(seed.substr(static_cast<std::size_t>(offset),
+       546| static_cast<std::size_t>(k)),
+       547| seed_code)) {
+       548| continue;
+       549| }
+       550| for_each_seed_variant(
+       551| seed_code, k, segment.allowed_mismatches,
+       552| [&](std::uint32_t code) {
+=== [46] Candidates are verified against `max_bulge` and `max_mismatch`
+    note: 对齐验收门槛
+    native/offtarget_engine/src/search.cpp:607-625
+       607| const auto alignment = best_alignment(
+       608| window, probe, center, max_bulge,
+       609| max_mismatch,
+       610| [&](std::int64_t local_alignment_start,
+       611| std::int64_t local_alignment_end) {
+       612| return pam_ok_span(
+       613| seqid,
+       614| static_cast<std::int64_t>(fetch_start) +
+       615| local_alignment_start,
+       616| static_cast<std::int64_t>(fetch_start) +
+       617| local_alignment_end,
+       618| target_strand, pam_value, pam_side,
+       619| fetch);
+       620| });
+       621| if (!alignment.has_value() ||
+       622| alignment->mismatches > max_mismatch ||
+       623| alignment->indels() > max_bulge) {
+       624| continue;
+       625| }
+=== [47] Worker pool, input-order merge, thread-independent hits
+    note: 只读共享索引 + 每 worker 独立读取器
+    native/offtarget_engine/README.md:83-86
+        83| - Search uses a worker pool over guides. The memory-mapped `GenomeIndex` is
+        84| shared read-only, while each worker opens its own positional FASTA reader
+        85| and optional sequence cache. Results are merged in input order, so the hit
+        86| sequence is deterministic and identical across `--threads` values.
+=== [48] Results assembled by qid, then deduplicated and sorted
+    note: 确定性合并与排序
+    native/offtarget_engine/src/search.cpp:1009-1048
+      1009| std::vector<GuideResult> results;
+      1010| std::unordered_map<std::string, std::size_t> result_by_qid;
+      1011| for (GuideSearchWork& work : guide_results) {
+      1012| if (work.error) {
+      1013| std::rethrow_exception(work.error);
+      1014| }
+      1015| summary.exhaustive_seed_plan =
+      1016| summary.exhaustive_seed_plan && work.plan_guaranteed;
+      1017| summary.candidates += work.candidates;
+      1018| if (options.max_candidates.has_value() &&
+      1019| summary.candidates > *options.max_candidates) {
+      1020| throw OfftargetError(
+      1021| ExitCode::unsupported, "CANDIDATE_GUARD",
+      1022| "Native search exceeded --max-candidates; no results "
+      1023| "were emitted");
+      1024| }
+      1025| if (work.guide.sequence.empty()) {
+      1026| continue;
+      1027| }
+      1028| 
+      1029| const auto iterator = result_by_qid.find(work.guide.qid);
+      1030| std::size_t result_index = 0;
+      1031| if (iterator == result_by_qid.end()) {
+      1032| result_index = results.size();
+      1033| result_by_qid.emplace(work.guide.qid, result_index);
+      1034| results.push_back(GuideResult{work.guide, {}});
+      1035| } else {
+      1036| result_index = iterator->second;
+      1037| }
+      1038| GuideResult& result = results[result_index];
+      1039| result.hits.insert(
+      1040| result.hits.end(),
+      1041| std::make_move_iterator(work.hits.begin()),
+      1042| std::make_move_iterator(work.hits.end()));
+      1043| }
+      1044| 
+      1045| for (GuideResult& result : results) {
+      1046| deduplicate_and_sort(result.hits);
+      1047| summary.hits += result.hits.size();
+      1048| }
+=== [49] `seed_plan_guaranteed` / `exhaustive_seed_plan` computation
+    note: 最长 guide 标记 + 全 guide 合取
+    native/offtarget_engine/src/search.cpp:879
+       879| summary.exhaustive_seed_plan = true;
+    native/offtarget_engine/src/search.cpp:1015-1016
+      1015| summary.exhaustive_seed_plan =
+      1016| summary.exhaustive_seed_plan && work.plan_guaranteed;
+    native/offtarget_engine/src/search.cpp:1050-1055
+      1050| const SeedPlan summary_plan = build_seed_plan(
+      1051| maximum_guide_len, options.max_mismatch, options.max_bulge,
+      1052| options.seed_len, static_cast<int>(index.k()));
+      1053| summary.seed_plan_guaranteed = summary_plan.guaranteed;
+      1054| summary.exhaustive_seed_plan =
+      1055| summary.exhaustive_seed_plan && summary_plan.guaranteed;
+=== [50] Both markers are emitted in the summary object
+    note: JSONL summary 字段
+    native/offtarget_engine/src/search.cpp:1102-1105
+      1102| << ",\"seed_plan_guaranteed\":"
+      1103| << (summary.seed_plan_guaranteed ? "true" : "false")
+      1104| << ",\"exhaustive_seed_plan\":"
+      1105| << (summary.exhaustive_seed_plan ? "true" : "false")
+=== [51] Fixed worker pool, input ordinal, buffered emission in input order
+    note: 并行规格
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:556-563
+       556| Parallelize at guide granularity first:
+       557| 
+       558| - fixed worker pool
+       559| - bounded input queue
+       560| - store the input ordinal with each guide
+       561| - buffer completed guide results
+       562| - emit them in input order
+       563| 
+=== [52] `--max-memory-mb` ceiling and precedence
+    note: 0 或省略表示无上限
+    native/offtarget_engine/README.md:70-71
+        70| `--max-memory-mb N` sets an explicit process RSS ceiling for either command;
+        71| omitted or `0` means unlimited. The CLI value overrides
+    native/offtarget_engine/include/offtarget/search.hpp:39
+        39| std::uint64_t max_memory_mb = 0;
+=== [53] Preflight estimate + runtime RSS checks + cancellation + no partial JSONL
+    note: 资源边界实现
+    native/offtarget_engine/README.md:94-96
+        94| - Search and build preflight estimates plus runtime RSS checks are bounded by
+        95| `--max-memory-mb`. Search cancels all workers after an over-limit
+        96| observation and emits no JSONL until the complete result set is ready.
+    native/offtarget_engine/include/offtarget/search.hpp:46-50
+        46| double search_time_s = 0.0;
+        47| double memory_peak_mb = 0.0;
+        48| std::uint64_t memory_limit_mb = 0;
+        49| double estimated_peak_mb = 0.0;
+        50| double observed_peak_mb = 0.0;
+=== [54] Memory-limited outcome cannot fall back to an unrestricted run
+    note: 显式约束
+    native/offtarget_engine/README.md:72-73
+        72| `PROGRAMFILE_MAX_MEMORY_MB`. A native `MEMORY_LIMIT_EXCEEDED` result is never
+        73| allowed to fall back to an unrestricted Python run.
+=== [55] Candidate guard error
+    note: `CANDIDATE_GUARD` / `max_candidates`
+    native/offtarget_engine/src/search.cpp:1018-1024
+      1018| if (options.max_candidates.has_value() &&
+      1019| summary.candidates > *options.max_candidates) {
+      1020| throw OfftargetError(
+      1021| ExitCode::unsupported, "CANDIDATE_GUARD",
+      1022| "Native search exceeded --max-candidates; no results "
+      1023| "were emitted");
+      1024| }
+    native/offtarget_engine/include/offtarget/search.hpp:38
+        38| std::optional<std::uint64_t> max_candidates;
+=== [56] Exit-status contract 0/2/3/4/5
+    note: CLI 契约
+    docs/NATIVE_INDEXED_ENGINE_DESIGN.md:128-132
+       128| | 0 | success |
+       129| | 2 | command-line usage error |
+       130| | 3 | unsupported search parameters or seed plan |
+       131| | 4 | input/output, index, or FASTA error |
+       132| | 5 | internal error |
+=== [57] `auto` sequence-cache criterion
+    note: 可用内存一半以内才开启
+    native/offtarget_engine/README.md:87-91
+        87| - `--cache-genome true` loads each requested contig into the calling worker's
+        88| cache; peak memory therefore grows with the number of workers. `auto`
+        89| estimates one full genome copy per effective worker, adds per-worker
+        90| overhead, reserves 2 GiB, and enables caching only when the estimate fits
+        91| half of the currently available memory.
+    native/offtarget_engine/include/offtarget/search.hpp:61
+        61| [[nodiscard]] bool auto_sequence_cache_fits(
+=== [58] Search option defaults
+    note: `max_mismatch=4`、`max_bulge=0`、`pam_side=3prime`、`require_pam` 默认关闭
+    native/offtarget_engine/include/offtarget/search.hpp:22-39
+        22| struct SearchOptions {
+        23| std::filesystem::path genome_path;
+        24| std::filesystem::path index_path;
+        25| std::filesystem::path guides_path;
+        26| std::optional<std::filesystem::path> output_path;
+        27| int max_mismatch = 4;
+        28| int max_bulge = 0;
+        29| int seed_len = 12;
+        30| std::optional<int> seed_mismatch;
+        31| std::optional<int> seed_mismatch_max;
+        32| bool require_pam = false;
+        33| std::optional<std::string> pam;
+        34| std::string pam_side = "3prime";
+        35| int threads = 1;
+        36| std::string cache_genome = "auto";
+        37| int progress_every = 1;
+        38| std::optional<std::uint64_t> max_candidates;
+        39| std::uint64_t max_memory_mb = 0;
+    native/offtarget_engine/src/main.cpp:256-257
+       256| } else if (argument == "--require-pam") {
+       257| options.require_pam = true;
+=== [59] IUPAC PAM bit masks
+    note: A/C/G/T/U/R/Y/S/W/K/M/D/H/V/B/N
+    native/offtarget_engine/src/pam.cpp:30-67
+        30| std::uint8_t iupac_mask(const char raw) {
+        31| switch (static_cast<char>(
+        32| std::toupper(static_cast<unsigned char>(raw)))) {
+        33| case 'A':
+        34| return 0x1;
+        35| case 'C':
+        36| return 0x2;
+        37| case 'G':
+        38| return 0x4;
+        39| case 'T':
+        40| case 'U':
+        41| return 0x8;
+        42| case 'R':
+        43| return 0x1 | 0x4;
+        44| case 'Y':
+        45| return 0x2 | 0x8;
+        46| case 'S':
+        47| return 0x2 | 0x4;
+        48| case 'W':
+        49| return 0x1 | 0x8;
+        50| case 'K':
+        51| return 0x4 | 0x8;
+        52| case 'M':
+        53| return 0x1 | 0x2;
+        54| case 'D':
+        55| return 0x1 | 0x4 | 0x8;
+        56| case 'H':
+        57| return 0x1 | 0x2 | 0x8;
+        58| case 'V':
+        59| return 0x1 | 0x2 | 0x4;
+        60| case 'B':
+        61| return 0x2 | 0x4 | 0x8;
+        62| case 'N':
+        63| return 0xF;
+        64| default:
+        65| return 0;
+        66| }
+        67| }
+=== [60] `iupac_match` requires a non-empty intersection at every position
+    note: 逐位掩码匹配
+    native/offtarget_engine/src/pam.cpp:71-81
+        71| bool iupac_match(const std::string& pattern, const std::string& sequence) {
+        72| if (pattern.size() != sequence.size()) {
+        73| return false;
+        74| }
+        75| for (std::size_t index = 0; index < pattern.size(); ++index) {
+        76| const std::uint8_t mask = iupac_mask(pattern[index]);
+        77| const std::uint8_t base = base_bit(sequence[index]);
+        78| if (mask == 0 || base == 0 || (mask & base) == 0) {
+        79| return false;
+        80| }
+        81| }
+=== [61] `pam_ok_span` covers both PAM sides and both strands
+    note: 负链匹配反向互补 motif
+    native/offtarget_engine/src/pam.cpp:85-110
+        85| bool pam_ok_span(const std::string& seqid, std::int64_t target_start,
+        86| std::int64_t target_end, const std::string& strand,
+        87| const std::string& pam, const std::string& pam_side,
+        88| const SequenceFetcher& fetch) {
+        89| if (pam.empty()) {
+        90| return true;
+        91| }
+        92| const std::int64_t pam_len =
+        93| static_cast<std::int64_t>(pam.size());
+        94| if (strand == "+") {
+        95| const auto sequence =
+        96| pam_side == "5prime"
+        97| ? fetch(seqid, target_start - pam_len, target_start)
+        98| : fetch(seqid, target_end, target_end + pam_len);
+        99| return sequence.has_value() &&
+       100| iupac_match(pam, uppercase_ascii(*sequence));
+       101| }
+       102| 
+       103| const std::string rc_pam = reverse_complement(pam);
+       104| const auto sequence =
+       105| pam_side == "5prime"
+       106| ? fetch(seqid, target_end, target_end + pam_len)
+       107| : fetch(seqid, target_start - pam_len, target_start);
+       108| return sequence.has_value() &&
+       109| iupac_match(rc_pam, uppercase_ascii(*sequence));
+       110| }
+=== [62] `pam_sequence_span` reports the PAM in guide orientation
+    note: 负链返回反向互补
+    native/offtarget_engine/src/pam.cpp:112-145
+       112| std::string pam_sequence_span(
+       113| const std::string& seqid, std::int64_t target_start,
+       114| std::int64_t target_end, const std::string& strand,
+       115| const std::string& pam, const std::string& pam_side,
+       116| const SequenceFetcher& fetch) {
+       117| if (pam.empty()) {
+       118| return {};
+       119| }
+       120| const std::int64_t pam_len =
+       121| static_cast<std::int64_t>(pam.size());
+       122| std::int64_t start = 0;
+       123| std::int64_t end = 0;
+       124| if (strand == "+") {
+       125| if (pam_side == "5prime") {
+       126| start = target_start - pam_len;
+       127| end = target_start;
+       128| } else {
+       129| start = target_end;
+       130| end = target_end + pam_len;
+       131| }
+       132| } else if (pam_side == "5prime") {
+       133| start = target_end;
+       134| end = target_end + pam_len;
+       135| } else {
+       136| start = target_start - pam_len;
+       137| end = target_start;
+       138| }
+       139| std::optional<std::string> sequence = fetch(seqid, start, end);
+       140| std::string value =
+       141| sequence.has_value() ? uppercase_ascii(*sequence) : std::string{};
+       142| if (strand == "-") {
+       143| value = reverse_complement(value);
+       144| }
+       145| return value;
+=== [63] `off_target_specificity = 1 / (1 + sum(CFD))`
+    note: GuideScan2 风格聚合
+    docs/SCORING_GUIDE.md:71
+        71| off_target_specificity = 1 / (1 + sum(CFD))
+=== [64] `MM0 ... MMn` bucket semantics
+    note: 只统计完整 query 长度匹配
+    docs/SCORING_GUIDE.md:20
+        20| MM 输出列随 `max_mismatch` 变化：预算 0/1/2/3/4 分别输出 `MM0`、`MM0-MM1`、`MM0-MM2`、`MM0-MM3`、`MM0-MM4`。最后一列始终为合并桶，例如 `max_mismatch=4` 时 `MM4` 表示错配数 >= 4。
+    docs/SCORING_GUIDE.md:219
+       219| - `max_mismatch`：只保留错配数不超过该值的命中，并决定结果表输出到 `MMn` 的哪一档；
+=== [65] CFD definition and PAM weight handling
+    note: 错配位置权重 x PAM 权重
+    docs/SCORING_GUIDE.md:39
+        39| CFD(off-target) = 错配位置权重乘积 x PAM 权重
+    docs/SCORING_GUIDE.md:44
+        44| 搜索保留完整 3 nt PAM。评分时实际传给 `PAM_SCORES` 的是靠近 spacer 的
+=== [66] `calibrated_reference` vs `uncalibrated`
+    note: 校准状态传播
+    docs/SCORING_GUIDE.md:53-54
+        53| 使用明确版本化的保守 penalty `conservative_bulge_v1`，并将
+        54| `calibration_status` 标记为 `uncalibrated`；走通用启发式（`identity_heuristic` / `nuc_features`，例如 `custom` 下选 `rules` / `identity`）的得分同样标记为 `uncalibrated`，因为它们没
+    docs/SCORING_GUIDE.md:66
+        66| `uncalibrated`；`custom` 下走通用启发式的行同样标记 `uncalibrated`，只有真正使用 `cfd` 等已校准参考模型的 substitution-only 结果才是 `calibrated_reference`。
+=== [67] Two PairRank modes
+    note: `prediction_only` / `experiment_calibrated`
+    docs/PAIR_RANKING.md:9-14
+         9| - `prediction_only`：确定未来不会开展 pair 级湿实验，只能使用预测值和
+        10| 可用的公开先验。
+        11| - `experiment_calibrated`：已经完成 paired 编辑实验，可以用实测联合编辑
+        12| 率和实测脱靶风险更新排序。
+        13| 
+        14| 两种模式都不把未经校准的 on-target 分数作为精细主排序变量。两个靶点
+=== [68] Pair is the ranking unit; both sides must succeed
+    note: 核心原则 1、2
+    docs/PAIR_RANKING.md:59-61
+        59| 1. pair 是排序单位，不是分别对左右侧 guide 排序后再简单组合。
+        60| 2. 两个靶点必须成功，所以 pair 活动能力使用左、右两侧较弱的证据作为
+        61| 约束，不使用两侧平均。
+=== [69] Conservative pair off-target bound `B_pair+ = B_L+ + B_R+`
+    note: 默认保守上界
+    docs/PAIR_RANKING.md:191-194
+       191| 默认使用保守上界：
+       192| 
+       193| ```text
+       194| B_pair+ = B_L+ + B_R+
+=== [70] `M_pair+ = max(M_L+, M_R+)` and high-risk locus count `H_pair`
+    note: 最大单点风险与硬门槛
+    docs/PAIR_RANKING.md:206-215
+       206| 最大单点风险：
+       207| 
+       208| ```text
+       209| M_pair+ = max(M_L+, M_R+)
+       210| ```
+       211| 
+       212| 高危位点数量：
+       213| 
+       214| ```text
+       215| H_pair = count(unique high-risk loci from both sides)
+    docs/PAIR_RANKING.md:228
+       228| - `H_pair > h_max`。
+=== [71] `rank_mode = prediction_only`
+    note: 本文使用的模式
+    docs/PAIR_RANKING.md:132
+       132| rank_mode = prediction_only
+=== [72] `experiment_calibrated` is not implemented in code
+    note: 仅作为目标契约
+    docs/PAIR_RANKING.md:447
+       447| 本模式尚未在代码中实现，当前不会输出以下字段；它们只作为后续实现的目标契约：
+=== [73] Default `policy_status = uncalibrated`
+    note: 无匹配实验时的标记
+    docs/PAIR_RANKING.md:485
+       485| 标记 `policy_status=uncalibrated`。
+
+TABLE_ROWS=73  min=1  max=73
+MISSING_ROWS_FOR_CITED=[]
+ROWS_NEVER_CITED=[]
+TABLE_NUMBER_GAPS=[]
+PROBLEMS=[]

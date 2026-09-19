@@ -1,0 +1,19 @@
+{
+  "task": "webapp-designer-port",
+  "title": "重做 webapp：把 main（统一工作台）与 Pattern Designer 移植到网页版",
+  "status": "done",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 1,
+  "master": "codex-master (repo R:\\songji\\programfile, 2026-09-16)",
+  "servant": "codex-servant (repo R:\\songji\\programfile, 2026-09-16)",
+  "repo": "R:\\songji\\programfile",
+  "updated": "2026-09-16 20:35"
+}

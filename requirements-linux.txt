@@ -1,0 +1,52 @@
+# Linux / server
+#
+# Recommended base install:
+#   python3 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements-linux.txt
+
+biopython>=1.78
+pyfaidx>=0.5.9.1
+requests>=2.25.0
+openpyxl>=3.1
+numpy>=1.21
+h5py>=3.8
+
+# AI / optional model dependencies
+scikit-learn>=1.0
+pandas>=1.3
+scipy>=1.10
+matplotlib>=3.5
+tensorboardX>=2.6
+torch>=2.0
+
+# crispAI aggregate adapter (external runtime; these are the pip-installable
+# Python deps; R + NuPoP, Cas-OFFinder and GRCh38/UCSC chroms are NOT pip items
+# and are listed below as comments):
+pybdm>=0.1.0
+genomepy>=0.14.0
+jax>=0.4
+numpyro>=0.13
+tqdm>=4.60
+seaborn>=0.11
+
+# crispAI non-pip prerequisites (see docs/CRISPAI.md):
+#   R + NuPoP (NuPoP is NOT on CRAN for R >= 4.3, use Bioconductor):
+#     conda install -c r r-base     # or system R
+#     Rscript -e 'if(!requireNamespace("BiocManager",quietly=TRUE)) install.packages("BiocManager",repos="https://cloud.r-project.org"); BiocManager::install("NuPoP",lib=Sys.getenv("R_LIBS_USER"),ask=FALSE,update=FALSE)'
+#   Cas-OFFinder executable: `bash tools/build_crispai_env.sh` installs it via
+#     micromamba + bioconda and symlinks it into
+#     external_tools/crispAI-main/crispAI_score/casoffinder/cas-offinder
+#     (or export CRISPAI_CASOFFINDER_DIR to the directory containing it)
+#   UCSC per-chromosome FASTA: under
+#     external_tools/crispAI-main/crispAI_score/casoffinder/ucsc_chroms/
+#     (genomepy downloads GRCh38 on first run if absent)
+#   Alternatively, run the one-shot bootstrap which does the venv + pip + R/NuPoP:
+#     bash tools/build_crispai_env.sh
+
+# TensorFlow is easier to install on Linux.
+# Adjust the version to match the server Python version and GPU driver.
+tensorflow>=2.10
+
+# RNA folding for Cas13 scoring.
+ViennaRNA>=2.5.0

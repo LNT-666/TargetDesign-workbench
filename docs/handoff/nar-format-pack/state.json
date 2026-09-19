@@ -1,0 +1,32 @@
+{
+  "task": "nar-format-pack",
+  "title": "NAR Methods 投稿要件打包（格式规范落地）",
+  "status": "done",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 1,
+  "master": "会话 M（master）",
+  "servant": "会话 S（servant）",
+  "repo": "R:\\songji\\programfile",
+  "server_repo": "/home/apool/songji/programfile",
+  "local_python": "Python 3.14.7",
+  "created": "2026-09-19 09:57",
+  "updated": "2026-09-19 10:52",
+  "verdict": "pass_with_followups",
+  "verdict_by": "master",
+  "task_md_revision": "r2 (2026-09-19 10:40, master)",
+  "contract_r2_reverified": true,
+  "followups": [
+    "主文图定 6 张（F7 -> Supplementary S1）",
+    "wiki 措辞改写为仓库 docs/",
+    "Supplementary 按引用顺序重排"
+  ],
+  "followup_owner": "manuscript-v1"
+}

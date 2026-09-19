@@ -1,0 +1,24 @@
+{
+  "title": "CRISPR-Motif Workbench",
+  "description": "<p>A toolkit for motif-driven CRISPR guide design: motif patterns are defined first, candidate regions are extracted, exact, indexed, BLAST-based and model-based off-target searches are run, candidates are scored, filtered and ranked, and results are exported through a desktop workbench, a local web UI and command-line tools.</p><p>Documentation is provided in the repository under the <code>docs/</code> directory.</p>",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "mit",
+  "version": "1.0.0",
+  "language": "eng",
+  "creators": [
+    {
+      "name": "[TO FILL: family name, given names]",
+      "affiliation": "[TO FILL: institution]",
+      "orcid": "[TO FILL: 0000-0000-0000-0000]"
+    }
+  ],
+  "keywords": [
+    "CRISPR",
+    "guide RNA design",
+    "off-target search",
+    "motif discovery",
+    "sequence analysis"
+  ],
+  "related_identifiers": []
+}

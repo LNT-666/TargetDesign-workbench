@@ -1,0 +1,299 @@
+# 本地网页版（Web 工作台）
+
+网页版是纯本机工具：默认只监听 `127.0.0.1`，不提供任何在线服务，也不依赖
+CDN 或前端框架。它把桌面的 **Data prep / Models / Pattern Designer** 收进同一个
+单页工作区（Designer 是常驻主区，Data prep / Models 是左侧滑出的**近满屏面板**），
+并且与桌面端、命令行复用同一套 `shared/` 实现：
+
+- 表单 → `PatternSpec` / `RunnerConfig`：`shared/design/workbench_form.py`
+  （桌面 `designer_workbench.py` 与 `webapp/services/designer.py` 共用，两边只
+  负责各自的控件，不再各自实现一份映射）；
+- 搜索/评分/输出：`shared/design/pattern_runner.py`、`shared/search/*`、
+  `shared/scoring/*`、`shared/output/*`。
+
+因此同一组表单值在网页端提交与在桌面端运行得到相同结果。
+
+## 启动
+
+```powershell
+python webapp\app.py
+```
+
+默认地址（仅本机可访问）：
+
+```text
+http://127.0.0.1:8000
+```
+
+指定端口：
+
+```powershell
+python webapp\app.py --port 8765
+```
+
+页面静态资源来自 `webapp/index.html` + `webapp/static/app.js` +
+`webapp/static/styles.css`（LF、无 BOM、无外链）；只有 `app.js` 与`styles.css` 这两个文件名在服务端白名单内。
+
+## 单页工作区
+
+页面只有一个常驻主工作区（Designer），`Data prep` 与 `Models` 收进左侧的**近满屏
+面板**（默认宽度 `min(1800px, 视口宽 − 48px)`），不再是同级页签，也没有左右双面板：
+
+```text
+面板收起（默认）——Designer 占满整屏
+┌─ 顶部固定条（sticky）───────────────────────────────────────────────────┐
+│ [准备数据/模型] Design Pattern [模式下拉] [Find Targets] [Score & Off-target]│
+│ 就绪状态 Ready / Missing: …   进度条   最近作业 <kind> · <status> · <耗时>  │
+├───────────────┬──────────────────────────────┬──────────────────────────┤
+│ 公共输入       │ Middle（min/max gap 或        │ Right TAM                │
+│ （可折叠，默认展开）│ y_sequence）                  │                          │
+│ + Left TAM     │ + Structure Preview           │                          │
+├───────────────┴──────────────────────────────┴──────────────────────────┤
+│ Run Settings（可折叠）                                                    │
+│ Run Log（可折叠，默认展开）                                                │
+│ 候选表（隐藏 query_seq/gap_seq）+ 导出格式下拉 + 导出按钮                     │
+│ Results / Output（可折叠：作业列表、作业详情、输出目录文件列表）                 │
+└──────────────────────────────────────────────────────────────────────────┘
+
+面板展开——几乎盖住主区，右侧只留 48px 缝（缝里那块仍可点击，回到 Designer）
+┌──────────────────────────────────────────────────────┐ ┌────┐
+│ Data prep & Models                              Close│ │ 48 │
+│ ── Data prep ─────────────────────────────────────── │ │ px │
+│  Download / Genome+annotation / Search scope /        │ │ 主 │
+│  Mask gene / Prepare（字段标签在上、控件在下，多列自适应）│ │ 区 │
+│ ── Models ─────────────────────────────────────────── │ │    │
+│  分组状态与下载/删除                                   │ │    │
+│                                    ┌ 拖动条（面板右缘）│ │    │
+└──────────────────────────────────────────────────────┘ └────┘
+点遮罩 / Close / Esc / 顶部条按钮 → 面板滑出，Designer 的表单值与滚动位置不变
+```
+
+- 面板几何：`position: fixed` 从左侧滑入，宽度 `min(1800px, 视口宽 − 48px)`，
+  最小 380px，右边缘有拖动条（`role="separator"`，支持方向键，双击复位到默认宽度），
+  宽度记在 `localStorage` 的 `crispr.drawerWidth`；打开状态记在 `crispr.drawerOpen`。
+- 关闭方式共 4 种：顶部条按钮、面板里的 `Close`、`Esc`、点击面板背后的遮罩。
+  面板只是隐藏（`transform` + `visibility`），不重建、不清空，Designer 的滚动位置与
+  表单值都保留。
+- 面板内的表单用多列自适应：`.drawer .grid` 是
+  `repeat(auto-fit, minmax(330px, 1fr))`，每对“标签在上、控件在下”，面板收窄到
+  380px 时自动退化成单列。
+
+- 顶部固定条不随滚动消失：模式下拉（三个 `MODE_LABELS`）、`Find Targets`、
+  `Score & Off-target`、就绪状态、进度条，以及进度条右侧的
+  “最近一次作业”摘要（`<kind> · <status> · <耗时>`，点击跳到下部 Run Log）。
+- 主区三列：左 = 公共输入（可折叠，默认展开）+ Left TAM；中 = Middle + Structure
+  Preview；右 = Right TAM。
+- 下部常驻：Run Settings、Run Log、候选表与导出控件、`Results / Output`
+  的内容（作业列表、作业详情、输出目录文件列表）都在页面下部，不折叠掉。
+- 模式切换导致的字段显隐规则与桌面端一致（`designer_workbench.py:737-880` 的三种
+  布局），切换模式**不清空**已填字段。
+- 响应式：视口 < `1400px` 时三列纵向堆叠（顺序：公共输入/Left → Middle+预览 →
+  Right）。所有视口上面板都是同一套行为（宽度 = 视口宽 − 48，最小 380px），不再是「宽屏并排 / 窄屏覆盖」的二分；面板不是模态弹窗，关闭后 Designer 的状态不变。
+
+Designer 的三种 pattern 与桌面端一致：
+
+- `SINGLE_MOTIF_FLANK`：Single target design，
+- `MOTIF_GAP_MOTIF`：Paired-target design Pattern A: Target-xbp-Target，
+- `Y_CENTERED_MOTIFS`：Paired-target design Pattern B: Target-xbp-Motif-ybp-Target。
+
+- 每侧的 On-target / Off-target 模型控件是**多选**（Ctrl/Cmd-click 多选，第一个选中项是
+  primary）：选项文本用 `shared/design/workbench_form.py:model_display_name` 的显示名
+  （`[Cas9] cropsr`、`[Cas9] [rule] cfd`），由 `/api/schema` 的 `model_labels` 下发，
+  网页不另存一份、不自己拼前缀；用户改动后 primary 项的选项文本加 `[P] ` 前缀，hint 追加
+  `Primary: …`（与桌面 `designer_workbench.py` 的 picker 同义）。表单值仍是逗号分隔的
+  注册表 key 串（`split_model_selection` 解析）。
+
+`Find Targets` 只跑抽取阶段（`start=0, end=1`），`Score & Off-target` 从抽取结果
+继续（`start=1`），如果没有抽取结果会返回
+`Extracted targets not found. Run Find Targets first.`
+
+## 面板：Data prep / Models
+
+- 面板默认收起；展开时从左侧滑入并覆盖主区（几何与 4 种关闭方式见上）。
+- 内容顺序与桌面端一致：先 `Data prep`（下载、基因组/注释、Search scope、
+  Mask gene、Prepare/BLAST/索引），后 `Models`（分组状态与下载/删除）。
+- 面板里的作业与主区共用同一个作业队列（同一时刻最多 1 个重作业），日志与进度
+  显示在面板内的作业框中；面板收起也不影响作业继续运行。
+- 回填后的「已带入」提示同时出现在**两处**：主区的 `#designer-loaded-hint` 与面板内的
+  `#dp-loaded-hint`（面板打开时主区那行被盖住）。两处文案与 tooltip 完全一致，由
+  `webapp/static/app.js` 的同一段拼串生成，不存在第二份规则。
+- 面板内的字段排布：每组 `.grid` 用 `repeat(auto-fit, minmax(330px, 1fr))`，
+  每对「标签在上、控件在下」，面板收窄到 380px 时自动退化成单列。
+- Models 面板每行在 `Path` 之后显示该模型的 `description`，文本直接来自
+  `shared/scoring/model_registry.py` 的 `MODELS[key]["description"]`（唯一来源，网页不翻译、
+  不另存）；没有本地文件的模型（如 `teep`）在 `Path` 列显示其 `url`
+  （对齐 `main.py:1170-1173`）。
+
+### 回填规则
+
+抽屉里任一作业成功后，页面用该作业的 `outputs`（见下）回填**主区**的空白字段，
+等价于桌面端 `unified_gui.py:249-298` 的 `_designer_defaults()`：
+
+| `outputs` 键 | 回填位置 |
+| --- | --- |
+| `genome_fasta` | 主区 `genome_fasta` |
+| `annotation` | 抽屉的注释输入框（主区不显示注释字段，仅记录） |
+| `target_fasta` | 主区 `search_fasta` |
+| `mask_fasta` | 主区 `mask_fasta`（勾选 `skip_mask` 时不回填，留空） |
+| `output_dir` | 主区 `output_dir` |
+| `blastdb` | 主区 `blastdb` |
+| `index_path` | 主区 `index_path`（Run Settings 内） |
+
+- **只填空字段**：值为空则跳过；用户已经手填（主区输入框或抽屉输入框）的字段一律
+  不覆盖，不允许静默带参。
+- 回填后就地在公共输入区显示一行提示，例如
+  `已带入 / Loaded: genome_fasta, search_fasta, output_dir`；鼠标悬停可看到具体
+  路径，被跳过的字段以 `· kept your values: …` 标出。
+- 字段对应关系与判定逻辑只有一份实现（`webapp/static/app.js` 的
+  `backfillPlan()`），探针脚本
+  `docs/handoff/webapp-single-page-layout/assets/probe_backfill_rule.js` 直接从
+  `app.js` 里抽出该函数做回归，`probe_backfill_http.py` 则跑一遍真实作业验证
+  “手填的 `output_dir` 不会被覆盖”。
+## 作业模型
+
+- 作业目录：`webapp/jobs/<job_id>/`（`job_id` 形如 `^[a-z0-9-]{12}$`），包含
+  `params.json`、`status.json`、`job.log`、`out/`、导出时的 `export/`。
+- 全局最多 1 个重作业运行，其余排队（基因组级搜索/建索引内存占用大）。
+- 状态：`queued` → `running` → `succeeded` / `failed` / `cancelled`；
+  服务重启后遗留的 `queued` / `running` 作业会被标为 `interrupted`（并显示
+  “已中断”文案），不会谎报仍在运行；`webapp/jobs/87499fe93868/` 这类旧实现留下
+  的目录（`status.json` 缺 `kind`）被新实现忽略，也不会被改写。
+- `CONFIRM_REQUIRED` 请求默认自动同意，并在日志中写 `[auto-confirm] <kind>|<reason>`。
+- 进度来自子进程的 `PROGRESS:` / `PROGRESS_TARGET:` 行，页面用
+  `/api/jobs/<id>/log?offset=` 增量拉取日志并显示 `Analyzing target i/n`。
+- 导出写入 `<job_dir>/export/<文件名>`，再通过
+  `/api/jobs/<id>/download?file=export/<文件名>` 下载；浏览器不写任意本地路径。
+- `status.json` 带 `"outputs": {<键>: <绝对路径>}`（无产物时为 `{}`），
+  `GET /api/jobs` 与 `GET /api/jobs/<id>` 都会返回该字段；旧作业目录缺这个键时
+  读接口按 `{}` 补上，不写回文件。各作业写入的键：
+
+  | 作业 | `outputs` |
+  | --- | --- |
+  | `dataprep.download` | `genome_fasta`、`annotation`、`output_dir` |
+  | `dataprep.prepare` | `genome_fasta`、`annotation`、`target_fasta`、`mask_fasta`、`output_dir`，有则加 `blastdb` |
+  | `dataprep.extract-target` | `target_fasta`、`output_dir` |
+  | `dataprep.extract-mask` | `mask_fasta`、`output_dir` |
+  | `dataprep.build-blastdb` | `blastdb`、`output_dir` |
+  | `dataprep.build-index` | `index_path`、`output_dir` |
+  | `designer.find` / `designer.score` | `search_fasta`（sequence 模式）或 `bed_regions`（bed 模式）、`output_dir`、`extract_output` |
+
+  只写绝对路径，且只写实际存在的产物（`build-index` 的前缀按其
+  `<prefix>.ggi` / `<prefix>.json` 兄弟文件判断）。
+
+## API
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/` | 单页外壳（`webapp/index.html`） |
+| `GET` | `/static/<app.js\|styles.css>` | 白名单静态资源 |
+| `GET` | `/api/schema` | 表单选项：pattern、预设、引擎、模型分组、模型显示名 `model_labels`、Data prep 选项等（全部来自 `shared/`） |
+| `GET` | `/api/jobs` | 作业列表（新的在前，含 `outputs`） |
+| `GET` | `/api/jobs/<id>` | 作业状态、进度、`log_tail`、`result`、`outputs` |
+| `GET` | `/api/jobs/<id>/log?offset=N` | 从第 N 个字符起的日志增量 |
+| `GET` | `/api/jobs/<id>/candidates` | Designer 候选表（隐藏 `query_seq` / `gap_seq`） |
+| `GET` | `/api/jobs/<id>/download?file=export/...\|out/...` | 下载作业内的白名单文件 |
+| `GET` | `/api/models` | 模型分组、状态、路径、`description`、`url` |
+| `GET` | `/api/outputs?dir=<绝对路径>` | 列出目录内允许扩展名的文件 |
+| `GET` | `/api/fs/list?dir=<绝对路径>&kind=<kind>&hidden=1` | 只读列目录（kind 过滤、strip 剥离表、roots 根模式；`hidden=1` 才列隐藏项） |
+| `POST` | `/api/designer/preview` | 描述当前 pattern、返回 `errors` / `warnings` |
+| `POST` | `/api/designer/preset` | 单个 TAM 侧的 `Apply`：返回字段更新和模型候选 |
+| `POST` | `/api/designer/active-side` | `Use for Run`：切换生效侧并返回规则更新 |
+| `POST` | `/api/designer/jobs` | 提交 Designer 阶段（`stage`: `find` / `score`） |
+| `POST` | `/api/dataprep/download` | 下载基因组与注释 |
+| `POST` | `/api/dataprep/prepare` | 基因组 + 注释 + Search scope + Mask (+ BLAST) 一步准备 |
+| `POST` | `/api/dataprep/extract-target` | 抽取 Search scope FASTA |
+| `POST` | `/api/dataprep/extract-mask` | 抽取 Mask FASTA |
+| `POST` | `/api/dataprep/build-blastdb` | 构建 BLAST 库 |
+| `POST` | `/api/dataprep/build-index` | 构建基因组索引 |
+| `POST` | `/api/models/<key>/download` | 下载模型权重 |
+| `POST` | `/api/models/<key>/delete` | 删除模型本地文件 |
+| `POST` | `/api/jobs/<id>/cancel` | 取消作业 |
+| `POST` | `/api/jobs/<id>/export` | 导出选中候选行（`format`、`rows`、`filename`） |
+
+表单校验失败返回 `400` + `{"error": "..."}`，路径或文件不存在返回 `404`。
+
+## 路径浏览选取器
+
+网页版里所有路径字段要的都是**服务端绝对路径**，而浏览器原生控件给不出来：
+`<input type="file">` 只给文件名，File System Access API 的 `showDirectoryPicker()`
+只给文件句柄。所以这里既不用原生文件框、也不做上传（上传还会把几十 GB 的基因组
+再复制一份、后续路径指向副本）。浏览由服务端的只读列目录接口
+`GET /api/fs/list` 加页面内自绘的弹层完成。
+
+字段与 `kind` 的对应关系：
+
+| 字段（key 或元素 id） | kind | 位置 |
+| --- | --- | --- |
+| `search_fasta` | `fasta` | Common Inputs |
+| `bed_regions` | `bed` | Common Inputs（BED 模式） |
+| `genome_fasta` | `fasta` | Common Inputs |
+| `mask_fasta` | `fasta` | Common Inputs |
+| `output_dir` | `dir` | Common Inputs |
+| `blastdb` | `db` | Common Inputs |
+| `index_path` | `index` | Run Settings |
+| `dp-download-output` | `dir` | Data prep 抽屉 |
+| `dp-genome` | `fasta` | Data prep 抽屉 |
+| `dp-annotation` | `annotation` | Data prep 抽屉 |
+| `dp-output` | `dir` | Data prep 抽屉 |
+| `dp-blastdb` | `db` | Data prep 抽屉 |
+| `dp-index-prefix` | `index` | Data prep 抽屉 |
+| `outputs-dir` | `dir` | Results / Output |
+
+`kind` 只决定列表里出现哪些**文件**，目录永远列出（`dir` 例外：它把文件全滤掉）。
+`fasta` / `annotation` / `bed` / `db` / `index` 按 `shared/` 认得的后缀匹配，
+`any` 不过滤；列表先目录后文件，各组按名字小写升序。
+
+弹层的行为（资源管理器式，只有一份实现，所有路径字段共用）：
+
+- 每个路径字段旁的 `Browse...` 按钮打开同一个弹层（`#picker`）。
+- 打开时起始目录依次尝试：字段当前值 → 它的上一级 → 上次用过的目录
+  （`localStorage['crispr.pickerDir']`）→ `home` → 根模式；前面的候选不是目录就
+  静默跳过，第一次打开不会白屏。字段为空时没有「当前目录」可定位，于是跳过
+  `home`、直接落到根模式（列表上方的盘符按钮；`Home` 在位置栏里始终可点，
+  见下）。确认成功后才记住当前目录（同时 push 进 `crispr.pickerRecent`，
+  去重、只留最近 5 条）。
+- 打开后若字段当前值能在列表里对上号（`db` / `index` 存的是前缀，按
+  `prefix.nin` / `prefix.ggi` 这类成员文件反查），那一行会被选中并滚动到可见处。
+- 路径行下方是面包屑 `#picker-crumbs`（`>` 分隔、每段可点、末段即当前目录）；
+  地址栏 `#picker-path` 保留，回车或 `#picker-go` 列举手输路径，`#picker-up`
+  上一级，`#picker-back` / `#picker-forward` 走历史（最多 50 条，无历史时置灰）。
+  `#picker-roots` 仍是根模式的盘符按钮，`#picker-places` 是位置栏
+  （`Home` + 最近 5 个目录）。
+- 列表有列头 `Name` / `Size` / `Modified`（排序固定：先目录后文件、各自按名字
+  小写升序，表头不可点）；列表上方右侧 `#picker-count` 显示条目数
+  （`3 folders, 12 files`，被截断时追加 ` (listing truncated)`）。
+- 单击行 = 选中，双击目录 = 进入，双击文件 = 直接确认；`#picker-ok` 确认，
+  `#picker-cancel` / `#picker-close` / `Esc` / 点遮罩取消且字段值不变。
+  键盘：↑/↓ 移动选中（到顶/到底停住，不循环）、`Enter`（选中目录则进入、
+  选中文件则写回）、`Backspace` 上一级、`Esc` 关弹层；焦点在地址栏时只处理
+  `Esc`（那里的 `Enter` 是「列举这个路径」）。
+- 文件类 kind 没有选中行时 `#picker-ok` 置灰、`#picker-selected` 显示
+  `Select a file`；`dir` 类字段的 `OK` 始终可用，无选中时写回**当前正在浏览的
+  目录**，也可以点 `Use this folder`（`#picker-here`，只对 `dir` 类字段显示）。
+- 确认永远有回应：可确认时写回并关闭；没有可确认的对象（正在列举、列举失败、文件类字段还没选中行）时弹层保持打开，并把原因写进 `#picker-selected`，不会出现点了 `OK` 毫无反应的情况。
+- 弹层高度受窗口限制（`min(80vh, 100vh - 60px)`），只有列表 `#picker-list` 会伸缩并自带滚动；`OK` / `Use this folder` / `Cancel` 一行始终留在弹层内，不会被挤到窗口外（窗口很矮时列表收缩到 0 也不外溢）。
+- 确认时按 `strip` 剥后缀：`db` 字段要的是 BLAST 库前缀（`blastn -db <prefix>`，
+  成员为 `<prefix>.nin` / `.nsq` 等，侧车为 `<prefix>.source.json`），所以剥掉
+  `.source.json` / `.nin` / … 后写回；`index` 字段要的是索引前缀
+  （`<prefix>.ggi` + `<prefix>.json`），剥掉 `.ggi` / `.json`。其它 kind 的 `strip`
+  为空表，原样写回。剥离表由服务端下发（响应里的 `strip`，已按长度降序排好），
+  前端命中即返回，只剥一层。
+- 写回方式和手输完全一致：`input.value = picked` 后派发 `input` 事件，
+  这样 `state.values` 与预览都会同步更新。
+- 默认不列隐藏项：名字以 `.` 开头、或（Windows）带隐藏属性的条目由服务端过滤掉；
+  勾选 `Show hidden`（`#picker-hidden`，记忆在 `localStorage['crispr.pickerHidden']`）
+  后带 `hidden=1` 重新列举当前目录才会出现。
+- 弹层 `z-index` 高于 Data prep 抽屉（抽屉里也能打开它）；抽屉自己的 `Esc`
+  处理会先判断弹层是否打开，所以 `Esc` 只关弹层、不关抽屉。
+
+## 安全边界
+
+- 服务只绑定 `127.0.0.1`（`--host` 可以改，但不建议）。
+- 静态资源与下载文件均使用白名单；下载路径再做一次 `commonpath` 校验，
+  `..`、绝对路径和未知扩展名都会被拒绝。
+- `job_id` 只允许 `[a-z0-9-]{12}`。
+- `/api/fs/list` 只读：只返回名字、大小与修改时间，不读文件内容、不写盘；
+  `dir` 必须是已存在的目录（否则 `400`），服务也仍只绑 `127.0.0.1`。
+  隐藏项（`.` 开头或 Windows 隐藏属性）默认不列出，`hidden=1` 才会带上。
+- 子进程通过参数列表调用，不经过 shell。
+- 页面只使用原生 JS 与 `fetch`，无 CDN、无构建步骤、离线可用。

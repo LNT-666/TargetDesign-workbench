@@ -1,0 +1,1 @@
+"""Web-app services: thin adapters over the shared design/data/scoring modules."""

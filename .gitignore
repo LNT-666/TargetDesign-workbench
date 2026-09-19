@@ -1,0 +1,72 @@
+# ============================================================================
+# CRISPR-Motif Workbench - files that must never enter the published repo
+# ============================================================================
+
+# ---- Python environments -------------------------------------------------
+.venv/
+.venv310/
+**/.venv/
+venv/
+env/
+
+# ---- Python / tooling caches --------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Agent and editor working directories --------------------------------
+.codex/
+.codex_tmp/
+.vscode/
+.idea/
+.Rhistory
+.Rproj.user/
+
+# ---- Local run artifacts and logs ---------------------------------------
+logs/
+out/
+backup/
+*.log
+server_bundle.zip
+workspace.json
+basic/out/
+shared/logs/
+shared/output/
+webapp/jobs/
+_srv.*.txt
+_probe_*.js
+/$null
+
+# ---- Large local datasets (redistributed separately, see docs/) ----------
+# scy-test/  : ~65 GB case-study working data
+# example/   : 3.3 GB GRCh38 FASTA plus derived indexes
+scy-test/
+example/
+genome_index/
+
+# ---- Third-party source trees and model weights --------------------------
+# Redistribution is governed by the upstream licences; see docs/MODELS.md
+# and docs/CRISPAI.md for how these are obtained.
+external_tools/
+models/offtar_pt_cnn_reg/
+models/tiger/
+models/*.pt
+models/*.pth
+models/*.h5
+models/*.tar.gz
+models/*.npz
+models/*.lock
+models/*.part
+
+# ---- Native build outputs and binaries ----------------------------------
+native/build/
+native/build-windows/
+native/bin/
+*.exe
+
+# ---- Internal-only documentation ----------------------------------------
+# Contains the lab server address and SSH tunnel instructions.
+docs/SSH_ACCESS.md

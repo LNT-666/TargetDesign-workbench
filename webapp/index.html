@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRISPR Motif Workbench</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>CRISPR Motif Workbench</h1>
+  <p class="subtitle">
+    Local-only web UI (127.0.0.1) for the shared design pipeline. Results match
+    the desktop workbench and the command line because both use the same
+    <code>shared/</code> modules.
+  </p>
+  <div id="global-banner" class="banner hidden"></div>
+</header>
+
+<div class="topbar" id="designer-topbar">
+  <div class="topbar-line">
+    <button id="drawer-toggle" class="drawer-toggle" type="button"
+            aria-expanded="false" aria-controls="drawer">Data prep / Models</button>
+    <label for="designer-mode">Design Pattern</label>
+    <select id="designer-mode"></select>
+    <button id="designer-find" class="primary" type="button">Find Targets</button>
+    <button id="designer-score" type="button">Score &amp; Off-target</button>
+    <span id="designer-ready" class="ready-badge">Loading schema...</span>
+  </div>
+  <div class="topbar-line topbar-status">
+    <div class="progress"><div id="designer-progress-bar"></div></div>
+    <span id="designer-progress-label" class="muted">Ready</span>
+    <button id="designer-recent" class="recent muted hidden" type="button"></button>
+  </div>
+</div>
+
+<div id="designer-schema-error" class="banner error hidden"></div>
+
+<div class="workspace" id="workspace">
+  <aside class="drawer" id="drawer" aria-hidden="true"
+         aria-label="Data prep and Models">
+    <div class="drawer-head">
+      <h2>Data prep &amp; Models</h2>
+      <button id="drawer-close" type="button">Close</button>
+    </div>
+
+    <section class="drawer-block" id="drawer-dataprep">
+      <h3>Data prep</h3>
+      <p class="hint">
+        Genome/annotation preparation, Search-scope and Mask extraction, BLAST
+        database and genome index builds. Long steps run as queued jobs; only one
+        heavy job runs at a time. A successful job back-fills the empty Designer
+        inputs in the main area and shows an <code>already loaded</code> hint
+        there; values you typed yourself are never overwritten.
+      </p>
+
+      <div class="group">
+        <h4>Download</h4>
+        <div class="grid">
+          <div class="field">
+            <label>Organism (for download)</label>
+            <select id="dp-species"></select>
+          </div>
+          <div class="field">
+            <label>Download output directory</label>
+            <input id="dp-download-output" type="text" placeholder="absolute path">
+          </div>
+        </div>
+        <div class="actions">
+          <button id="dp-download" class="primary" type="button">Download Genome and annotation</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>Genome / annotation</h4>
+        <div class="grid">
+          <div class="field">
+            <label>Genome file (FASTA)</label>
+            <input id="dp-genome" type="text" placeholder="absolute path (.fna.gz allowed)">
+          </div>
+          <div class="field">
+            <label>Annotation file (GTF/GFF3)</label>
+            <input id="dp-annotation" type="text" placeholder="absolute path">
+          </div>
+          <div class="field">
+            <label>Output directory</label>
+            <input id="dp-output" type="text" placeholder="absolute path">
+          </div>
+          <div class="field">
+            <label>Existing Genome database path</label>
+            <input id="dp-blastdb" type="text" placeholder="optional">
+          </div>
+          <div class="field">
+            <label>Index prefix / index output directory</label>
+            <input id="dp-index-prefix" type="text" placeholder="optional">
+          </div>
+        </div>
+        <label class="inline"><input type="checkbox" id="dp-build-blastdb"> Build Genome database automatically (from Genome FASTA)</label>
+      </div>
+
+      <div class="group">
+        <h4>Search scope</h4>
+        <div class="grid">
+          <div class="field">
+            <label>Search scope (Gene Symbol / ENSEMBL ID / coordinates)</label>
+            <input id="dp-target-id" type="text">
+          </div>
+          <div class="field">
+            <label>Identifier type</label>
+            <select id="dp-target-id-type"></select>
+          </div>
+          <div class="field">
+            <label>Search region</label>
+            <select id="dp-target-region"></select>
+          </div>
+          <div class="field">
+            <label>Region number (Specific exon/intron only)</label>
+            <input id="dp-target-num" type="text">
+          </div>
+        </div>
+        <div class="actions">
+          <button id="dp-extract-target" type="button">Extract Target FASTA</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>Mask gene</h4>
+        <label class="inline"><input type="checkbox" id="dp-skip-mask"> Skip mask (do not set)</label>
+        <label class="inline"><input type="checkbox" id="dp-mask-same" checked> Mask gene same as Target</label>
+        <div class="grid">
+          <div class="field">
+            <label>Mask gene identifier (optional, blank = skip)</label>
+            <input id="dp-mask-id" type="text">
+          </div>
+          <div class="field">
+            <label>Identifier type</label>
+            <select id="dp-mask-id-type"></select>
+          </div>
+          <div class="field">
+            <label>Search region</label>
+            <select id="dp-mask-region"></select>
+          </div>
+          <div class="field">
+            <label>Region number (Specific exon/intron only)</label>
+            <input id="dp-mask-num" type="text">
+          </div>
+        </div>
+        <div class="actions">
+          <button id="dp-extract-mask" type="button">Extract Mask FASTA</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>Prepare</h4>
+        <div class="actions">
+          <button id="dp-prepare" class="primary" type="button">Prepare data (genome + annotation + Target + Mask + BLAST)</button>
+          <button id="dp-build-blastdb-button" type="button">Build BLAST DB</button>
+          <button id="dp-build-index" type="button">Build genome index</button>
+        </div>
+      </div>
+
+      <div id="dp-loaded-hint" class="loaded-hint hidden"></div>
+      <div id="dp-job" class="job-box hidden"></div>
+    </section>
+
+    <section class="drawer-block" id="drawer-models">
+      <h3>Models</h3>
+      <div class="actions">
+        <button id="models-refresh" type="button">Refresh status</button>
+        <span id="models-dir" class="muted"></span>
+      </div>
+      <div id="models-groups"></div>
+      <div id="models-job" class="job-box hidden"></div>
+    </section>
+    <div class="drawer-resizer" id="drawer-resizer" role="separator"
+         aria-orientation="vertical" aria-label="Resize the Data prep panel"
+         tabindex="0" title="拖动调整宽度 / drag to resize (double-click resets)"></div>
+  </aside>
+  <div id="drawer-scrim" class="scrim hidden"></div>
+
+  <div id="picker-scrim" class="scrim hidden"></div>
+  <div id="picker" class="picker hidden" role="dialog" aria-modal="true"
+       aria-labelledby="picker-title">
+    <div class="picker-head">
+      <h2 id="picker-title">Browse</h2>
+      <button id="picker-close" type="button">Close</button>
+    </div>
+    <div class="row">
+      <input id="picker-path" type="text" placeholder="absolute path (blank = drives)">
+      <button id="picker-go" type="button">Go</button>
+      <button id="picker-up" type="button">Up</button>
+      <button id="picker-back" type="button" disabled>Back</button>
+      <button id="picker-forward" type="button" disabled>Forward</button>
+    </div>
+    <div id="picker-crumbs" class="picker-crumbs"></div>
+    <div id="picker-roots" class="picker-roots"></div>
+    <div id="picker-places" class="picker-places"></div>
+    <div class="picker-toolbar">
+      <label class="inline"><input type="checkbox" id="picker-hidden"> Show hidden</label>
+      <span id="picker-count" class="muted"></span>
+    </div>
+    <div id="picker-list" class="picker-list"></div>
+    <div class="picker-foot">
+      <span id="picker-selected" class="muted"></span>
+      <div class="actions">
+        <button id="picker-here" type="button">Use this folder</button>
+        <button id="picker-cancel" type="button">Cancel</button>
+        <button id="picker-ok" class="primary" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-area" id="main-area">
+    <div class="designer-columns" id="designer-columns">
+      <div class="col" id="designer-common-col">
+        <details id="common-inputs-wrap" class="group common-inputs" open>
+          <summary>Common Inputs</summary>
+          <div id="designer-common-fields"></div>
+        </details>
+        <div id="designer-loaded-hint" class="loaded-hint hidden"></div>
+        <div id="designer-left-col"></div>
+      </div>
+      <div class="col">
+        <div id="designer-middle-col"></div>
+        <div class="group">
+          <h4>Structure Preview</h4>
+          <pre id="designer-describe"></pre>
+        </div>
+      </div>
+      <div class="col" id="designer-right-col"></div>
+    </div>
+
+    <details id="run-settings-wrap" class="lower-block">
+      <summary>Run Settings</summary>
+      <div class="run-grid" id="designer-run-col"></div>
+    </details>
+
+    <details id="designer-log-wrap" class="lower-block" open>
+      <summary>Run Log</summary>
+      <pre id="designer-log"></pre>
+    </details>
+
+    <section class="lower-block" id="candidates-block">
+      <div class="block-head">
+        <h3>Extracted Candidates</h3>
+        <span id="designer-candidates-info" class="muted"></span>
+      </div>
+      <div class="actions">
+        <label for="designer-export-format">Format</label>
+        <select id="designer-export-format"></select>
+        <input id="designer-export-name" type="text" placeholder="optional file name">
+        <button id="designer-export" type="button">Export Selected</button>
+        <button id="designer-export-all" type="button">Export All</button>
+      </div>
+      <div class="table-wrap">
+        <table id="designer-candidates">
+          <thead><tr><th class="pick"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details id="results-wrap" class="lower-block">
+      <summary>Results / Output</summary>
+      <div class="actions">
+        <button id="results-refresh" type="button">Refresh jobs</button>
+        <span id="designer-result" class="muted"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="jobs-table">
+          <thead>
+            <tr>
+              <th>Job</th><th>Kind</th><th>Title</th><th>Status</th>
+              <th>Progress</th><th>Created</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="job-detail" class="job-detail hidden">
+        <h3 id="job-detail-title"></h3>
+        <div class="progress"><div id="job-progress-bar"></div></div>
+        <div id="job-detail-status" class="muted"></div>
+        <div class="actions">
+          <button id="job-cancel" type="button">Cancel job</button>
+        </div>
+        <details open>
+          <summary>Job log</summary>
+          <pre id="job-log"></pre>
+        </details>
+        <div id="job-result"></div>
+        <div id="job-outputs"></div>
+        <div id="job-candidates"></div>
+      </div>
+
+      <h4>Output directory</h4>
+      <div class="actions">
+        <input id="outputs-dir" type="text" placeholder="absolute path">
+        <button id="outputs-load" type="button">List files</button>
+      </div>
+      <div id="outputs-list"></div>
+    </details>
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

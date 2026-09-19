@@ -1,0 +1,13 @@
+# Normalise line endings in the repository; keep shell scripts LF for Linux.
+* text=auto
+*.sh text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.pdf binary
+*.npz binary
+*.ggi binary
+*.h5 binary
+*.pth binary
+*.pt binary

@@ -1,0 +1,55 @@
+{
+  "task": "p3-cleanups",
+  "title": "drop-bowtie2-casoffinder 的三条 P3 收尾（返回契约 / 测试覆盖 / 失效映射）",
+  "status": "done",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 1,
+  "master": "会话 A（master）",
+  "servant": "会话 B（servant）",
+  "repo": "R:\\songji\\programfile",
+  "server_repo": "/home/apool/songji/programfile",
+  "baseline": "p3_cleanups_20260916_131402",
+  "baseline_files": [
+    "main.py",
+    "shared/design/library_preflight.py",
+    "tests/test_gui_common.py",
+    "tests/test_library_preflight.py",
+    "tests/test_offtarget_backend.py"
+  ],
+  "updated": "2026-09-16 13:31",
+  "origin": "docs/handoff/drop-bowtie2-casoffinder/review.md 的「最终结论 → 记录不修（P3）」与「可选的后续」",
+  "items": {
+    "P1-1": "preflight_library 不再因引擎名非法而抛异常（shared/design/library_preflight.py:81）",
+    "P1-2": "恢复被删的两处能力断言覆盖（tests/test_offtarget_backend.py:165）",
+    "P2-1": "修正 main.py:575 的失效工作区映射键（combo_library_engine -> combo_library_search）"
+  },
+  "regression_baseline": "tests.test_offtarget_backend + tests.test_offtarget_hardening + tests.test_library_preflight + tests.test_webapp = Ran 91 tests -> OK（上一任务 master 核验值）",
+  "open_followups": [
+    "F1 (P3): shared/gui/gui_common.py:143-155 apply_workspace cannot restore readonly ttk.Combobox values -> combo_library_search / combo_library_on_target / combo_library_off_target; pre-existing; candidate round 2 slug gui-combobox-restore",
+    "F2 (P3 doc): report.md section 3/10.1 must state restore direction is blocked by F1",
+    "F3 (P3 cleanup): redundant mock.patch.object(StubBackend, 'available', ...) at tests/test_offtarget_backend.py:224-225"
+  ],
+  "verification": {
+    "verdict": "pass_with_followups",
+    "review": "docs/handoff/p3-cleanups/review.md",
+    "environment": "ms01 /home/apool/songji/programfile/.venv/bin/python (3.12.3)",
+    "evidence": [
+      "py_compile 5 files exit=0",
+      "focused: tests.test_library_preflight + tests.test_offtarget_backend + tests.test_gui_common -> Ran 57 / OK",
+      "regression: offtarget_backend + offtarget_hardening + library_preflight + webapp -> Ran 93 / OK (baseline 91 + 2 new)",
+      "baseline equivalence: 24/24 preflight_library cases identical to backup module",
+      "mutation 1: neutralising EngineCapabilities.supports_bulges makes the new stub test FAIL",
+      "mutation 2: loading the baseline library_preflight makes both new preflight tests ERROR",
+      "static audit: 13/13 _workspace_mapping attrs exist",
+      "real Tk (Windows, Tk 8.6 + 9.0): readonly Combobox ignores delete/insert -> restore direction broken"
+    ]
+  }
+}

@@ -1,0 +1,2 @@
+"""Deprecated placeholder: the web job backend is now ``webapp/jobs.py`` plus ``webapp/services/`` and this library-only store is no longer imported by any module; the file is kept only so the historical path still exists.
+"""

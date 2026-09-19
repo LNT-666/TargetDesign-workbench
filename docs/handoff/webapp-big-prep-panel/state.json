@@ -1,0 +1,31 @@
+{
+  "task": "webapp-big-prep-panel",
+  "title": "Data prep / Models 改成近满屏大面板（prep 大抽屉）",
+  "status": "ready_for_review",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 1,
+  "appended": ["P0-0 切模式不刷新（回归，来自 webapp-single-page-layout）"],
+  "depends_on": [
+    "webapp-designer-port",
+    "webapp-single-page-layout"
+  ],
+  "decisions_locked": [
+    "D1=B（只把 prep 做成近满屏面板，Designer 保持常驻主区）",
+    "D2=min(1800, 视口宽-48)px",
+    "D3=最小 380px",
+    "D4=有遮罩，点击关闭",
+    "D7=前端三文件恢复 UTF-8 无 BOM + LF"
+  ],
+  "master": "codex-master (repo R:\\songji\\programfile, 2026-09-16)",
+  "servant": "codex-servant (repo R:\\songji\\programfile, 2026-09-16)",
+  "repo": "R:\\songji\\programfile",
+  "updated": "2026-09-16 21:14"
+}

@@ -1,0 +1,27 @@
+{
+  "task": "gff-gz-annotation",
+  "title": "让 gzip 压缩的 GFF/GTF 注释文件能在 UTR 预处理与基因列表加载中被正确读取",
+  "status": "ready_for_review",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 2,
+  "verdict": "pass_with_followups",
+  "master": "会话 A（master）",
+  "servant": "会话 B",
+  "repo": "R:\\songji\\programfile",
+  "server_repo": "/home/apool/songji/programfile",
+  "baseline": "backup/gff_gz_annotation_20260915_151757",
+  "open_followups": [
+    "U1 master: ms01 真实 GCF_049306965.2_GRCz12tu_genomic.gff.gz 端到端 + 全量 run_tests.py（需 MS_PASS）",
+    "U2 P1: main.py:137 补 env PYTHONIOENCODING=utf-8",
+    "U3 P3: A1 空行 / 双后缀命名 / except 吞异常 / local_extract 纯文本读取"
+  ],
+  "updated": "2026-09-16 09:23"
+}

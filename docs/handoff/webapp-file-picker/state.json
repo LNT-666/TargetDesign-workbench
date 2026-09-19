@@ -1,0 +1,39 @@
+{
+  "task": "webapp-file-picker",
+  "title": "网页版加“浏览选择文件/目录”组件（/api/fs/list + 页面内选取器）",
+  "status": "done",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 2,
+  "depends_on": [
+    "webapp-designer-port",
+    "webapp-single-page-layout",
+    "webapp-big-prep-panel"
+  ],
+  "decisions_locked": [
+    "D1=服务端只读列目录 + 页面内自绘弹层（不用原生文件框、不上传）",
+    "D2=GET /api/fs/list",
+    "D3=kind: any|dir|fasta|annotation|bed|db|index",
+    "D4=strip 由服务端下发：db=.source.json+BLAST 成员，index=.ggi/.json",
+    "D5=条目上限 2000，先目录后文件，超限 truncated:true",
+    "D6=picker DOM id/class 固定（探针与核验按此驱动）",
+    "D7=picker z-index 60 / #picker-scrim 55（压在抽屉 40 之上）",
+    "D9 更正（task.md §9.8）：字段有值 → 值→其目录→crispr.pickerDir→home→根模式；字段为空 → 跳过 home 直接根模式（§9 硬性兼容门槛优先）",
+    "D14=隐藏项默认不列，hidden=1 才列，勾选框记忆在 crispr.pickerHidden"
+  ],
+  "master": "codex-master (repo R:\\songji\\programfile, 2026-09-16)",
+  "servant": "codex-servant (repo R:\\songji\\programfile, 2026-09-16)",
+  "repo": "R:\\songji\\programfile",
+  "updated": "2026-09-16 23:40",
+  "verdict": "round 1: pass_with_followups; round 2: pass",
+  "review": "review.md (round 1 + Round 2 核验（master）)",
+  "round2_scope": "资源管理器式选取器：打开定位当前目录+高亮、面包屑、列头(名称/大小/时间)、前进后退与键盘导航、位置栏(Home+最近)、hidden 参数与显示隐藏项开关（task.md §9）",
+  "master_evidence": "review.md「Round 2 核验」；master 本轮新增探针 assets/probe_master_r2_picker.js、probe_master_r2_drawer.js、probe_master_r2_limit.js、probe_master_r2_gaps.js；11 份探针日志在 %TEMP%\\picker_probe_master_r2\\"
+}

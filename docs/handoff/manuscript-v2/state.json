@@ -1,0 +1,42 @@
+{
+  "task": "manuscript-v2",
+  "title": "合稿为单一投稿稿 + NAR 版式组装（含裁定 A 落地：删除案例小节与 Figure S1）",
+  "status": "assigned",
+  "status_values": [
+    "assigned",
+    "implementing",
+    "ready_for_review",
+    "verifying",
+    "needs_rework",
+    "done",
+    "master_takeover"
+  ],
+  "round": 1,
+  "master": "会话 M（master）",
+  "servant": "会话 S（servant）",
+  "repo": "R:\\songji\\programfile",
+  "created": "2026-09-19 15:05",
+  "updated": "2026-09-19 15:05",
+  "upstream": "docs/handoff/manuscript-v1/ (round 2 pass, 10 deliverables frozen)",
+  "user_decision": "A — 删除 Results 案例小节与 Supplementary Figure S1；scy-test/ 不作为任何证据来源（用户 2026-09-19 拍板）",
+  "deliverables_new": [
+    "docs/submission/SUBMISSION_MAIN_v1.md",
+    "docs/submission/SUPPLEMENTARY_v1.md",
+    "docs/submission/FILL_REGISTER.md"
+  ],
+  "deliverables_edited": [
+    "docs/PAPER_RESULTS_DRAFT.md (P0-1 删案例小节 :198-:207)",
+    "docs/PAPER_FIGURE_CAPTIONS.md (P0-2 删 Figure S1 :128-:141，改文件头计数句)",
+    "docs/PAPER_BACK_MATTER.md (P0-3 删 :36 Figure S1 行)",
+    "docs/FIGURE_TABLE_PLAN.md (P0-4 五处 S1 登记改为已取消)",
+    "docs/PAPER_FRONT_MATTER.md (P0-5 同步陈旧摘要 :52 与词数 :43)",
+    "docs/NAR_FORMAT_CHECKLIST.md (P0-9 只改 :19 :22 :29 与第 2 节新增一行)"
+  ],
+  "snapshot_required": "backup/2026-09-19_manuscript-v2/ (6 pre-edit copies)",
+  "open_for_user": [
+    "仓库 URL / Zenodo 版本 DOI / accession",
+    "作者名单、单位、通讯作者、ORCID、基金",
+    "关键词是否必需（期刊确认）",
+    "图形摘要最终尺寸与格式"
+  ]
+}

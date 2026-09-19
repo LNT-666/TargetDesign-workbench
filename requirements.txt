@@ -1,0 +1,30 @@
+# Python 第三方库依赖
+# 安装命令: pip install -r requirements.txt
+
+biopython>=1.78
+pyfaidx>=0.5.9.1
+requests>=2.25.0
+openpyxl>=3.1
+numpy>=1.21
+h5py>=3.8
+
+# crispAI-aggregate 的 Python 依赖已并入 requirements-linux.txt 和
+# requirements-windows.txt；R + NuPoP、Cas-OFFinder、GRCh38 仍需单独准备，
+# 见 docs/CRISPAI.md。
+
+# Optional, needed for the Python 3.10 conversion environment:
+# scikit-learn==1.0.2
+
+# Optional, needed for DeepCRISPR TF1 checkpoint conversion
+# (Python 3.10 on Windows):
+# tensorflow==2.10.0
+
+# Optional scientific Python stack for analysis/utilities:
+# pandas>=1.3
+# scipy>=1.10
+# matplotlib>=3.5
+# tensorboardX>=2.6
+
+# Optional, needed for Cas13 RNA folding features:
+# ViennaRNA>=2.5.0
+# Prefer bioconda: conda install -c bioconda viennarna

@@ -1,0 +1,50 @@
+# Windows / local desktop
+#
+# Recommended base install:
+#   py -3.13 -m venv .venv
+#   .\.venv\Scripts\activate
+#   pip install -r requirements-windows.txt
+
+biopython>=1.78
+pyfaidx>=0.5.9.1
+requests>=2.25.0
+openpyxl>=3.1
+numpy>=1.21
+h5py>=3.8
+
+# AI / optional model dependencies
+scikit-learn>=1.0
+pandas>=1.3
+scipy>=1.10
+matplotlib>=3.5
+tensorboardX>=2.6
+
+# CPU PyTorch is the safe default for Windows.
+# For CUDA, use the official PyTorch install command instead of this line.
+torch>=2.0
+
+# crispAI aggregate adapter (external runtime; these are the pip-installable
+# Python deps. R + NuPoP, Cas-OFFinder and GRCh38/UCSC chroms are NOT pip items;
+# crispAI itself is meant to run on the Linux server, see docs/CRISPAI.md):
+pybdm>=0.1.0
+genomepy>=0.14.0
+jax>=0.4
+numpyro>=0.13
+tqdm>=4.60
+seaborn>=0.11
+
+# crispAI non-pip prerequisites (Linux server):
+#   conda install -c r r-base
+#   Rscript -e 'if(!requireNamespace("BiocManager",quietly=TRUE)) install.packages("BiocManager",repos="https://cloud.r-project.org"); BiocManager::install("NuPoP",lib=Sys.getenv("R_LIBS_USER"),ask=FALSE,update=FALSE)'
+#   Cas-OFFinder -> installed via micromamba+bioconda by `bash tools/build_crispai_env.sh`
+#     (symlinked into external_tools/crispAI-main/crispAI_score/casoffinder/cas-offinder)
+#   UCSC chr FASTA -> external_tools/crispAI-main/crispAI_score/casoffinder/ucsc_chroms/
+#   One-shot bootstrap: bash tools/build_crispai_env.sh
+
+# TensorFlow 2.10 requires Python 3.10 on Windows.
+# Use the separate .venv310 environment for DeepCRISPR conversion only.
+# tensorflow==2.10.0
+
+# ViennaRNA is not reliably pip-installable on native Windows.
+# Use WSL or a Linux container for Cas13 RNA folding features.
+# ViennaRNA>=2.5.0

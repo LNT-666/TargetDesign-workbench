@@ -1,0 +1,662 @@
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --line: #d7dbe0;
+  --text: #1d2430;
+  --muted: #6b7280;
+  --accent: #1f6feb;
+  --ok: #12794a;
+  --warn: #a35700;
+  --bad: #b42318;
+  --header: #101828;
+  /* Fallback for the first paint; app.js then sets the real width. */
+  --drawer-width: min(1800px, calc(100% - 48px));
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+code, pre {
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.hidden { display: none !important; }
+
+.app-header {
+  padding: 12px 20px 8px;
+  background: var(--header);
+  color: #f8fafc;
+}
+
+.app-header h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.app-header .subtitle {
+  margin: 0;
+  color: #c3cbd6;
+  font-size: 13px;
+}
+
+/* --------------------------------------------------------------- top bar */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px 20px 8px;
+  background: var(--header);
+  border-bottom: 1px solid #2b3648;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .18);
+}
+
+.topbar-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.topbar-line label {
+  color: #c3cbd6;
+  font-size: 13px;
+}
+
+.topbar select,
+.topbar input[type=text] {
+  width: auto;
+  min-width: 200px;
+}
+
+.topbar-status { margin-top: 6px; gap: 12px; }
+
+.topbar .progress {
+  flex: 1 1 260px;
+  margin: 0;
+  min-width: 160px;
+}
+
+.topbar .muted { color: #9aa7bb; }
+
+.recent {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid #3b4a63;
+  background: #1d2939;
+  color: #d5dbe4;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.recent:hover { background: #24334a; }
+
+/* ------------------------------------------------------------- workspace */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+}
+
+/* The Data prep panel slides in from the left and covers almost the whole
+   viewport; the main area always keeps the full width underneath. */
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 40;
+  width: var(--drawer-width);
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  box-shadow: 2px 0 18px rgba(16, 24, 40, .20);
+  transform: translateX(-102%);
+  transition: transform .18s ease, visibility 0s linear .18s;
+  visibility: hidden;
+}
+
+.drawer.open {
+  transform: none;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+/* Drag handle on the panel's right edge (the fixed panel is its containing
+   block, so `right: -3px` keeps the 6px strip centred on the border). */
+.drawer-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.drawer-resizer:hover,
+.drawer-resizer:focus-visible { background: var(--accent); outline: none; }
+
+body.resizing { cursor: col-resize; user-select: none; }
+
+/* Clicking the dimmed area behind the panel closes it. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  background: rgba(16, 24, 40, .16);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-head h2 { margin: 0; }
+
+.drawer-block { padding: 10px 14px 18px; }
+.drawer-block + .drawer-block { border-top: 1px solid var(--line); }
+
+.drawer-block h3 { margin-top: 4px; }
+
+/* The panel is wide: fields put the label above the control and flow into as
+   many >= 330px columns as fit. Narrowing the panel to 380px falls back to one
+   column, and long absolute paths still stay readable. */
+.drawer .grid {
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px 20px;
+  align-items: start;
+}
+
+.drawer .field { margin-bottom: 0; }
+
+.main-area { padding: 16px 20px 40px; min-width: 0; }
+
+h2 { font-size: 17px; margin: 6px 0 10px; }
+h3 { font-size: 15px; margin: 18px 0 8px; }
+h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+h5 { margin: 12px 0 4px; font-size: 13px; }
+
+.hint, .muted { color: var(--muted); font-size: 12.5px; }
+
+.group {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(220px, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.field { margin-bottom: 8px; }
+
+.field > label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.field .hint { margin-top: 3px; }
+
+input[type=text], select, textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+select[multiple] { padding: 2px; }
+
+input[type=text]:disabled, select:disabled { background: #f1f3f5; color: #9aa1ab; }
+
+label.inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+label.inline input { width: auto; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+button:hover { background: #f0f3f7; }
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+button.primary:hover { background: #1a5fcc; }
+
+.banner {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  white-space: pre-wrap;
+}
+
+.banner.info { background: #e8f1ff; border-color: #b6d0ff; color: #14417d; }
+.banner.error { background: #fdecea; border-color: #f5b5ae; color: var(--bad); }
+
+.ready-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  background: #eef1f5;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.ready-badge.ready { background: #e6f6ee; color: var(--ok); border-color: #a8ddc2; }
+.ready-badge.missing { background: #fdecea; color: var(--bad); border-color: #f5b5ae; }
+
+/* -------------------------------------------------- 3-column designer area */
+
+.designer-columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) minmax(280px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.designer-columns .col { min-width: 0; }
+
+.col > .group { height: 100%; }
+
+.field > select[multiple] { min-height: 64px; }
+
+.common-inputs > summary { font-weight: 600; font-size: 13px; }
+
+.loaded-hint {
+  margin: -6px 0 14px;
+  padding: 6px 10px;
+  border: 1px dashed #a8ddc2;
+  border-radius: 6px;
+  background: #eefaf3;
+  color: var(--ok);
+  font-size: 12.5px;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------- lower page blocks */
+
+.lower-block {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.lower-block > summary { font-weight: 600; font-size: 13px; }
+
+.lower-block .block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lower-block .block-head h3 { margin: 0; }
+
+.run-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 16px;
+  align-items: start;
+  margin-top: 10px;
+}
+
+.run-grid .group { grid-column: 1 / -1; }
+
+pre {
+  margin: 10px 0 0;
+  padding: 10px;
+  background: #0f172a;
+  color: #e3e8ef;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 320px;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+#designer-describe { background: #101828; }
+
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: #e4e8ee;
+  overflow: hidden;
+  margin: 10px 0 4px;
+}
+
+.progress > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+
+#designer-progress-label, #job-detail-status { font-size: 12.5px; }
+
+details { margin: 10px 0; }
+
+summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+
+.table-wrap { overflow-x: auto; margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+
+th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+
+th { background: #f1f4f8; font-weight: 600; white-space: nowrap; }
+
+#jobs-table tbody tr.job-row { cursor: pointer; }
+#jobs-table tbody tr.job-row:hover { background: #eef4ff; }
+
+.pick { width: 32px; text-align: center; }
+.pick input { width: auto; }
+
+.status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #eef1f5;
+  color: var(--muted);
+}
+
+.status-running { background: #e8f1ff; color: #14417d; }
+.status-queued { background: #fff4e5; color: var(--warn); }
+.status-succeeded, .status-downloaded, .status-installed, .status-available { background: #e6f6ee; color: var(--ok); }
+.status-failed, .status-missing, .status-not_downloaded { background: #fdecea; color: var(--bad); }
+.status-cancelled, .status-interrupted { background: #f1f3f5; color: var(--warn); }
+
+.job-box, .job-detail {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.job-box .log, .job-detail .log { max-height: 240px; }
+
+.kv { font-size: 12.5px; margin: 2px 0; word-break: break-all; }
+
+.result { margin-top: 8px; }
+
+.models-table td button { padding: 3px 8px; font-size: 12px; }
+
+#outputs-list { margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+
+/* ------------------------------------------------------------ responsive */
+
+/* Below 1400px the three Designer columns stack: common/Left, Middle +
+   Structure Preview, Right. Candidates and the run log stay below the fold. */
+@media (max-width: 1399px) {
+  .designer-columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ------------------------------------------------------------ path picker */
+
+/* Browse... buttons sit next to path inputs inside a .row; without this the
+   button would squash the text box once the drawer is narrow. */
+.row > input[type=text] { flex: 1 1 220px; min-width: 0; }
+
+/* The wrapper row: inside the Results pane's flex .actions it has to grow,
+   otherwise the input collapses to its content width and Browse... wraps. */
+.path-row { flex: 1 1 220px; min-width: 0; }
+
+.browse-btn { flex: 0 0 auto; white-space: nowrap; }
+
+/* Above the drawer (40) and its scrim (35): the dialog is opened from inside
+   the Data prep panel as well. */
+#picker-scrim { z-index: 55; }
+
+.picker {
+  position: fixed;
+  z-index: 60;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(1040px, calc(100vw - 40px));
+  height: min(80vh, calc(100vh - 60px));
+  max-height: calc(100vh - 60px);
+  padding: 14px 16px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, .28);
+  overflow: hidden;  /* the list scrolls; nothing pushes the foot out */
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.picker-head h2 { margin: 0; }
+
+/* The rows around the list keep their own height, so the list is the only
+   part that gives way when the dialog is squeezed. */
+.picker-head,
+.picker-crumbs,
+.picker-toolbar,
+.picker-foot,
+#picker-roots,
+#picker-places,
+.picker > .row {
+  flex: 0 0 auto;
+}
+
+#picker-roots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#picker-roots:empty { display: none; }
+
+.picker-list {
+  flex: 1 1 auto;
+  /* A hard floor taller than the dialog (the previous 260px) used to push
+     the foot - and with it OK - below the dialog and, on a short window,
+     outside the viewport, where no click can reach it. */
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.picker-row:hover { background: #f0f3f7; }
+
+.picker-row.selected { background: var(--accent); color: #fff; }
+
+.picker-icon {
+  flex: 0 0 auto;
+  width: 2.6em;
+  color: var(--muted);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
+.picker-row.selected .picker-icon,
+.picker-row.selected .picker-meta,
+.picker-row.selected .picker-size,
+.picker-row.selected .picker-mod { color: #fff; }
+
+.picker-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.picker-meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.picker-head-row {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.picker-head-icon {
+  flex: 0 0 auto;
+  width: 2.6em;
+  font-size: 12px;  /* same width as .picker-icon, so the columns line up */
+}
+
+.picker-head-name { flex: 1 1 auto; }
+
+.picker-head-size { flex: 0 0 90px; text-align: right; }
+
+.picker-head-mod { flex: 0 0 150px; text-align: right; }
+
+.picker-size {
+  flex: 0 0 90px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.picker-mod {
+  flex: 0 0 150px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.picker-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+}
+
+.picker-crumbs:empty { display: none; }
+
+.picker-crumb {
+  padding: 1px 5px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--accent);
+  font-size: 12.5px;
+}
+
+.picker-crumb:hover { border-color: var(--line); border-radius: 4px; }
+
+.picker-crumb:disabled { color: var(--text); cursor: default; }
+
+.picker-crumb-sep { color: var(--muted); font-size: 12.5px; }
+
+.picker-places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.picker-places:empty { display: none; }
+
+.picker-place {
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+}
+
+.picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.picker-toolbar label.inline { margin: 0; font-size: 12.5px; }
+
+.picker-note { padding: 6px; }
+
+#picker-selected { word-break: break-all; }
+
+.picker-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.picker-foot .actions { margin-top: 0; }

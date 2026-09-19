@@ -1,0 +1,38 @@
+# Citation metadata for the CRISPR-Motif Workbench software release.
+#
+# [TO FILL] entries are unresolved placeholders: do not invent values for them.
+# They are tracked in docs/NAR_FORMAT_CHECKLIST.md (section 2, the pending list).
+# Before creating the GitHub release that Zenodo archives, every [TO FILL] in
+# this file and in .zenodo.json must be replaced with verified information.
+
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "CRISPR-Motif Workbench"
+abstract: >-
+  A toolkit for motif-driven CRISPR guide design: motif patterns are defined
+  first, candidate regions are extracted, exact, indexed, BLAST-based and
+  model-based off-target searches are run, candidates are scored, filtered and
+  ranked, and results are exported through a desktop workbench, a local web UI
+  and command-line tools.
+type: software
+authors:
+  - family-names: "[TO FILL]"
+    given-names: "[TO FILL]"
+    affiliation: "[TO FILL]"
+    # orcid: "https://orcid.org/[TO FILL]"
+contact:
+  - family-names: "[TO FILL]"
+    given-names: "[TO FILL]"
+    email: "[TO FILL]"
+license: MIT
+repository-code: "https://github.com/[TO FILL]/crispr-motif-workbench"
+url: "https://github.com/[TO FILL]/crispr-motif-workbench"
+version: "1.0.0"
+# date-released: "[TO FILL]"  # add the GitHub release date (YYYY-MM-DD)
+# doi: "10.5281/zenodo.[TO FILL]"  # add the Zenodo version DOI after archiving
+keywords:
+  - CRISPR
+  - guide RNA design
+  - off-target search
+  - motif discovery
+  - sequence analysis
