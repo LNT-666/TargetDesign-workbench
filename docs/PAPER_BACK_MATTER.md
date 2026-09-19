@@ -48,10 +48,11 @@ The authors declare that they have no known competing financial interests or per
 
 ## Data availability
 
-[TO FILL 工具名] is freely available on GitHub at https://github.com/LNT-666/crispr-motif-workbench and on Zenodo at [TO FILL version DOI]. Documentation is provided in the repository under the `docs/` directory. All data used in this study can be obtained from the repository and the Supplementary Data.
+[TO FILL 工具名] is freely available on GitHub at https://github.com/LNT-666/TargetDesign-workbench and on Zenodo at [TO FILL version DOI]. Documentation is provided in the repository under the `docs/` directory. All data used in this study can be obtained from the repository and the Supplementary Data.
 
 - 上述四句结构沿用 task.md C2（2025 主范本写法：GitHub 仓库 URL + Zenodo 版本 DOI + 文档地址 + 数据来源句）；第 3 句的文档地址按本项目仓库形态改写为 `docs/` 路径，见下条。
-- 仓库 URL 已确定并核验：`https://github.com/LNT-666/crispr-motif-workbench`（2026-09-19 首次推送，public，默认分支 `main`，远端树已复核不含大件数据与内部文件）。release tag 与 Zenodo 版本 DOI 待作者名单确定后一并完成，故本行另两处仍为 `[TO FILL]`。
+- 仓库 URL 已确定并核验：`https://github.com/LNT-666/TargetDesign-workbench`（2026-09-19 推送，随后按 master 决定改名；默认分支 `main`，远端树已复核不含大件数据与内部文件）。仓库当前为 **private**，计划论文发表后再转 public 并归档 Zenodo，故 release tag 与版本 DOI 均待届时一并完成，本行另两处仍为 `[TO FILL]`。
+- **口径冲突提示**：本句固定句式是 `freely available`，而仓库当前 private；投稿前必须转为 public（或改用受控访问措辞），否则本句与事实不符。
 - `<工具名>`：与 `docs/PAPER_FRONT_MATTER.md` 的标题候选一起由 master 定（候选名 `CRISPR-Motif Workbench`）。
 - ``Documentation is provided in the repository under the `docs/` directory.``：本项目文档即仓库内 `docs/`（如 `docs/WEBAPP.md`、`docs/GUI.md`、`docs/OUTPUTS.md`），仓库内无独立 wiki，故不保留 wiki 措辞（对应 `docs/handoff/nar-format-pack/review.md` 的改写要求）；若 master 决定另建 wiki，需回改第 3 句。
 - 若使用公开基因组或外部数据集，按 2025 惯例补 accession：[TO FILL]（是否适用由 master 判定）。

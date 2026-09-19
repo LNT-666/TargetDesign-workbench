@@ -25,8 +25,8 @@ contact:
     given-names: "[TO FILL]"
     email: "[TO FILL]"
 license: MIT
-repository-code: "https://github.com/LNT-666/crispr-motif-workbench"
-url: "https://github.com/LNT-666/crispr-motif-workbench"
+repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
+url: "https://github.com/LNT-666/TargetDesign-workbench"
 version: "1.0.0"
 # date-released: "[TO FILL]"  # add the GitHub release date (YYYY-MM-DD)
 # doi: "10.5281/zenodo.[TO FILL]"  # add the Zenodo version DOI after archiving

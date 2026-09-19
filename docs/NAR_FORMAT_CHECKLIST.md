@@ -37,7 +37,7 @@
 | 通讯作者、邮箱、电话/传真、ORCID | `docs/PAPER_FRONT_MATTER.md` 作者与单位块 | master（需用户提供） | blocked |
 | 工具正式名称（Data availability 句首 `<工具名>`） | `docs/PAPER_BACK_MATTER.md` Data availability | master（与标题候选一起定） | blocked |
 | 基金机构与基金编号 | `docs/PAPER_BACK_MATTER.md` Funding | master（需用户提供） | blocked |
-| GitHub 仓库 URL 与 release tag | `docs/PAPER_BACK_MATTER.md` Data availability | master（需用户提供） | partial：仓库 URL 已回填并核验 `https://github.com/LNT-666/crispr-motif-workbench`（2026-09-19 推送）；release tag 待作者名单确定后与 Zenodo 归档一并完成 |
+| GitHub 仓库 URL 与 release tag | `docs/PAPER_BACK_MATTER.md` Data availability | master（需用户提供） | partial：URL 为 `https://github.com/LNT-666/TargetDesign-workbench`（2026-09-19 推送后改名）；仓库当前 private，release tag 与 Zenodo 归档待转 public 时一并完成。private 期间 Zenodo GitHub 集成不可用，且与 Data availability 的 `freely available` 措辞冲突，投稿前必须处理 |
 | Zenodo 版本 DOI | `docs/PAPER_BACK_MATTER.md` Data availability | master（需用户提供） | blocked |
 | 文档地址（wiki 或仓库 `docs/` 路径） | `docs/PAPER_BACK_MATTER.md` Data availability | master（需用户确认 wiki 措辞是否保留） | blocked |
 | 公开数据集 accession（若适用） | `docs/PAPER_BACK_MATTER.md` Data availability | master（判定是否适用） | blocked |
