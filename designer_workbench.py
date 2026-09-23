@@ -223,7 +223,10 @@ class MultiSelectDropdown(ttk.Menubutton):
 class PatternDesignerWorkbench:
     def __init__(self, root: tk.Tk, default_bed: bool = False):
         self.root = root
-        self.root.title("BED Designer" if default_bed else "Target Design")
+        self.root.title(
+            "TargetDesign-workbench BED Designer" if default_bed
+            else "TargetDesign-workbench"
+        )
         self.root.geometry("1440x900")
         self.root.minsize(1200, 700)
         try:
@@ -552,7 +555,7 @@ class PatternDesignerWorkbench:
             ["strict_ngg", "guidescan2_nrg", "custom"],
             default="strict_ngg",
         )
-        self._add_entry_row(run_left, 4, "seed_len", "Seed Length")
+        self._add_entry_row(run_left, 4, "seed_len", "Seed Length", default="12", hint="informational only - the engine uses the index k-mer length as the seed length")
         self._add_file_row(run_right, 0, "index_path", "Index Prefix")
         self._add_entry_row(run_right, 1, "gc_min", "GC Min")
         self._add_entry_row(run_right, 2, "gc_max", "GC Max")

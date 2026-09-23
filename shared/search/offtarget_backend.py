@@ -563,7 +563,7 @@ class GGGenomeBackend(OffTargetBackend):
 
     def _request(self, url, guide):
         request = urllib.request.Request(
-            url, headers={"User-Agent": "Codex-Motif-Tool/1.0"})
+            url, headers={"User-Agent": "TargetDesign-workbench/0.1 (+https://github.com/LNT-666/TargetDesign-workbench)"})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 text = response.read().decode("utf-8", "replace")

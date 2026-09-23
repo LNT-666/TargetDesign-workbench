@@ -24,7 +24,7 @@ if (-not (Test-Path (Join-Path $repoRoot "webapp\app.py"))) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Output)) {
-    $Output = Join-Path $repoRoot "CRISPR-Motif-Workbench.exe"
+    $Output = Join-Path $repoRoot "TargetDesign-workbench.exe"
 }
 
 $cscCandidates = @(

@@ -461,7 +461,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local-only CRISPR motif workbench")
+        description="Local-only TargetDesign-workbench")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--host", default=HOST,
                         help="Bind address; keep 127.0.0.1 for local use")

@@ -86,7 +86,7 @@ RUN_FIELDS = [
            options=["", "0", "1"], default=""),
     _field("pam_mode", "PAM Mode", type="combo",
            options=list(PAM_MODE_CHOICES), default="strict_ngg"),
-    _field("seed_len", "Seed Length", default="12"),
+    _field("seed_len", "Seed Length", default="12", hint="informational only - the engine uses the index k-mer length as the seed length"),
     _field("index_path", "Index Prefix", type="file", kind="index"),
     _field("gc_min", "GC Min", default="40"),
     _field("gc_max", "GC Max", default="70"),

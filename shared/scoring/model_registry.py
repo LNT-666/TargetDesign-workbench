@@ -412,7 +412,7 @@ def _download_from_url(url, temp_path, expected, progress_callback, status_callb
     last_error = None
     for _ in range(2):
         try:
-            headers = {"User-Agent": "Mozilla/5.0 Codex-Model-Downloader/1.0"}
+            headers = {"User-Agent": "Mozilla/5.0 TargetDesign-workbench-model-downloader/0.1 (+https://github.com/LNT-666/TargetDesign-workbench)"}
             if resume:
                 headers["Range"] = "bytes=%d-" % resume
             request = urllib.request.Request(url, headers=headers)

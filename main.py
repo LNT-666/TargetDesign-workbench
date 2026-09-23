@@ -43,7 +43,7 @@ class MainApp(gui_common.CommonGUIMixin):
         self.root = root
         self.motif_launcher = motif_launcher
         if not as_panel:
-            self.root.title("Target Design")
+            self.root.title("TargetDesign-workbench")
             self.root.geometry("1000x800")
             self.root.resizable(True, True)
         self.init_common(root, workspace_dir=os.path.dirname(os.path.abspath(__file__)))

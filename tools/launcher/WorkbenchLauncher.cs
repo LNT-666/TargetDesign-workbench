@@ -1,4 +1,4 @@
-﻿// CRISPR Motif Workbench - double-click launcher.
+﻿// TargetDesign-workbench - double-click launcher.
 //
 // Starts the local web workbench (webapp/app.py) hidden, waits until it answers,
 // opens the default browser and keeps a small control window so the server can be
@@ -543,14 +543,14 @@ namespace CrisprWorkbench
             this.host = host;
             this.openBrowser = openBrowser;
 
-            this.Text = "CRISPR Motif Workbench";
+            this.Text = "TargetDesign-workbench";
             this.ClientSize = new Size(520, 240);
             this.MinimumSize = new Size(460, 220);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9F);
 
             Label title = new Label();
-            title.Text = "CRISPR Motif Workbench";
+            title.Text = "TargetDesign-workbench";
             title.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             title.Location = new Point(16, 14);
             title.AutoSize = true;
@@ -793,7 +793,7 @@ namespace CrisprWorkbench
             if (options.Help)
             {
                 MessageBox.Show(
-                    "CRISPR Motif Workbench launcher\r\n\r\n"
+                    "TargetDesign-workbench launcher\r\n\r\n"
                     + "  --port N        listen port (default 8000)\r\n"
                     + "  --timeout S     seconds to wait for the server (default 240)\r\n"
                     + "  --repo PATH     repository root\r\n"
@@ -801,7 +801,7 @@ namespace CrisprWorkbench
                     + "  --check         headless self test, writes logs/launcher_check.txt\r\n"
                     + "  --stop          stop a running server and exit\r\n"
                     + "  --help          this text",
-                    "CRISPR Motif Workbench",
+                    "TargetDesign-workbench",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;
             }
@@ -817,7 +817,7 @@ namespace CrisprWorkbench
                     if (!options.Check)
                     {
                         MessageBox.Show("端口 " + options.Port + " 上没有运行中的服务。",
-                            "CRISPR Motif Workbench", MessageBoxButtons.OK,
+                            "TargetDesign-workbench", MessageBoxButtons.OK,
                             MessageBoxIcon.Information);
                     }
                     WriteCheckFile(options, repoRoot, "stop: nothing listening on port "

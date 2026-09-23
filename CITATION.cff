@@ -1,4 +1,4 @@
-# Citation metadata for the CRISPR-Motif Workbench software release.
+# Citation metadata for the TargetDesign-workbench software release.
 #
 # [TO FILL] entries are unresolved placeholders: do not invent values for them.
 # Before creating the GitHub release that Zenodo archives, every [TO FILL] in
@@ -6,7 +6,7 @@
 
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "CRISPR-Motif Workbench"
+title: "TargetDesign-workbench"
 abstract: >-
   A toolkit for motif-driven CRISPR guide design: motif patterns are defined
   first, candidate regions are extracted, exact, indexed, BLAST-based and

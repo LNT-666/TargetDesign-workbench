@@ -120,7 +120,7 @@ def main():
     parser.add_argument("--output",
                         default="models/deepcrispr_offtar_pt_cnn_reg.portable.npz")
     parser.add_argument("--example",
-                        default="tests/data/deepcrispr_example.repiotrt")
+                        default="tests/data/deepcrispr_example.report")
     args = parser.parse_args()
 
     root = _ROOT

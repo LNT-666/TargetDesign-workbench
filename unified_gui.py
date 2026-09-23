@@ -44,7 +44,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Target Design")
+        self.root.title("TargetDesign-workbench")
         self.root.geometry("1080x760")
         self.init_common(root, workspace_dir=ROOT)
         self.progress_var = tk.DoubleVar(value=0)
@@ -73,7 +73,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
 
         workflow_header = ttk.Frame(self.root, padding="8")
         workflow_header.grid(row=0, column=0, sticky=(tk.W, tk.E))
-        ttk.Label(workflow_header, text="Target Design",
+        ttk.Label(workflow_header, text="TargetDesign-workbench",
                   font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         self._step_label_var = tk.StringVar(value="Step 0 / 2")
         ttk.Label(workflow_header, textvariable=self._step_label_var,
@@ -101,7 +101,8 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
 
         header = ttk.Frame(outer)
         header.grid(row=0, column=0, sticky=(tk.W, tk.E))
-        ttk.Label(header, text="Target Design", font=("Arial", 14, "bold")) \
+        ttk.Label(header, text="TargetDesign-workbench",
+                  font=("Arial", 14, "bold")) \
             .pack(side=tk.LEFT)
         ttk.Label(header, textvariable=self.status_var, foreground="#444") \
             .pack(side=tk.LEFT, padx=12)

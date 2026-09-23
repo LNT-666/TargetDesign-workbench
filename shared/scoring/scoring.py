@@ -506,7 +506,7 @@ def teep_on_target_score(seq):
             data=json.dumps({"input_data": seq.upper()}).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "Codex-Motif-Tool/1.0",
+                "User-Agent": "TargetDesign-workbench/0.1 (+https://github.com/LNT-666/TargetDesign-workbench)",
             },
         )
         with urllib.request.urlopen(request, timeout=30) as response:
