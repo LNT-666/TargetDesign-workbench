@@ -1,5 +1,5 @@
 # ============================================================================
-# CRISPR-Motif Workbench - files that must never enter the published repo
+# TargetDesign-workbench - files that must never enter the published repo
 # ============================================================================
 
 # ---- Python environments -------------------------------------------------
@@ -38,13 +38,26 @@ shared/output/
 webapp/jobs/
 _srv.*.txt
 _probe_*.js
-/$null
 
 # ---- Large local datasets (redistributed separately, see docs/) ----------
 # scy-test/  : ~65 GB case-study working data
-# example/   : 3.3 GB GRCh38 FASTA plus derived indexes
+# example/   : 3.3 GB GRCh38 FASTA plus derived indexes.
+#              Only the small, submission-named evidence files under
+#              example/engine_benchmark_small/ ship with the release; the
+#              genomes, indexes and full benchmark runs stay excluded.
+#              See docs/RELEASE_CONTENTS.md section 2.
 scy-test/
-example/
+# example/ is excluded as a whole directory. Git cannot re-include a file
+# whose parent directory is excluded, so re-inclusion is done level by level:
+# exclude every entry, re-include the one small benchmark directory, exclude
+# its contents, then re-include the six submission-named evidence files.
+/example/*
+!/example/engine_benchmark_small/
+/example/engine_benchmark_small/*
+!/example/engine_benchmark_small/REPORT.md
+!/example/engine_benchmark_small/fixture.json
+!/example/engine_benchmark_small/guides.tsv
+!/example/engine_benchmark_small/results_*.json
 genome_index/
 
 # ---- Third-party source trees and model weights --------------------------
@@ -77,16 +90,45 @@ docs/SSH_ACCESS.md
 docs/PAPER_*.md
 docs/ALLEGRO_REFERENCE_ANALYSIS.md
 docs/EXPRESSIVENESS_MATRIX.md
-docs/expressiveness_matrix.tsv
 docs/FIGURE_TABLE_PLAN.md
 docs/GRAPHICAL_ABSTRACT_SPEC.md
 docs/NAR_FORMAT_CHECKLIST.md
 docs/NATIVE_INDEXED_BENCHMARK.md
-docs/NATIVE_INDEXED_ENGINE_DESIGN.md
 docs/SEED_PLAN_ANALYSIS.md
-docs/seed_plan_sweep.json
 docs/assets/
 docs/handoff/
+
+# ---- Evidence files named by the submission (shipped with the release) ----
+# These five were excluded here before. They are now deliberately shipped so
+# the evidence named in the submission is reachable. The first four are <= 64 KiB;
+# docs/bulge_fixture_sweep.json (125,231 B) ships as well, because that sweep
+# cannot be rebuilt from the release alone (rebuilding it needs a compiled native
+# engine, which is not shipped) -- see docs/RELEASE_CONTENTS.md section 3.
+#   docs/expressiveness_matrix.tsv        SUPPLEMENTARY_v1.md:7   (Table S1 source)
+#   docs/NATIVE_INDEXED_ENGINE_DESIGN.md  SUBMISSION_MAIN_v1.md:717 (.ggi format)
+#   docs/seed_plan_sweep.json             SUPPLEMENTARY_v1.md:35  (Table S2 source)
+#   tools/expressiveness_probe.py         SUPPLEMENTARY_v1.md:14  (Table S1 evidence)
+#   docs/bulge_fixture_sweep.json         SUBMISSION_MAIN_v1.md:585 (bulge sweep evidence)
+# See docs/RELEASE_CONTENTS.md section 3 for the full inclusion/exclusion list.
+
+# ---- Internal QA notes not referenced by the submission -------------------
+# docs/BULGE_FIXTURE.md is internal QA material, not named by any submission
+# file, so it stays out of the release (docs/RELEASE_CONTENTS.md section 3).
+docs/BULGE_FIXTURE.md
+
+# ---- Internal material not named by the submission (must not ship) --------
+# Checked 2026-09-23: none of these paths is referenced by the submission files
+# (docs/submission/SUBMISSION_MAIN_v1.md, docs/submission/SUPPLEMENTARY_v1.md).
+# They are the manuscript itself, the figure sources, and internal QA / audit
+# records, so they stay out of the published repository, consistent with the
+# exclusions above (docs/PAPER_*.md, docs/assets/, docs/handoff/).
+# See docs/RELEASE_CONTENTS.md section 3.
+docs/submission/
+docs/figures/
+docs/qa/
+# Internal audit record: ignored by pattern so its name never appears in a
+# published ignore list (the file on disk keeps its original name).
+docs/*APPLICABILITY_AUDIT.md
 
 # ---- Internal process records -------------------------------------------
 docs/OFFTARGET_HARDENING_*.md
@@ -94,6 +136,7 @@ docs/PHASE3_ACCEPTANCE.md
 docs/PHASE5_ADVANCED_MODES.md
 docs/refactor_plan.md
 docs/UPGRADE_REPORT.md
+# Release-decision record: internal, keeps the full .gitignore diff and internal
+# document names, so it is not published with the release.
+docs/RELEASE_CONTENTS.md
 
-# Probe that certifies the manuscript's capability matrix; kept on disk only.
-tools/expressiveness_probe.py

@@ -1,0 +1,217 @@
+{
+  "fixture": {
+    "genome_bases": 1000000,
+    "guides": 12,
+    "guide_length": 20,
+    "max_mismatch": 0,
+    "max_bulge": 1,
+    "index_k": 8,
+    "threads_for_external_engines": 8,
+    "repeats": 3
+  },
+  "results": {
+    "exact": {
+      "status": "ok",
+      "cold_total_s": 2.4687,
+      "build_s": 0.0,
+      "search": {
+        "runs": [
+          2.5544,
+          2.6174,
+          2.6409
+        ],
+        "median": 2.6174,
+        "best": 2.5544
+      },
+      "search_plus_build_s": 2.6174,
+      "hits": 26,
+      "backend_report": {}
+    },
+    "indexed": {
+      "status": "ok",
+      "cold_total_s": 8.8697,
+      "build_s": 0.182,
+      "search": {
+        "runs": [
+          8.7286,
+          8.7291,
+          8.7478
+        ],
+        "median": 8.7291,
+        "best": 8.7286
+      },
+      "search_plus_build_s": 8.9111,
+      "hits": 26,
+      "backend_report": {
+        "engine": "indexed",
+        "index_path": "example/engine_benchmark_small/run_indexed/genome_index/synthetic_genome.ggi",
+        "built": false,
+        "reused": true,
+        "format": "crispr-genome-index",
+        "version": 1,
+        "k": 8,
+        "genome": "example/engine_benchmark_small/synthetic_genome.fa",
+        "genome_fingerprint": "07088d294d85b7710a22a7464a56b4a65c84e254d9d94172a7dbe819756b8bf3",
+        "genome_bytes": 1012524,
+        "total_bases": 1000000,
+        "valid_kmer_positions": 999972,
+        "contig_count": 4,
+        "contigs": [
+          {
+            "id": "chr1",
+            "start": 0,
+            "length": 250000
+          },
+          {
+            "id": "chr2",
+            "start": 250000,
+            "length": 250000
+          },
+          {
+            "id": "chr3",
+            "start": 500000,
+            "length": 250000
+          },
+          {
+            "id": "chr4",
+            "start": 750000,
+            "length": 250000
+          }
+        ],
+        "position_dtype": "u4",
+        "build_time_s": 0.182,
+        "memory_peak_mb": 281.52,
+        "index_bytes": 4524314,
+        "search_time_s": 8.746,
+        "search_memory_peak_mb": 281.52,
+        "guides": 12,
+        "hits": 26,
+        "candidates": 26,
+        "seed_len": 12,
+        "seed_mm": 1,
+        "seed_plan": [
+          {
+            "start": 0,
+            "length": 10,
+            "allowed_mismatches": 0
+          },
+          {
+            "start": 10,
+            "length": 10,
+            "allowed_mismatches": 0
+          }
+        ],
+        "exhaustive_seed_plan": true,
+        "sequence_cache": true,
+        "implementation": "python"
+      }
+    },
+    "native-indexed": {
+      "status": "ok",
+      "cold_total_s": 0.3061,
+      "build_s": 0.095,
+      "search": {
+        "runs": [
+          0.1813,
+          0.1832,
+          0.1858
+        ],
+        "median": 0.1832,
+        "best": 0.1813
+      },
+      "search_plus_build_s": 0.2782,
+      "hits": 26,
+      "backend_report": {
+        "engine": "indexed",
+        "index_path": "example/engine_benchmark_small/run_native-indexed/genome_index/synthetic_genome.ggi",
+        "built": false,
+        "reused": true,
+        "native_binary": "native/bin/offtarget-engine",
+        "format": "crispr-genome-index",
+        "version": 1,
+        "k": 8,
+        "genome": "example/engine_benchmark_small/synthetic_genome.fa",
+        "genome_fingerprint": "07088d294d85b7710a22a7464a56b4a65c84e254d9d94172a7dbe819756b8bf3",
+        "genome_bytes": 1012524,
+        "total_bases": 1000000,
+        "valid_kmer_positions": 999972,
+        "contig_count": 4,
+        "contigs": [
+          {
+            "id": "chr1",
+            "start": 0,
+            "length": 250000
+          },
+          {
+            "id": "chr2",
+            "start": 250000,
+            "length": 250000
+          },
+          {
+            "id": "chr3",
+            "start": 500000,
+            "length": 250000
+          },
+          {
+            "id": "chr4",
+            "start": 750000,
+            "length": 250000
+          }
+        ],
+        "position_dtype": "u4",
+        "build_time_s": 0.095,
+        "memory_peak_mb": 8.0,
+        "index_bytes": 4524314,
+        "producer": "native-cpp",
+        "producer_version": "0.1.0",
+        "threads": 8,
+        "counts_time_s": 0.024,
+        "fill_time_s": 0.051,
+        "search_time_s": 0.153,
+        "search_memory_peak_mb": 9.26,
+        "guides": 12,
+        "hits": 26,
+        "candidates": 26,
+        "seed_len": 12,
+        "seed_mm": 1,
+        "seed_plan_guaranteed": true,
+        "exhaustive_seed_plan": true,
+        "sequence_cache": true,
+        "implementation": "native-cpp",
+        "native_index_k": 8
+      }
+    },
+    "blast": {
+      "status": "ok",
+      "cold_total_s": 0.7019,
+      "build_s": 0.0991,
+      "search": {
+        "runs": [
+          0.5588,
+          0.565,
+          0.6028
+        ],
+        "median": 0.565,
+        "best": 0.5588
+      },
+      "search_plus_build_s": 0.664,
+      "hits": 24
+    },
+    "bowtie2": {
+      "status": "ok",
+      "cold_total_s": 1.0811,
+      "build_s": 0.8861,
+      "search": {
+        "runs": [
+          0.1741,
+          0.176,
+          0.195
+        ],
+        "median": 0.176,
+        "best": 0.1741
+      },
+      "search_plus_build_s": 1.0622,
+      "hits": 24
+    }
+  }
+}

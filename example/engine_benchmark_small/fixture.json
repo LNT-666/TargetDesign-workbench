@@ -1,0 +1,9 @@
+{
+  "genome": "example/engine_benchmark_small/synthetic_genome.fa",
+  "guides": "example/engine_benchmark_small/guides.tsv",
+  "genome_bases": 1000000,
+  "contigs": 4,
+  "guides_count": 12,
+  "guide_length": 20,
+  "planted_layout": "one sampled exact target plus one reverse-complement exact target plus one one-mismatch target per guide"
+}

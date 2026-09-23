@@ -46,6 +46,24 @@ python run_tests.py
 python -m unittest discover -s tests -v
 ```
 
+### 已记录的测试运行
+
+仓库内跟踪的一次完整测试套件运行（Windows x64 工作站，Python 3.14.7）：
+
+```text
+python run_tests.py
+Ran 339 tests in 1297.947s
+FAILED (errors=1, skipped=6)
+```
+
+- 唯一的 error 来自该机器未安装 `blastn`（环境问题，非本项目代码缺陷）：
+  `test_auto_and_large_indexed_apply_mismatch_only_defaults` 报
+  `auto could not find an engine compatible with max_bulge=0`。
+- 6 个 skip = 5 个 TIGER/TensorFlow 不可用 + 1 个 Linux 专用用例
+  `test_parent_death_kills_the_engine`（依赖 `/proc/<pid>/stat`）。
+
+该记录即提交稿 Implementation, interface and test suite 一节所引用的测试运行。
+
 ## 2. 备用环境（Python 3.10）
 
 备用环境用于模型转换，不参与日常评分。创建方式：
@@ -56,17 +74,16 @@ py -3.10 -m venv .venv310
 pip install numpy==1.23.5 pandas==1.5.3 scikit-learn==1.0.2 biopython==1.79
 ```
 
-如果项目位于网络共享盘（例如 `\\smb.tnlab.cn\...`），建议把备用环境建在
+如果项目位于网络共享盘（例如 `\\fileserver\share\...`），建议把备用环境建在
 本地磁盘上，否则 pip 安装会非常慢：
 
 ```powershell
-py -3.10 -m venv C:\Users\<user>\.venvs\crispr310
-C:\Users\<user>\.venvs\crispr310\Scripts\activate
+py -3.10 -m venv <local disk>\.venvs\crispr310
+<local disk>\.venvs\crispr310\Scripts\activate
 pip install numpy==1.23.5 pandas==1.5.3 scikit-learn==1.0.2 biopython==1.79
 ```
 
-当前机器已使用的备用环境路径：
-`C:\Users\LNT\.venvs\crispr310`。
+备用环境放在本机磁盘的任一可写路径即可（例如 `<user>` 主目录下的 `.venvs\crispr310`）。
 
 在 Linux / macOS 上，DeepCRISPR 直接推理还需要 TensorFlow 1.x：
 

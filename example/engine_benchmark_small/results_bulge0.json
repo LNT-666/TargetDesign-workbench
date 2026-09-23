@@ -1,0 +1,222 @@
+{
+  "fixture": {
+    "genome_bases": 1000000,
+    "guides": 12,
+    "guide_length": 20,
+    "max_mismatch": 2,
+    "max_bulge": 0,
+    "index_k": 8,
+    "threads_for_external_engines": 8,
+    "repeats": 3
+  },
+  "results": {
+    "exact": {
+      "status": "ok",
+      "cold_total_s": 3.2218,
+      "build_s": 0.0,
+      "search": {
+        "runs": [
+          3.3677,
+          3.4371,
+          3.4751
+        ],
+        "median": 3.4371,
+        "best": 3.3677
+      },
+      "search_plus_build_s": 3.4371,
+      "hits": 36,
+      "backend_report": {}
+    },
+    "indexed": {
+      "status": "ok",
+      "cold_total_s": 31.6823,
+      "build_s": 0.183,
+      "search": {
+        "runs": [
+          31.3227,
+          31.4803,
+          31.6717
+        ],
+        "median": 31.4803,
+        "best": 31.3227
+      },
+      "search_plus_build_s": 31.6633,
+      "hits": 36,
+      "backend_report": {
+        "engine": "indexed",
+        "index_path": "example/engine_benchmark_small/run_indexed/genome_index/synthetic_genome.ggi",
+        "built": false,
+        "reused": true,
+        "format": "crispr-genome-index",
+        "version": 1,
+        "k": 8,
+        "genome": "example/engine_benchmark_small/synthetic_genome.fa",
+        "genome_fingerprint": "d451f711824fea07ff84495eaf6e8dad7643b98250ff546434b430a2e581dd28",
+        "genome_bytes": 1012524,
+        "total_bases": 1000000,
+        "valid_kmer_positions": 999972,
+        "contig_count": 4,
+        "contigs": [
+          {
+            "id": "chr1",
+            "start": 0,
+            "length": 250000
+          },
+          {
+            "id": "chr2",
+            "start": 250000,
+            "length": 250000
+          },
+          {
+            "id": "chr3",
+            "start": 500000,
+            "length": 250000
+          },
+          {
+            "id": "chr4",
+            "start": 750000,
+            "length": 250000
+          }
+        ],
+        "position_dtype": "u4",
+        "build_time_s": 0.183,
+        "memory_peak_mb": 280.36,
+        "index_bytes": 4524314,
+        "search_time_s": 31.669,
+        "search_memory_peak_mb": 280.36,
+        "guides": 12,
+        "hits": 36,
+        "candidates": 36,
+        "seed_len": 12,
+        "seed_mm": 1,
+        "seed_plan": [
+          {
+            "start": 0,
+            "length": 10,
+            "allowed_mismatches": 1
+          },
+          {
+            "start": 10,
+            "length": 10,
+            "allowed_mismatches": 1
+          }
+        ],
+        "exhaustive_seed_plan": true,
+        "sequence_cache": true,
+        "implementation": "python"
+      }
+    },
+    "native-indexed": {
+      "status": "ok",
+      "cold_total_s": 0.2145,
+      "build_s": 0.096,
+      "search": {
+        "runs": [
+          0.0877,
+          0.0893,
+          0.0896
+        ],
+        "median": 0.0893,
+        "best": 0.0877
+      },
+      "search_plus_build_s": 0.1853,
+      "hits": 36,
+      "backend_report": {
+        "engine": "indexed",
+        "index_path": "example/engine_benchmark_small/run_native-indexed/genome_index/synthetic_genome.ggi",
+        "built": false,
+        "reused": true,
+        "native_binary": "native/bin/offtarget-engine",
+        "format": "crispr-genome-index",
+        "version": 1,
+        "k": 8,
+        "genome": "example/engine_benchmark_small/synthetic_genome.fa",
+        "genome_fingerprint": "d451f711824fea07ff84495eaf6e8dad7643b98250ff546434b430a2e581dd28",
+        "genome_bytes": 1012524,
+        "total_bases": 1000000,
+        "valid_kmer_positions": 999972,
+        "contig_count": 4,
+        "contigs": [
+          {
+            "id": "chr1",
+            "start": 0,
+            "length": 250000
+          },
+          {
+            "id": "chr2",
+            "start": 250000,
+            "length": 250000
+          },
+          {
+            "id": "chr3",
+            "start": 500000,
+            "length": 250000
+          },
+          {
+            "id": "chr4",
+            "start": 750000,
+            "length": 250000
+          }
+        ],
+        "position_dtype": "u4",
+        "build_time_s": 0.096,
+        "memory_peak_mb": 8.0,
+        "index_bytes": 4524314,
+        "producer": "native-cpp",
+        "producer_version": "0.1.0",
+        "threads": 8,
+        "counts_time_s": 0.025,
+        "fill_time_s": 0.051,
+        "search_time_s": 0.061,
+        "search_memory_peak_mb": 9.48,
+        "guides": 12,
+        "hits": 36,
+        "candidates": 36,
+        "seed_len": 12,
+        "seed_mm": 1,
+        "seed_plan_guaranteed": true,
+        "exhaustive_seed_plan": true,
+        "sequence_cache": true,
+        "implementation": "native-cpp",
+        "native_index_k": 8
+      }
+    },
+    "blast": {
+      "status": "ok",
+      "cold_total_s": 0.6175,
+      "build_s": 0.0715,
+      "search": {
+        "runs": [
+          0.5098,
+          0.514,
+          0.5459
+        ],
+        "median": 0.514,
+        "best": 0.5098
+      },
+      "search_plus_build_s": 0.5855,
+      "hits": 31
+    },
+    "bowtie2": {
+      "status": "error",
+      "reason": "RuntimeError: bowtie2-build failed: 2 exception (#1)\nCommand: /tmp/engine-bench-tools/bin/bowtie2-build-s --wrapper basic-0 --threads 8 example/engine_benchmark_small/synthetic_genome.fa example/engine_benchmark_small/run_bowtie2/bowtie2_index/synthetic_genome \nDeleting \"example/engine_benchmark_small/run_bowtie2/bowtie2_index/synthetic_genome.3.bt2\" file written during aborted indexing attempt.\nDeleting \"example/engine_benchmark_small/run_bowtie2/bowtie2_index/synthetic_genome.4.bt2\" file written during aborted indexing attempt.\n"
+    },
+    "casoffinder": {
+      "status": "ok",
+      "cold_total_s": 1.6109,
+      "build_s": 0.0,
+      "search": {
+        "runs": [
+          1.469,
+          1.471,
+          1.4805
+        ],
+        "median": 1.471,
+        "best": 1.469
+      },
+      "search_plus_build_s": 1.471,
+      "hits": 36,
+      "backend_report": {}
+    }
+  }
+}
