@@ -3,8 +3,12 @@
 """Unified local GUI workbench for the CRISPR toolkit.
 
 main.py launches this workbench. It keeps the three motif GUIs as dedicated
-tool launchers and centralises the BED -> library -> results workflow that the
-web interface exposes.
+tool launchers and centralises the target extraction -> scoring workflow that
+the local web interface exposes.
+
+The library (一键出库) pipeline is retired: its button is created disabled and
+the code behind it is kept only so that the rest of the toolchain is
+unaffected.
 """
 
 import json
@@ -458,8 +462,10 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
 
         actions = ttk.Frame(parent)
         actions.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=8)
+        # 一键出库（library）已停用：按钮保留位置但不可点击。
         self.btn_run = ttk.Button(
-            actions, text="一键出库", command=self._run_library)
+            actions, text="一键出库（已停用）", command=self._run_library,
+            state=tk.DISABLED)
         self.btn_run.pack(side=tk.LEFT, padx=4)
         ttk.Button(actions, text="打开输出", command=self._open_output) \
             .pack(side=tk.LEFT, padx=4)
@@ -713,7 +719,6 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self._run_async(cmd, "构建索引")
 
     def _run_async(self, cmd, description, after=None):
-        self._set_busy(True)
         self.progress_var.set(0)
         self.progress_label.set(description + " ...")
         if self.progress_bar is not None:
@@ -758,7 +763,6 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             self.progress_bar.configure(mode="determinate")
         self.progress_var.set(100 if code == 0 else 0)
         self.progress_label.set("完成" if code == 0 else "失败")
-        self._set_busy(False)
         if code == 0 and after:
             after()
 
@@ -768,12 +772,6 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             self.progress_bar.configure(mode="determinate")
         self.progress_var.set(value)
         self.progress_label.set(label)
-
-    def _set_busy(self, busy):
-        if not hasattr(self, "btn_run"):
-            return
-        state = tk.DISABLED if busy else tk.NORMAL
-        self.btn_run.config(state=state)
 
     # ---------- 输出 ----------
     def _refresh_output(self):

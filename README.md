@@ -2,6 +2,11 @@
 
 本项目用于生物序列中的 motif 发现、候选区提取、Off-target search、评分排序和结果导出。
 
+## 功能状态
+
+- **Library 出库：已废弃。** `shared/design/library_pipeline.py` 及其调用入口（`main.py` 的 Library 页签、`unified_gui.py`）不再开发、不再维护；`unified_gui.py` 里的 `一键出库` 按钮已置灰停用，按钮背后的代码保留只为不影响其它功能，相关既有失败不再修复。
+- **多任务工作流程：暂不支持。** 当前版本不提供多任务/批量的工作流程，本工具按单个设计请求（单个 pattern、单次运行）使用。
+
 ## 设计功能（补充）
 
 - **BED designer**：`designer_workbench.py --bed` 以 BED 区域为输入打开设计器（窗口标题为 `BED Designer`），或在统一工作台的 Designer 工具条点击 “Open BED Designer”。结果 `library_scores.tsv` 会带 `genomic_start`/`genomic_end`/`genomic_strand` 和 `genomic_positions`（JSON，列出所有出现位置）；这些列仅在区域/BED 输入时填充，纯 FASTA 输入时全空并被隐藏。
