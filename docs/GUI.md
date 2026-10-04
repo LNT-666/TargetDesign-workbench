@@ -140,5 +140,4 @@ Pattern Designer 本身只提供 `Find Targets` 和 `Score & Off-target`。
 - **Library 出库：已废弃。** `shared/design/library_pipeline.py` 及其预检与工具函数
   不再开发也不再维护；`Results / Output` 页的 `一键出库` 按钮已置灰停用，
   按钮背后的代码保留只为不影响其它功能，相关既有失败不再修复。
-- **多任务工作流程：暂不支持。** 统一工作台按单个设计请求（单个 pattern、单次运行）
-  使用，不提供多任务或批量的工作流。
+- **多任务/批量：CLI 批量支持（见 `docs/BATCH.md`）；GUI 面板暂不支持。**

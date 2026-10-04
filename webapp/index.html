@@ -235,6 +235,55 @@
       <div class="run-grid" id="designer-run-col"></div>
     </details>
 
+    <details id="batch-wrap" class="lower-block">
+      <summary>Batch</summary>
+      <div class="group">
+        <div class="actions">
+          <label for="batch-label">Batch label</label>
+          <input id="batch-label" type="text" placeholder="web-batch-...">
+          <label class="muted"><input id="batch-resume" type="checkbox" checked> Resume finished units</label>
+        </div>
+      </div>
+      <div class="group">
+        <h4>Scopes</h4>
+        <div class="actions">
+          <button id="batch-scope-add" type="button">Add scope</button>
+        </div>
+        <div class="table-wrap">
+          <table id="batch-scope-table">
+            <thead><tr><th>Scope</th><th>Path</th><th>Input</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="group">
+        <h4>Patterns</h4>
+        <div class="actions">
+          <input id="batch-pattern-id" type="text" placeholder="pattern id">
+          <button id="batch-pattern-add" type="button">Add current Designer pattern</button>
+        </div>
+        <div class="table-wrap">
+          <table id="batch-pattern-table">
+            <thead><tr><th>Pattern</th><th>Mode</th><th>Scopes</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="batch-preview" type="button">Preview units</button>
+        <button id="batch-run" class="primary" type="button">Run batch</button>
+      </div>
+      <div id="batch-preview-note" class="muted"></div>
+      <div class="table-wrap">
+        <table id="batch-units">
+          <thead><tr><th>unit_id</th><th>scope_id</th><th>pattern_id</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="batch-job-box" class="job-box hidden"></div>
+      <div id="batch-artifacts" class="actions"></div>
+    </details>
+
     <details id="designer-log-wrap" class="lower-block" open>
       <summary>Run Log</summary>
       <pre id="designer-log"></pre>

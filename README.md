@@ -5,7 +5,7 @@
 ## 功能状态
 
 - **Library 出库：已废弃。** `shared/design/library_pipeline.py` 及其调用入口（`main.py` 的 Library 页签、`unified_gui.py`）不再开发、不再维护；`unified_gui.py` 里的 `一键出库` 按钮已置灰停用，按钮背后的代码保留只为不影响其它功能，相关既有失败不再修复。
-- **多任务工作流程：暂不支持。** 当前版本不提供多任务/批量的工作流程，本工具按单个设计请求（单个 pattern、单次运行）使用。
+- **多任务/批量：提供 CLI 批量入口（`tools/batch_run.py`，见 `docs/BATCH.md`）与 webapp 批量面板（见 `docs/WEBAPP.md`）；桌面 GUI 批量面板暂不支持。**
 
 ## 设计功能（补充）
 

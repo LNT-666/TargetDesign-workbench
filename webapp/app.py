@@ -34,6 +34,7 @@ for _path in (SHARED, WEBAPP):
 
 import jobs as job_module  # noqa: E402
 import schema  # noqa: E402
+import services.batch as batch  # noqa: E402
 import services.dataprep as dataprep  # noqa: E402
 import services.designer as designer  # noqa: E402
 import services.models as models  # noqa: E402
@@ -245,6 +246,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/designer/jobs":
                 self._send_json(designer.submit(payload, manager))
+                return
+            if path == "/api/batch/preview":
+                self._send_json(batch.preview(payload))
+                return
+            if path == "/api/batch/jobs":
+                self._send_json(batch.submit(payload, manager))
                 return
             if path == "/api/dataprep/download":
                 self._send_json(dataprep.submit_download(payload, manager))

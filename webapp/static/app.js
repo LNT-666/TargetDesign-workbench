@@ -389,6 +389,7 @@ function initLayout() {
   initModels();
   initDesigner();
   initResults();
+  initBatch();
   loadJobs();
 }
 /* --------------------------------------------------------------- back-fill */
@@ -2566,6 +2567,264 @@ function initPicker() {
   Object.keys(PICKER_INPUT_KINDS).forEach(function (id) {
     attachBrowseButton($(id), PICKER_INPUT_KINDS[id]);
   });
+}
+
+/* -------------------------------------------------------------------- batch */
+
+/* Multi search-scope x multi pattern batches (see docs/WEBAPP.md). */
+const batchState = {
+  scopes: [],
+  patterns: [],
+  jobId: null,
+};
+
+function batchPathKind(scope) {
+  return (scope.kind || 'sequence') === 'bed' ? 'bed' : 'fasta';
+}
+
+function renderBatchScopes() {
+  const table = $('batch-scope-table');
+  const tbody = table ? table.querySelector('tbody') : null;
+  if (!tbody) {
+    return;
+  }
+  tbody.innerHTML = '';
+  batchState.scopes.forEach(function (scope, index) {
+    const idInput = el('input', {type: 'text', value: scope.scopeId || '', placeholder: 'scope id'});
+    idInput.addEventListener('input', function () {
+      scope.scopeId = idInput.value.trim();
+    });
+    const pathInput = el('input', {type: 'text', value: scope.path || '', placeholder: 'path'});
+    pathInput.addEventListener('input', function () {
+      scope.path = pathInput.value;
+    });
+    const browse = browseButton(pathInput, batchPathKind(scope));
+    const kindSelect = el('select');
+    ['sequence', 'bed'].forEach(function (kind) {
+      const option = el('option', {value: kind, text: kind});
+      if ((scope.kind || 'sequence') === kind) {
+        option.selected = true;
+      }
+      kindSelect.appendChild(option);
+    });
+    kindSelect.addEventListener('change', function () {
+      scope.kind = kindSelect.value;
+      renderBatchScopes();
+    });
+    const remove = el('button', {type: 'button', text: 'Remove'});
+    remove.addEventListener('click', function () {
+      batchState.scopes.splice(index, 1);
+      renderBatchScopes();
+    });
+    const pathCell = el('td', {}, [el('div', {class: 'row'}, [pathInput, browse])]);
+    tbody.appendChild(el('tr', {}, [
+      el('td', {}, [idInput]),
+      pathCell,
+      el('td', {}, [kindSelect]),
+      el('td', {}, [remove]),
+    ]));
+  });
+  renderBatchPatterns();
+}
+
+function renderBatchPatterns() {
+  const table = $('batch-pattern-table');
+  const tbody = table ? table.querySelector('tbody') : null;
+  if (!tbody) {
+    return;
+  }
+  tbody.innerHTML = '';
+  batchState.patterns.forEach(function (pattern, index) {
+    const select = el('select', {multiple: 'multiple'});
+    batchState.scopes.forEach(function (scope, scopeIndex) {
+      const scopeId = scope.scopeId || ('scope ' + (scopeIndex + 1));
+      const option = el('option', {value: scopeId, text: scopeId});
+      if (pattern.scopeIds === null || pattern.scopeIds.indexOf(scopeId) >= 0) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+    select.addEventListener('change', function () {
+      pattern.scopeIds = Array.prototype.slice.call(select.options)
+        .filter(function (option) { return option.selected; })
+        .map(function (option) { return option.value; });
+    });
+    const remove = el('button', {type: 'button', text: 'Remove'});
+    remove.addEventListener('click', function () {
+      batchState.patterns.splice(index, 1);
+      renderBatchPatterns();
+    });
+    tbody.appendChild(el('tr', {}, [
+      el('td', {text: pattern.pattern_id}),
+      el('td', {text: pattern.designer.mode}),
+      el('td', {}, [select]),
+      el('td', {}, [remove]),
+    ]));
+  });
+}
+
+function addBatchScope() {
+  batchState.scopes.push({scopeId: '', path: '', kind: 'sequence'});
+  renderBatchScopes();
+}
+
+function addBatchPattern() {
+  const input = $('batch-pattern-id');
+  const patternId = input ? input.value.trim() : '';
+  if (!patternId) {
+    showBanner('Enter a pattern id first.', true);
+    return;
+  }
+  const exists = batchState.patterns.some(function (pattern) {
+    return pattern.pattern_id === patternId;
+  });
+  if (exists) {
+    showBanner('Pattern id already added: ' + patternId, true);
+    return;
+  }
+  /* Snapshot the current Designer form so later edits do not change it. */
+  batchState.patterns.push({
+    pattern_id: patternId,
+    designer: JSON.parse(JSON.stringify(payload({}))),
+    scopeIds: null,
+  });
+  if (input) {
+    input.value = '';
+  }
+  renderBatchPatterns();
+}
+
+function batchPayload() {
+  const scopes = batchState.scopes.map(function (scope) {
+    const item = {};
+    if (scope.scopeId) {
+      item.scope_id = scope.scopeId;
+    }
+    if ((scope.kind || 'sequence') === 'bed') {
+      item.regions = scope.path || '';
+    } else {
+      item.search_fasta = scope.path || '';
+    }
+    return item;
+  });
+  const patterns = batchState.patterns.map(function (pattern) {
+    return Object.assign({}, pattern.designer, {pattern_id: pattern.pattern_id});
+  });
+  const assignments = {};
+  batchState.patterns.forEach(function (pattern) {
+    if (pattern.scopeIds !== null) {
+      assignments[pattern.pattern_id] = pattern.scopeIds.slice();
+    }
+  });
+  const body = {
+    scopes: scopes,
+    patterns: patterns,
+    resume: $('batch-resume') ? $('batch-resume').checked : true,
+  };
+  if (Object.keys(assignments).length) {
+    body.assignments = assignments;
+  }
+  const label = $('batch-label') ? $('batch-label').value.trim() : '';
+  if (label) {
+    body.batch_label = label;
+  }
+  return Object.assign(payload({}), body);
+}
+
+function renderBatchUnits(data) {
+  const table = $('batch-units');
+  const tbody = table ? table.querySelector('tbody') : null;
+  if (tbody) {
+    tbody.innerHTML = '';
+    (data.units || []).forEach(function (unit) {
+      tbody.appendChild(el('tr', {}, [
+        el('td', {text: unit.unit_id}),
+        el('td', {text: unit.scope_id}),
+        el('td', {text: unit.pattern_id}),
+      ]));
+    });
+  }
+  const note = $('batch-preview-note');
+  if (note) {
+    const parts = [];
+    (data.warnings || []).forEach(function (message) {
+      parts.push('WARN: ' + message);
+    });
+    if (data.batch_root) {
+      parts.push('Output: ' + data.batch_root);
+    }
+    note.textContent = parts.join('  |  ');
+  }
+}
+
+async function batchPreview() {
+  try {
+    const data = await api('/api/batch/preview', {method: 'POST', body: batchPayload()});
+    renderBatchUnits(data);
+    if (data.errors && data.errors.length) {
+      showBanner(data.errors[0], true);
+    } else {
+      showBanner((data.units || []).length + ' unit(s) ready', false);
+    }
+  } catch (err) {
+    showBanner('Batch preview failed: ' + err.message, true);
+  }
+}
+
+function renderBatchArtifacts(job) {
+  const box = $('batch-artifacts');
+  if (!box) {
+    return;
+  }
+  box.innerHTML = '';
+  const outputs = (job && job.outputs) || {};
+  const entries = [
+    ['manifest.tsv', outputs.download_manifest, outputs.manifest ? 'export/manifest.tsv' : null],
+    ['batch_scores.tsv', outputs.download_summary, outputs.summary ? 'export/batch_scores.tsv' : null],
+  ];
+  entries.forEach(function (entry) {
+    const value = entry[1] ? String(entry[1]) : '';
+    const relative = value.indexOf('export/') === 0 ? value : entry[2];
+    if (!relative) {
+      return;
+    }
+    const url = '/api/jobs/' + job.job_id + '/download?file=' + encodeURIComponent(relative);
+    const button = el('button', {type: 'button', text: entry[0]});
+    button.addEventListener('click', function () {
+      downloadUrl(url);
+    });
+    box.appendChild(button);
+  });
+}
+
+async function startBatchJob() {
+  try {
+    const created = await api('/api/batch/jobs', {method: 'POST', body: batchPayload()});
+    batchState.jobId = created.job_id;
+    state.batchLogOffset = 0;
+    const artifacts = $('batch-artifacts');
+    if (artifacts) {
+      artifacts.innerHTML = '';
+    }
+    const box = $('batch-job-box');
+    if (box) {
+      box.classList.remove('hidden');
+    }
+    pollJobInto(created.job_id, 'batch-job-box', 'batchLogOffset', renderBatchArtifacts);
+  } catch (err) {
+    showBanner('Batch job failed: ' + err.message, true);
+  }
+}
+
+function initBatch() {
+  if (!$('batch-wrap')) {
+    return;
+  }
+  $('batch-scope-add').addEventListener('click', addBatchScope);
+  $('batch-pattern-add').addEventListener('click', addBatchPattern);
+  $('batch-preview').addEventListener('click', batchPreview);
+  $('batch-run').addEventListener('click', startBatchJob);
+  renderBatchScopes();
 }
 
 /* ------------------------------------------------------------------ init */

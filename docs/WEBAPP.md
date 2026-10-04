@@ -113,6 +113,27 @@ Designer 的三种 pattern 与桌面端一致：
 继续（`start=1`），如果没有抽取结果会返回
 `Extracted targets not found. Run Find Targets first.`
 
+## 批量（Batch）
+
+`Batch` 区块把一次提交展开成多个单元（unit = 一个 search scope × 一份 pattern 配置）并串行跑完 `PatternRunner`；内核、manifest 与汇总契约见 `docs/BATCH.md`，这里只讲 web 入口。
+
+流程：填 `Batch label`（留空则用 `web-batch-<YYYYmmdd-HHMMSS>`）→ `Add scope` 加若干范围（`scope_id` 可留空，服务端按文件名去后缀派生；路径可用 Browse）→ 在 Designer 里配好 pattern、填 `pattern id`、点 `Add current Designer pattern`（把**当前 Designer 表单**原样快照成该 pattern 的配置）→ 在每个 pattern 的 Scopes 多选里指定范围（不选 = 全部范围）→ `Preview units` → `Run batch`；日志/进度走同一 JobManager，产物可下载。
+
+payload 字段（`POST /api/batch/preview` 与 `POST /api/batch/jobs` 共用）：
+
+- `batch_label`（可选）、`resume`（可选布尔，默认 true）。
+- `scopes`（必填、非空）：每项 `{scope_id?, search_fasta}` 或 `{scope_id?, regions}`。
+- `patterns`（必填、非空）：每项 `{pattern_id, mode, overlay}`，或直接给一份 Designer 表单快照（`mode` + `values` + `struct` 键），服务按该 mode 的 schema 字段切出 overlay。
+- `assignments`（UI 路径）：`{pattern_id: [scope_id, ...]}`；某 pattern 缺省 → 指派给全部 scopes。
+- `groups`（高级路径）：给了就直接用（忽略 `assignments`）。
+- 顶层也可带当轮 Designer 表单值（与 `/api/designer/jobs` 的 `values` 同义），服务把非 pattern 键放进 `shared`。
+
+转换规则：`shared` 只收 `COMMON_FIELDS + RUN_FIELDS + pair_rank_*`（去掉 `search_fasta`/`bed_regions`/`result_label`）加 `struct` 键；pattern 的 `overlay` 只收该 mode 的 pattern 键加 `struct`/`side_*` 键。保留键（`search_fasta`/`bed_regions`/`input_mode`/`result_label`/`output_dir`）出现在 `shared`/`overlay` 会直接报错。
+
+units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G_<pattern_id>`，顺序同 `patterns`），所以 UI 路径下是 **pattern 主序 → scope 次序**（与 CLI 示例的 scope 主序不同）。
+
+产物与取消：批次根目录仍是 `output/<batch_label>/`；作业结束后把 `manifest.tsv` 与 `batch_scores.tsv`（来自 `summary/batch_scores.tsv`）复制到 `<job_dir>/export/` 供下载。`Cancel job` 调 `BatchRunner.stop()`：当前 unit 的 `PatternRunner` 被停、整批返回 130。
+
 ## 面板：Data prep / Models
 
 - 面板默认收起；展开时从左侧滑入并覆盖主区（几何与 4 种关闭方式见上）。
@@ -201,6 +222,8 @@ Designer 的三种 pattern 与桌面端一致：
 | `POST` | `/api/designer/preset` | 单个 TAM 侧的 `Apply`：返回字段更新和模型候选 |
 | `POST` | `/api/designer/active-side` | `Use for Run`：切换生效侧并返回规则更新 |
 | `POST` | `/api/designer/jobs` | 提交 Designer 阶段（`stage`: `find` / `score`） |
+| `POST` | `/api/batch/preview` | 预览批量：返回 `batch_label`、`batch_root`、`units`、`errors`、`warnings`（缺文件降级为 warning） |
+| `POST` | `/api/batch/jobs` | 提交批量作业（kind=`batch`）；校验失败返回 400 |
 | `POST` | `/api/dataprep/download` | 下载基因组与注释 |
 | `POST` | `/api/dataprep/prepare` | 基因组 + 注释 + Search scope + Mask (+ BLAST) 一步准备 |
 | `POST` | `/api/dataprep/extract-target` | 抽取 Search scope FASTA |

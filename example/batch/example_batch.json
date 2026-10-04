@@ -1,0 +1,72 @@
+{
+  "batch_label": "example-batch",
+  "shared": {
+    "genome_fasta": "example/chr21_22.fa",
+    "mask_fasta": "",
+    "nuclease": "tnpb",
+    "tnpb_subtype": "unknown",
+    "pam_mode": "custom",
+    "engine": "auto",
+    "index_path": "",
+    "max_mismatch": 4,
+    "memory_mode": "auto",
+    "gc_min": 40,
+    "gc_max": 70
+  },
+  "scopes": [
+    {
+      "scope_id": "scope_fa",
+      "search_fasta": "example/chr21_22.fa"
+    },
+    {
+      "scope_id": "scope_bed",
+      "regions": "example/chr21_22_regions.bed"
+    }
+  ],
+  "patterns": [
+    {
+      "pattern_id": "P_basic_ttag",
+      "mode": "single_motif_flank",
+      "overlay": {
+        "motif": "TTAG",
+        "flank": 20,
+        "side": "downstream"
+      }
+    },
+    {
+      "pattern_id": "P_basic_tcaa",
+      "mode": "single_motif_flank",
+      "overlay": {
+        "motif": "TCAA",
+        "flank": 20,
+        "side": "downstream"
+      }
+    },
+    {
+      "pattern_id": "P_gap",
+      "mode": "motif_gap_motif",
+      "overlay": {
+        "left_motif": "TTAG",
+        "left_flank": 20,
+        "left_side": "upstream",
+        "right_motif": "TCAA",
+        "right_flank": 20,
+        "right_side": "downstream",
+        "min_gap": 10,
+        "max_gap": 40
+      }
+    }
+  ],
+  "groups": [
+    {
+      "group_id": "G1",
+      "scope_ids": ["scope_fa", "scope_bed"],
+      "pattern_ids": ["P_basic_ttag", "P_gap"]
+    },
+    {
+      "group_id": "G2",
+      "scope_ids": ["scope_fa"],
+      "pattern_ids": ["P_basic_tcaa"]
+    }
+  ]
+}
