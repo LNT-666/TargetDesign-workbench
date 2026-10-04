@@ -5,7 +5,10 @@
 // stopped again.  Build with tools/launcher/build_launcher.ps1.
 //
 // Command line:
-//   --port N          listen port (default 8000, falls back to 8001..8010)
+//   --port N          listen port (default 5000)
+//   --host ADDR       bind address (default 0.0.0.0, all interfaces)
+//   --install         create .venv and pip install the requirements, then start
+//   --requirements P  requirements file for --install (default requirements-windows.txt)
 //   --timeout S       seconds to wait for the server (default 240)
 //   --repo PATH       repository root (default: found relative to this exe)
 //   --no-browser      start the server but do not open a browser
@@ -13,6 +16,9 @@
 //   --check-file P    status file for --check (default logs/launcher_check.txt)
 //   --stop            stop a running workbench server and exit
 //   --help            show usage
+//
+// --check exit codes: 0 ready, 2 no Python 3, 3 start failed, 4 not ready,
+//                     5 packages missing, 6 dependency install failed.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,6 +27,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -29,7 +36,10 @@ namespace CrisprWorkbench
 {
     internal sealed class Options
     {
-        public int Port = 8000;
+        public int Port = 5000;
+        public string Host = "0.0.0.0";
+        public bool Install = false;
+        public string Requirements = null;
         public bool OpenBrowser = true;
         public bool Check = false;
         public bool StopOnly = false;
@@ -50,6 +60,7 @@ namespace CrisprWorkbench
     {
         public string RepoRoot;
         public int Port;
+        public string Host = "0.0.0.0";
         public string LogPath;
         public PythonInfo Python;
         public Process Child;
@@ -63,6 +74,71 @@ namespace CrisprWorkbench
         public string Url
         {
             get { return "http://127.0.0.1:" + this.Port.ToString(CultureInfo.InvariantCulture) + "/"; }
+        }
+
+        /// <summary>Address handed to the web app; 0.0.0.0 exposes every interface.</summary>
+        public string BindAddress
+        {
+            get { return string.IsNullOrEmpty(this.Host) ? "127.0.0.1" : this.Host; }
+        }
+
+        public bool LocalOnly
+        {
+            get
+            {
+                return this.BindAddress == "127.0.0.1" || this.BindAddress == "localhost";
+            }
+        }
+
+        /// <summary>IPv4 URLs other machines can use, loopback excluded.</summary>
+        public List<string> LanUrls()
+        {
+            List<string> urls = new List<string>();
+            string port = this.Port.ToString(CultureInfo.InvariantCulture);
+            try
+            {
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up)
+                    {
+                        continue;
+                    }
+                    foreach (UnicastIPAddressInformation info in nic.GetIPProperties().UnicastAddresses)
+                    {
+                        IPAddress address = info.Address;
+                        if (address.AddressFamily != AddressFamily.InterNetwork
+                            || IPAddress.IsLoopback(address))
+                        {
+                            continue;
+                        }
+                        urls.Add("http://" + address.ToString() + ":" + port + "/");
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return urls;
+        }
+
+        /// <summary>Loopback URL, plus the shareable LAN URLs when the bind is not local-only.</summary>
+        public string AdvertisedUrlsText()
+        {
+            if (this.LocalOnly)
+            {
+                return this.Url;
+            }
+            List<string> lan = this.LanUrls();
+            if (lan.Count == 0)
+            {
+                return this.Url + "\r\n(no LAN address found)";
+            }
+            StringBuilder builder = new StringBuilder(this.Url);
+            foreach (string url in lan)
+            {
+                builder.Append("\r\n").Append(url);
+            }
+            return builder.ToString();
         }
 
         public void Log(string message)
@@ -146,7 +222,234 @@ namespace CrisprWorkbench
                     return info;
                 }
             }
-            return candidates.Count > 0 ? candidates[0] : null;
+            LastRejected = candidates.Count > 0 ? candidates[0] : null;
+            return null;
+        }
+
+        /// <summary>First candidate that failed the Python 3 probe, for diagnostics.</summary>
+        public static PythonInfo LastRejected;
+
+        /// <summary>Top-level modules the web app needs before it can serve.</summary>
+        public static readonly string[] RequiredModules = new string[] { "numpy", "Bio", "pyfaidx" };
+
+        /// <summary>Run the interpreter with the given arguments and capture stdout.</summary>
+        /// <returns>The exit code and stdout, or null when the process could not run.</returns>
+        public static string RunPythonCapture(PythonInfo info, string arguments, int timeoutMs)
+        {
+            if (info == null || string.IsNullOrEmpty(info.Exe))
+            {
+                return null;
+            }
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo();
+                string prefix = string.IsNullOrEmpty(info.PrefixArgs) ? "" : (info.PrefixArgs + " ");
+                psi.FileName = info.Exe;
+                psi.Arguments = prefix + arguments;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.StandardOutputEncoding = new UTF8Encoding(false);
+                psi.StandardErrorEncoding = new UTF8Encoding(false);
+                using (Process probe = Process.Start(psi))
+                {
+                    string stdout = probe.StandardOutput.ReadToEnd();
+                    probe.StandardError.ReadToEnd();
+                    if (!probe.WaitForExit(timeoutMs))
+                    {
+                        try
+                        {
+                            probe.Kill();
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return null;
+                    }
+                    return probe.ExitCode == 0 ? stdout : null;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Required modules the interpreter cannot import.</summary>
+        /// <returns>The missing names, or null when the interpreter could not be probed.</returns>
+        public static List<string> MissingModules(PythonInfo info)
+        {
+            if (info == null)
+            {
+                return null;
+            }
+            string names = "'" + string.Join("','", RequiredModules) + "'";
+            string code = "import importlib.util as u; print(','.join(m for m in ["
+                + names + "] if u.find_spec(m) is None))";
+            string output = RunPythonCapture(info, "-c \"" + code + "\"", 60000);
+            if (output == null)
+            {
+                return null;
+            }
+            List<string> missing = new List<string>();
+            foreach (string part in output.Trim().Split(','))
+            {
+                if (part.Trim().Length > 0)
+                {
+                    missing.Add(part.Trim());
+                }
+            }
+            return missing;
+        }
+
+        /// <summary>Interpreter inside the repository virtualenv (created by --install).</summary>
+        public string VenvPythonPath
+        {
+            get { return Path.Combine(this.RepoRoot, ".venv", "Scripts", "python.exe"); }
+        }
+
+        public static PythonInfo NewPythonInfo(string exe, string description)
+        {
+            PythonInfo info = new PythonInfo();
+            info.Exe = exe;
+            info.Description = description;
+            return info;
+        }
+
+        /// <summary>Requirements file for the install step; explicit path wins.</summary>
+        public static string ResolveRequirements(string repoRoot, string requested)
+        {
+            if (!string.IsNullOrEmpty(requested))
+            {
+                return Path.IsPathRooted(requested) ? requested : Path.Combine(repoRoot, requested);
+            }
+            string windows = Path.Combine(repoRoot, "requirements-windows.txt");
+            if (File.Exists(windows))
+            {
+                return windows;
+            }
+            return Path.Combine(repoRoot, "requirements.txt");
+        }
+
+        /// <summary>Create the repository virtualenv when needed, then pip install.</summary>
+        /// <remarks>Blocking; run it on a worker thread. ``progress`` receives one line per step.</remarks>
+        public bool InstallDependencies(PythonInfo basePython, string requirementsFile,
+            Action<string> progress, out string error)
+        {
+            error = "";
+            if (basePython == null)
+            {
+                error = "no Python 3 to build the virtualenv from";
+                return false;
+            }
+            if (!File.Exists(requirementsFile))
+            {
+                error = "requirements file not found: " + requirementsFile;
+                return false;
+            }
+            if (!IsUsablePython(NewPythonInfo(this.VenvPythonPath, this.VenvPythonPath)))
+            {
+                string venvDir = Path.Combine(this.RepoRoot, ".venv");
+                if (progress != null)
+                {
+                    progress("creating virtualenv: " + venvDir);
+                }
+                if (!RunAndStream(basePython, "-m venv \"" + venvDir + "\"", 900, progress, out error))
+                {
+                    return false;
+                }
+            }
+            PythonInfo venv = NewPythonInfo(this.VenvPythonPath, this.VenvPythonPath + " (repository venv)");
+            if (!IsUsablePython(venv))
+            {
+                error = "virtualenv interpreter is not usable: " + this.VenvPythonPath;
+                return false;
+            }
+            if (progress != null)
+            {
+                progress("installing packages: " + requirementsFile);
+            }
+            return RunAndStream(venv, "-m pip install -r \"" + requirementsFile + "\"",
+                3600, progress, out error);
+        }
+
+        /// <summary>Run a child process, streaming stdout and stderr lines to ``progress``.</summary>
+        private static bool RunAndStream(PythonInfo info, string arguments, int timeoutSeconds,
+            Action<string> progress, out string error)
+        {
+            error = "";
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo();
+                string prefix = string.IsNullOrEmpty(info.PrefixArgs) ? "" : (info.PrefixArgs + " ");
+                psi.FileName = info.Exe;
+                psi.Arguments = prefix + arguments;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.StandardOutputEncoding = new UTF8Encoding(false);
+                psi.StandardErrorEncoding = new UTF8Encoding(false);
+                psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+                psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
+                using (Process child = new Process())
+                {
+                    child.StartInfo = psi;
+                    child.Start();
+                    Thread reader = new Thread(new ThreadStart(delegate
+                    {
+                        try
+                        {
+                            string errLine;
+                            while ((errLine = child.StandardError.ReadLine()) != null)
+                            {
+                                if (progress != null)
+                                {
+                                    progress(errLine);
+                                }
+                            }
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    }));
+                    reader.IsBackground = true;
+                    reader.Start();
+                    string outLine;
+                    while ((outLine = child.StandardOutput.ReadLine()) != null)
+                    {
+                        if (progress != null)
+                        {
+                            progress(outLine);
+                        }
+                    }
+                    reader.Join(5000);
+                    if (!child.WaitForExit(timeoutSeconds * 1000))
+                    {
+                        try
+                        {
+                            child.Kill();
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        error = "timed out after " + timeoutSeconds.ToString(CultureInfo.InvariantCulture) + "s";
+                        return false;
+                    }
+                    if (child.ExitCode != 0)
+                    {
+                        error = "exit code " + child.ExitCode.ToString(CultureInfo.InvariantCulture);
+                        return false;
+                    }
+                    return true;
+                }
+            }
+            catch (Exception exc)
+            {
+                error = exc.Message;
+                return false;
+            }
         }
 
         public static bool IsUsablePython(PythonInfo info)
@@ -416,6 +719,21 @@ namespace CrisprWorkbench
             {
                 throw new InvalidOperationException("Python interpreter not found.");
             }
+            List<string> missing = MissingModules(this.Python);
+            if (missing == null)
+            {
+                this.Log("environment probe failed; python=" + this.Python.Description);
+            }
+            else if (missing.Count == 0)
+            {
+                this.Log("environment ok; python=" + this.Python.Description
+                    + "; packages=" + string.Join(", ", RequiredModules));
+            }
+            else
+            {
+                this.Log("missing packages: " + string.Join(", ", missing.ToArray())
+                    + "; python=" + this.Python.Description);
+            }
             ProcessStartInfo psi = new ProcessStartInfo();
             string script = Path.Combine(this.RepoRoot, "webapp", "app.py");
             string prefix = this.Python.PrefixArgs;
@@ -424,8 +742,8 @@ namespace CrisprWorkbench
                 prefix = prefix + " ";
             }
             psi.FileName = this.Python.Exe;
-            psi.Arguments = prefix + "\"" + script + "\" --host 127.0.0.1 --port "
-                + this.Port.ToString(CultureInfo.InvariantCulture);
+            psi.Arguments = prefix + "\"" + script + "\" --host " + this.BindAddress
+                + " --port " + this.Port.ToString(CultureInfo.InvariantCulture);
             psi.WorkingDirectory = this.RepoRoot;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
@@ -530,6 +848,7 @@ namespace CrisprWorkbench
     internal sealed class MainForm : Form
     {
         private readonly ServerHost host;
+        private readonly Options options;
         private readonly bool openBrowser;
         private Label statusLabel;
         private LinkLabel urlLink;
@@ -538,14 +857,15 @@ namespace CrisprWorkbench
         private Button stopButton;
         private volatile bool ready;
 
-        public MainForm(ServerHost host, bool openBrowser)
+        public MainForm(ServerHost host, Options options)
         {
             this.host = host;
-            this.openBrowser = openBrowser;
+            this.options = options;
+            this.openBrowser = options.OpenBrowser;
 
             this.Text = "TargetDesign-workbench";
-            this.ClientSize = new Size(520, 240);
-            this.MinimumSize = new Size(460, 220);
+            this.ClientSize = new Size(520, 262);
+            this.MinimumSize = new Size(460, 242);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9F);
 
@@ -558,12 +878,12 @@ namespace CrisprWorkbench
 
             this.statusLabel = new Label();
             this.statusLabel.Location = new Point(18, 48);
-            this.statusLabel.Size = new Size(484, 96);
+            this.statusLabel.Size = new Size(484, 112);
             this.statusLabel.Text = "正在启动本地服务 ...";
             this.Controls.Add(this.statusLabel);
 
             this.urlLink = new LinkLabel();
-            this.urlLink.Location = new Point(18, 150);
+            this.urlLink.Location = new Point(18, 170);
             this.urlLink.AutoSize = true;
             this.urlLink.Text = host.Url;
             this.urlLink.LinkClicked += this.OnLinkClicked;
@@ -571,14 +891,14 @@ namespace CrisprWorkbench
 
             this.stopOnClose = new CheckBox();
             this.stopOnClose.Text = "关闭窗口时停止服务 (stop the server when closing)";
-            this.stopOnClose.Location = new Point(18, 176);
+            this.stopOnClose.Location = new Point(18, 196);
             this.stopOnClose.Size = new Size(400, 24);
             this.stopOnClose.Checked = true;
             this.Controls.Add(this.stopOnClose);
 
             this.openButton = new Button();
             this.openButton.Text = "打开浏览器";
-            this.openButton.Location = new Point(18, 204);
+            this.openButton.Location = new Point(18, 224);
             this.openButton.Size = new Size(130, 28);
             this.openButton.Enabled = false;
             this.openButton.Click += this.OnOpenClicked;
@@ -586,14 +906,14 @@ namespace CrisprWorkbench
 
             this.stopButton = new Button();
             this.stopButton.Text = "停止服务";
-            this.stopButton.Location = new Point(156, 204);
+            this.stopButton.Location = new Point(156, 224);
             this.stopButton.Size = new Size(110, 28);
             this.stopButton.Click += this.OnStopClicked;
             this.Controls.Add(this.stopButton);
 
             Button closeButton = new Button();
             closeButton.Text = "退出";
-            closeButton.Location = new Point(400, 204);
+            closeButton.Location = new Point(400, 224);
             closeButton.Size = new Size(88, 28);
             closeButton.Click += this.OnCloseClicked;
             this.Controls.Add(closeButton);
@@ -626,10 +946,25 @@ namespace CrisprWorkbench
 
             if (this.host.Python == null)
             {
-                this.SetStatus("找不到 Python 解释器。\r\nPython interpreter not found.\r\n"
-                    + "请安装 Python 3，或设置环境变量 CRISPR_WORKBENCH_PYTHON。");
-                this.host.Log("python interpreter not found");
+                this.host.Log("no usable Python 3 found"
+                    + (ServerHost.LastRejected != null
+                        ? ("; rejected: " + ServerHost.LastRejected.Exe)
+                        : "; no candidate found"));
+                this.SetStatus("找不到可用的 Python 3 / no usable Python 3\r\n"
+                    + "已查找：CRISPR_WORKBENCH_PYTHON、包内 .venv 与 .venv310、PATH、用户安装目录\r\n"
+                    + "请安装 Python 3（勾选 Add python.exe to PATH），然后运行：\r\n"
+                    + "  python -m pip install -r requirements-windows.txt");
                 return;
+            }
+
+            List<string> missing = ServerHost.MissingModules(this.host.Python);
+            bool depsMissing = missing != null && missing.Count > 0;
+            if (this.options.Install || depsMissing)
+            {
+                if (!this.InstallMissing(depsMissing ? missing : new List<string>()))
+                {
+                    return;
+                }
             }
 
             try
@@ -651,15 +986,81 @@ namespace CrisprWorkbench
                     + this.host.RecentLog(6) + "\r\n日志 / log: " + this.host.LogPath);
                 return;
             }
-            this.host.Log("server is ready at " + this.host.Url);
-            this.SetStatus("服务已就绪。\r\nserver ready: " + this.host.Url + "\r\n日志 / log: " + this.host.LogPath);
+            this.host.Log("server is ready at " + this.host.AdvertisedUrlsText());
+            this.SetStatus("服务已就绪。\r\nserver ready: " + this.host.AdvertisedUrlsText()
+                + "\r\n日志 / log: " + this.host.LogPath);
             this.FinishReady();
+        }
+
+        /// <summary>Create .venv and pip install when packages are missing (or --install was given).</summary>
+        private bool InstallMissing(List<string> missing)
+        {
+            string missingNames = missing.Count == 0
+                ? "(none, refreshing)" : string.Join(", ", missing.ToArray());
+            string requirements = ServerHost.ResolveRequirements(this.host.RepoRoot, this.options.Requirements);
+            this.host.Log("missing Python packages: " + missingNames);
+            this.host.Log("requirements file: " + requirements);
+            this.host.Log("virtualenv: " + this.host.VenvPythonPath);
+            if (!this.options.Install)
+            {
+                DialogResult answer = MessageBox.Show(
+                    "缺少 Python 依赖 / missing packages: " + missingNames + "\r\n\r\n"
+                    + "是否现在创建 .venv 并自动安装依赖？\r\n"
+                    + "Create .venv and install the requirements now?\r\n"
+                    + "(需要联网，首次可能十几分钟 / needs network, may take several minutes)",
+                    "TargetDesign-workbench", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (answer != DialogResult.Yes)
+                {
+                    this.host.Log("dependency install declined");
+                    this.SetStatus("缺少依赖 / missing packages: " + missingNames + "\r\n"
+                        + "已取消自动安装 / install cancelled\r\n"
+                        + "手动安装 / install manually:\r\n"
+                        + this.host.Python.Exe + " -m pip install -r requirements-windows.txt");
+                    return false;
+                }
+            }
+            this.SetStatus("正在创建 .venv 并安装依赖 ...\r\ninstalling dependencies ...");
+            string error;
+            bool installed = this.host.InstallDependencies(this.host.Python, requirements,
+                new Action<string>(this.OnInstallLine), out error);
+            if (!installed)
+            {
+                this.host.Log("dependency install failed: " + error);
+                this.SetStatus("依赖安装失败 / install failed: " + error + "\r\n"
+                    + this.host.RecentLog(8) + "\r\n日志 / log: " + this.host.LogPath);
+                return false;
+            }
+            PythonInfo venv = ServerHost.NewPythonInfo(this.host.VenvPythonPath,
+                this.host.VenvPythonPath + " (repository venv)");
+            List<string> stillMissing = ServerHost.MissingModules(venv);
+            if (stillMissing == null || stillMissing.Count > 0)
+            {
+                string list = stillMissing == null
+                    ? "(probe failed)" : string.Join(", ", stillMissing.ToArray());
+                this.host.Log("packages still missing after install: " + list);
+                this.SetStatus("安装后仍缺依赖 / still missing: " + list
+                    + "\r\n日志 / log: " + this.host.LogPath);
+                return false;
+            }
+            this.host.Python = venv;
+            this.host.Log("dependencies ready; using " + venv.Exe);
+            return true;
+        }
+
+        private void OnInstallLine(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
+            this.host.Log("install> " + line);
+            this.SetStatus("正在安装依赖 / installing dependencies ...\r\n" + line);
         }
 
         private void FinishReady()
         {
             this.ready = true;
-            this.SetStatus("服务已就绪。\r\nserver ready: " + this.host.Url
+            this.SetStatus("服务已就绪。\r\nserver ready: " + this.host.AdvertisedUrlsText()
                 + "\r\n日志 / log: " + this.host.LogPath);
             this.Invoke(new Action(delegate
             {
@@ -737,6 +1138,15 @@ namespace CrisprWorkbench
                     case "--port":
                         options.Port = int.Parse(args[++i], CultureInfo.InvariantCulture);
                         break;
+                    case "--host":
+                        options.Host = args[++i];
+                        break;
+                    case "--install":
+                        options.Install = true;
+                        break;
+                    case "--requirements":
+                        options.Requirements = args[++i];
+                        break;
                     case "--timeout":
                         options.TimeoutSeconds = int.Parse(args[++i], CultureInfo.InvariantCulture);
                         break;
@@ -794,7 +1204,10 @@ namespace CrisprWorkbench
             {
                 MessageBox.Show(
                     "TargetDesign-workbench launcher\r\n\r\n"
-                    + "  --port N        listen port (default 8000)\r\n"
+                    + "  --port N        listen port (default 5000)\r\n"
+                    + "  --host ADDR     bind address (default 0.0.0.0, all interfaces)\r\n"
+                    + "  --install       create .venv + pip install the requirements, then start\r\n"
+                    + "  --requirements P  requirements file (default requirements-windows.txt)\r\n"
                     + "  --timeout S     seconds to wait for the server (default 240)\r\n"
                     + "  --repo PATH     repository root\r\n"
                     + "  --no-browser    do not open a browser\r\n"
@@ -840,13 +1253,15 @@ namespace CrisprWorkbench
             ServerHost host = new ServerHost();
             host.RepoRoot = repoRoot;
             host.Port = options.Port;
+            host.Host = options.Host;
             host.Python = python;
             Directory.CreateDirectory(Path.Combine(repoRoot, "logs"));
             host.LogPath = Path.Combine(repoRoot, "logs",
                 "webapp_launcher_" + DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".log");
-            host.Log("launcher started; repo=" + repoRoot + "; port=" + options.Port);
+            host.Log("launcher started; repo=" + repoRoot + "; host=" + options.Host
+                + "; port=" + options.Port);
 
-            Application.Run(new MainForm(host, options.OpenBrowser));
+            Application.Run(new MainForm(host, options));
             return 0;
         }
 
@@ -857,6 +1272,7 @@ namespace CrisprWorkbench
             if (ServerHost.IsWorkbench(options.Port))
             {
                 report.AppendLine("status: already-running");
+                report.AppendLine("host: " + options.Host);
                 report.AppendLine("url: http://127.0.0.1:" + options.Port + "/");
                 int runningPid = ServerHost.FindPidByPort(options.Port);
                 report.AppendLine("pid: " + runningPid);
@@ -872,13 +1288,71 @@ namespace CrisprWorkbench
             if (python == null)
             {
                 report.AppendLine("status: python-missing");
+                report.AppendLine("searched: CRISPR_WORKBENCH_PYTHON, repo .venv/.venv310, PATH, user installs");
+                report.AppendLine("rejected: "
+                    + (ServerHost.LastRejected != null ? ServerHost.LastRejected.Exe : "(no candidate)"));
+                report.AppendLine("hint: install Python 3, then"
+                    + " 'python -m pip install -r requirements-windows.txt'");
                 WriteCheckFile(options, repoRoot, report.ToString().TrimEnd());
                 return 2;
+            }
+
+            List<string> missing = ServerHost.MissingModules(python);
+            ServerHost installer = new ServerHost();
+            installer.RepoRoot = repoRoot;
+            installer.Port = options.Port;
+            installer.Host = options.Host;
+            installer.Python = python;
+            installer.LogPath = Path.Combine(repoRoot, "logs", "webapp_launcher_check.log");
+            if (options.Install)
+            {
+                string requirements = ServerHost.ResolveRequirements(repoRoot, options.Requirements);
+                Queue<string> tail = new Queue<string>();
+                Action<string> collector = delegate(string line)
+                {
+                    if (string.IsNullOrEmpty(line))
+                    {
+                        return;
+                    }
+                    installer.Log("install> " + line);
+                    tail.Enqueue(line);
+                    while (tail.Count > 5)
+                    {
+                        tail.Dequeue();
+                    }
+                };
+                report.AppendLine("install: " + requirements);
+                string installError;
+                bool installed = installer.InstallDependencies(python, requirements, collector, out installError);
+                report.AppendLine("install result: " + (installed ? "ok" : ("failed: " + installError)));
+                foreach (string line in tail)
+                {
+                    report.AppendLine("  " + line);
+                }
+                if (!installed)
+                {
+                    WriteCheckFile(options, repoRoot, report.ToString().TrimEnd());
+                    return 6;
+                }
+                python = ServerHost.NewPythonInfo(installer.VenvPythonPath,
+                    installer.VenvPythonPath + " (repository venv)");
+            }
+
+            if (missing != null && missing.Count > 0)
+            {
+                report.AppendLine("status: packages-missing");
+                report.AppendLine("python: " + python.Description);
+                report.AppendLine("missing packages: " + string.Join(", ", missing.ToArray()));
+                report.AppendLine("hint: " + python.Exe
+                    + " -m pip install -r requirements-windows.txt");
+                WriteCheckFile(options, repoRoot, report.ToString().TrimEnd());
+                return 5;
             }
 
             ServerHost host = new ServerHost();
             host.RepoRoot = repoRoot;
             host.Port = options.Port;
+            host.Host = options.Host;
             host.Python = python;
             Directory.CreateDirectory(Path.Combine(repoRoot, "logs"));
             host.LogPath = Path.Combine(repoRoot, "logs", "webapp_launcher_check.log");
@@ -896,9 +1370,18 @@ namespace CrisprWorkbench
 
             bool ok = host.WaitUntilReady(TimeSpan.FromSeconds(options.TimeoutSeconds), null);
             report.AppendLine("status: " + (ok ? "ready" : "not-ready"));
+            report.AppendLine("host: " + host.BindAddress);
             report.AppendLine("url: " + host.Url);
+            if (!host.LocalOnly)
+            {
+                foreach (string lanUrl in host.LanUrls())
+                {
+                    report.AppendLine("lan url: " + lanUrl);
+                }
+            }
             report.AppendLine("pid: " + host.Child.Id.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("python: " + python.Description);
+            report.AppendLine("packages: ok (" + string.Join(", ", ServerHost.RequiredModules) + ")");
             report.AppendLine("repo: " + repoRoot);
             report.AppendLine("log: " + host.LogPath);
             if (!ok)

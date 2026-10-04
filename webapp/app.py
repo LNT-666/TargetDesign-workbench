@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Local-only web workbench: Data prep / Models / Designer / Results.
+"""Web workbench: Data prep / Models / Designer / Results.
 
 Run from the repository root:
 
-    python webapp/app.py [--port 8000]
+    python webapp/app.py [--port 5000]
 
-The server binds to 127.0.0.1 only and never exposes the workbench to the
-network. Nothing is re-implemented here: the Designer form, specs, runner
-configs, candidate reading and exports all come from ``shared/`` (through
-``webapp/services/*``), so web results match the desktop and CLI results.
+The server listens on all interfaces (0.0.0.0:5000) by default, so it is
+reachable from other machines on the network; pass ``--host 127.0.0.1`` to
+restrict it to the local machine. Nothing is re-implemented here: the Designer
+form, specs, runner configs, candidate reading and exports all come from
+``shared/`` (through ``webapp/services/*``), so web results match the desktop
+and CLI results.
 """
 
 from __future__ import annotations
@@ -37,8 +39,8 @@ import services.designer as designer  # noqa: E402
 import services.models as models  # noqa: E402
 
 
-HOST = "127.0.0.1"
-DEFAULT_PORT = 8000
+HOST = "0.0.0.0"
+DEFAULT_PORT = 5000
 INDEX_FILE = os.path.join(WEBAPP, "index.html")
 STATIC_DIR = os.path.join(WEBAPP, "static")
 
@@ -461,14 +463,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local-only TargetDesign-workbench")
+        description="TargetDesign-workbench web UI")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--host", default=HOST,
-                        help="Bind address; keep 127.0.0.1 for local use")
+                        help="Bind address; 0.0.0.0 exposes all interfaces")
     args = parser.parse_args()
     set_manager(job_module.JobManager())
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print("Local interface: http://%s:%d" % (args.host, args.port),
+    print("Serving on: http://%s:%d" % (args.host, args.port),
           flush=True)
     try:
         server.serve_forever()
