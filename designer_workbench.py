@@ -34,6 +34,7 @@ from output.candidate_export import (  # noqa: E402
 )
 from utils.log_utils import LogWriter, install_excepthook  # noqa: E402
 from utils import system_memory  # noqa: E402
+from utils.paths import default_output_dir  # noqa: E402
 
 
 class MultiSelectDropdown(ttk.Menubutton):
@@ -365,10 +366,9 @@ class PatternDesignerWorkbench:
         self._add_file_row(common, 0, "bed_regions", "BED Regions")
         self._add_file_row(common, 1, "genome_fasta", "Genome FASTA")
         self._add_file_row(common, 2, "mask_fasta", "Mask FASTA")
-        self._add_dir_row(common, 3, "output_dir", "Output Directory")
-        self._add_file_row(common, 4, "blastdb", "BLAST DB Prefix")
+        self._add_file_row(common, 3, "blastdb", "BLAST DB Prefix")
         self._add_entry_row(
-            common, 5, "result_label", "Result Label",
+            common, 4, "result_label", "Result Label",
             hint="e.g. Cas12f-TTR; blank = auto system-target",
         )
 
@@ -1503,26 +1503,6 @@ class PatternDesignerWorkbench:
         self._row_widgets[key] = (label_widget, entry, button)
         self._row_indices[key] = row
 
-    def _add_dir_row(
-        self,
-        parent: ttk.Frame,
-        row: int,
-        key: str,
-        label: str,
-    ) -> None:
-        ttk.Label(parent, text=label).grid(
-            row=row, column=0, sticky=tk.W, pady=2, padx=(0, 6)
-        )
-        var = tk.StringVar()
-        entry = ttk.Entry(parent, textvariable=var)
-        entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        ttk.Button(
-            parent,
-            text="Browse",
-            command=lambda k=key: self._browse_dir(k),
-        ).grid(row=row, column=2, padx=(4, 0), pady=2)
-        self.vars[key] = var
-
     def _browse_file(self, key: str) -> None:
         path = filedialog.askopenfilename(parent=self.root)
         if path:
@@ -2010,9 +1990,7 @@ class PatternDesignerWorkbench:
                 % config.max_memory_mb)
         else:
             self._log_line("Memory limit: unlimited")
-        output_dir = config.output_dir or self._value("output_dir")
-        if not output_dir:
-            raise ValueError("Output Directory is required")
+        output_dir = config.output_dir or default_output_dir()
         if self._is_bed_mode():
             regions = self._value("bed_regions")
             if not regions:

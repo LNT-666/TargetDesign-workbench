@@ -38,6 +38,7 @@ from design.workbench_form import (  # noqa: E402
     side_preset_updates,
     split_model_selection,
 )
+from utils.paths import default_output_dir  # noqa: E402
 
 
 class FormTestCase(unittest.TestCase):
@@ -115,7 +116,7 @@ class SingleModeTests(FormTestCase):
         config = build_runner_config(state, spec)
         self.assertEqual(config.search_fasta, self.search_fasta)
         self.assertEqual(config.genome_fasta, self.genome_fasta)
-        self.assertEqual(config.output_dir, self.out_dir)
+        self.assertEqual(config.output_dir, default_output_dir())
         self.assertEqual(config.mode, "preset")
         self.assertEqual(config.preset, "cas9")
         self.assertEqual(config.pam_motif, "TTAT")
@@ -227,7 +228,6 @@ class ErrorBranchTests(FormTestCase):
             "mask_fasta": missing,
         }, active_side="target")
         errors = readiness_errors(state)
-        self.assertIn("Output Directory is required", errors)
         self.assertIn("Search FASTA not found: %s" % missing, errors)
         self.assertIn("Genome FASTA not found: %s" % missing, errors)
         self.assertIn("Mask FASTA not found: %s" % missing, errors)
@@ -247,11 +247,6 @@ class ErrorBranchTests(FormTestCase):
         errors = readiness_errors(state)
         self.assertIn("BED Regions not found: %s" % bed, errors)
         self.assertFalse(any("Search FASTA" in error for error in errors))
-
-    def test_output_dir_pointing_at_a_file(self):
-        state = self.single_state(output_dir=self.search_fasta)
-        self.assertIn(
-            "Output Directory is not a directory", readiness_errors(state))
 
     def test_memory_limit_modes(self):
         self.assertEqual(

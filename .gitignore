@@ -28,6 +28,7 @@ __pycache__/
 # ---- Local run artifacts and logs ---------------------------------------
 logs/
 out/
+/output/
 backup/
 *.log
 server_bundle.zip

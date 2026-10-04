@@ -141,17 +141,16 @@ Designer 的三种 pattern 与桌面端一致：
 | `annotation` | 抽屉的注释输入框（主区不显示注释字段，仅记录） |
 | `target_fasta` | 主区 `search_fasta` |
 | `mask_fasta` | 主区 `mask_fasta`（勾选 `skip_mask` 时不回填，留空） |
-| `output_dir` | 主区 `output_dir` |
 | `blastdb` | 主区 `blastdb` |
 | `index_path` | 主区 `index_path`（Run Settings 内） |
 
 - **只填空字段**：值为空则跳过；用户已经手填（主区输入框或抽屉输入框）的字段一律
   不覆盖，不允许静默带参。
 - 回填后就地在公共输入区显示一行提示，例如
-  `已带入 / Loaded: genome_fasta, search_fasta, output_dir`；鼠标悬停可看到具体
+  `已带入 / Loaded: genome_fasta, search_fasta`；鼠标悬停可看到具体
   路径，被跳过的字段以 `· kept your values: …` 标出。
 - 字段对应关系与判定逻辑只有一份实现（`webapp/static/app.js` 的
-  `backfillPlan()`）；手填的 `output_dir` 不会被回填值覆盖。
+  `backfillPlan()`）。
 ## 作业模型
 
 - 作业目录：`webapp/jobs/<job_id>/`（`job_id` 形如 `^[a-z0-9-]{12}$`），包含
@@ -231,7 +230,6 @@ Designer 的三种 pattern 与桌面端一致：
 | `bed_regions` | `bed` | Common Inputs（BED 模式） |
 | `genome_fasta` | `fasta` | Common Inputs |
 | `mask_fasta` | `fasta` | Common Inputs |
-| `output_dir` | `dir` | Common Inputs |
 | `blastdb` | `db` | Common Inputs |
 | `index_path` | `index` | Run Settings |
 | `dp-download-output` | `dir` | Data prep 抽屉 |

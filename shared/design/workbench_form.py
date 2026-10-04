@@ -28,6 +28,7 @@ from scoring.scoring import (
     model_choices_for_preset,
 )
 from utils import system_memory
+from utils.paths import default_output_dir
 
 
 PRESET_KEYS = [key for key, _ in preset_choices()]
@@ -304,7 +305,8 @@ def prepare_genome_fasta(state: WorkbenchFormState) -> str:
     """Return a plain-text Genome FASTA path (accepts ``.fna.gz`` input).
 
     Non-gzip input is returned unchanged; gzip input is decompressed next to
-    its source (or into ``output_dir``) and reused while it stays current.
+    its source (or into the fixed output directory) and reused while it stays
+    current.
     """
     raw = state.value("genome_fasta").strip()
     if not raw:
@@ -312,7 +314,7 @@ def prepare_genome_fasta(state: WorkbenchFormState) -> str:
     prepared = ensure_plain_fasta(
         raw,
         log_func=state.log,
-        fallback_dir=state.value("output_dir").strip() or None,
+        fallback_dir=default_output_dir(),
     )
     if not prepared:
         raise ValueError("Genome FASTA could not be prepared: %s" % raw)
@@ -517,7 +519,7 @@ def build_runner_config(
         ),
         genome_fasta=prepare_genome_fasta(state),
         mask_fasta=state.value("mask_fasta"),
-        output_dir=state.value("output_dir"),
+        output_dir=default_output_dir(),
         blastdb=state.value("blastdb"),
         run_label=(
             state.value("result_label", "").strip()
@@ -574,12 +576,6 @@ def build_runner_config(
 
 def readiness_errors(state: WorkbenchFormState) -> List[str]:
     errors: List[str] = []
-    output_dir = state.value("output_dir")
-    if not output_dir:
-        errors.append("Output Directory is required")
-    elif os.path.exists(output_dir) and not os.path.isdir(output_dir):
-        errors.append("Output Directory is not a directory")
-
     if state.is_bed_mode():
         regions = state.value("bed_regions")
         if not regions:

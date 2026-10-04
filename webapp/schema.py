@@ -70,7 +70,6 @@ COMMON_FIELDS = [
            hint="A .fna.gz path is decompressed next to the file"),
     _field("mask_fasta", "Mask FASTA", type="file", kind="fasta",
            hint="optional"),
-    _field("output_dir", "Output Directory", type="dir", kind="dir"),
     _field("blastdb", "BLAST DB Prefix", type="file", kind="db",
            hint="optional"),
     _field("result_label", "Result Label",

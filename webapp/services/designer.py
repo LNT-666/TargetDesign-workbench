@@ -43,6 +43,7 @@ from output.candidate_export import (  # noqa: E402
     export_selected,
 )
 from utils import system_memory  # noqa: E402
+from utils.paths import default_output_dir  # noqa: E402
 
 
 HIDDEN_COLUMNS = tuple(schema.HIDDEN_CANDIDATE_COLUMNS)
@@ -197,7 +198,7 @@ def extract_reader(payload: Dict[str, Any]) -> PatternRunner:
     state = state_from_payload(payload)
     spec = build_pattern_spec(state)
     spec.validate()
-    return PatternRunner(spec, RunnerConfig(output_dir=state.value("output_dir")))
+    return PatternRunner(spec, RunnerConfig(output_dir=default_output_dir()))
 
 def _memory_log_line(config) -> Optional[str]:
     if config.max_memory_mode == "auto":

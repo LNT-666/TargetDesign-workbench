@@ -398,7 +398,6 @@ const OUTPUT_FIELD_MAP = {
   genome_fasta: 'genome_fasta',
   target_fasta: 'search_fasta',
   mask_fasta: 'mask_fasta',
-  output_dir: 'output_dir',
   blastdb: 'blastdb',
   index_path: 'index_path',
   search_fasta: 'search_fasta',

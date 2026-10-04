@@ -61,7 +61,6 @@ class DesignerWorkbenchTests(unittest.TestCase):
             self.assertEqual(app.input_mode_var.get(), "bed")
             app.vars["bed_regions"].set("my.bed")
             app.vars["genome_fasta"].set("genome.fa")
-            app.vars["output_dir"].set(tempfile.mkdtemp())
             # Fill the pattern fields so the runner spec validates.
             app.vars["motif"].set("GGG")
             app.vars["flank"].set("5")
@@ -419,7 +418,6 @@ class DesignerWorkbenchTests(unittest.TestCase):
                 handle.write(">t\nACGT\n")
             with open(genome, "w", encoding="utf-8") as handle:
                 handle.write(">g\nACGT\n")
-            self.app.vars["output_dir"].set(tmp)
             self.app.vars["search_fasta"].set(search)
             self.app.vars["genome_fasta"].set(genome)
             self.app._refresh_preview()
@@ -445,7 +443,6 @@ class DesignerWorkbenchTests(unittest.TestCase):
                 handle.write(">t\nACGT\n")
             with open(genome, "w", encoding="utf-8") as handle:
                 handle.write(">g\nACGT\n")
-            self.app.vars["output_dir"].set(tmp)
             self.app.vars["search_fasta"].set(search)
             self.app.vars["genome_fasta"].set(genome)
             self.app.side_preset_vars["target"].set("cas9")

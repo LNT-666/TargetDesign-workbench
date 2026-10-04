@@ -32,6 +32,7 @@ import services.dataprep as dataprep  # noqa: E402
 import services.designer as designer  # noqa: E402
 import services.models as models_service  # noqa: E402
 from design.pattern_spec import PatternKind  # noqa: E402
+from utils.paths import default_output_dir  # noqa: E402
 
 
 def write_file(path, text):
@@ -268,7 +269,7 @@ class SchemaTests(unittest.TestCase):
             self.assertIn("kind", field, field["key"])
             self.assertIn(field["kind"], schema_module.FS_KINDS, field["key"])
         self.assertEqual(seen, {"search_fasta", "bed_regions", "genome_fasta",
-                                "mask_fasta", "output_dir", "blastdb",
+                                "mask_fasta", "blastdb",
                                 "index_path"})
 
 
@@ -300,7 +301,7 @@ class DesignerServiceTests(DesignerFormTestCase):
     def test_preview_reports_missing_inputs(self):
         result = designer.preview({})
         self.assertEqual(result["describe"], "")
-        self.assertIn("Output Directory is required", result["errors"])
+        self.assertIn("Search FASTA is required", result["errors"])
         self.assertEqual(result["mode"], "single_motif_flank")
 
     def test_preview_describes_a_valid_pattern(self):
@@ -322,7 +323,7 @@ class DesignerServiceTests(DesignerFormTestCase):
 
     def test_build_runner_matches_the_shared_form_layer(self):
         runner = designer.build_runner(self.payload())
-        self.assertEqual(runner.config.output_dir, self.output_dir)
+        self.assertEqual(runner.config.output_dir, default_output_dir())
         self.assertEqual(runner.config.search_fasta, self.search_fasta)
         self.assertEqual(runner.config.mode, "preset")
 
@@ -340,7 +341,7 @@ class DesignerServiceTests(DesignerFormTestCase):
         manager = mock.Mock()
         with self.assertRaises(ValueError) as caught:
             designer.submit({"stage": "find"}, manager)
-        self.assertIn("Output Directory is required", str(caught.exception))
+        self.assertIn("Search FASTA is required", str(caught.exception))
         manager.create_job.assert_not_called()
 
     def test_submit_find_queues_one_job(self):
@@ -834,7 +835,7 @@ class HandlerRouteTests(JobManagerTestCase):
         calls = self.call("/api/designer/jobs", method="POST",
                           body={"stage": "find", "values": {}})
         self.assertEqual(calls[0][1], 400)
-        self.assertIn("Output Directory is required", calls[0][2]["error"])
+        self.assertIn("Search FASTA is required", calls[0][2]["error"])
         manager.create_job.assert_not_called()
 
     def test_post_job_cancel_and_export(self):
