@@ -1,0 +1,11 @@
+services:
+  web:
+    build:
+      context: .
+      target: core        # use "full" for the optional adapters
+    image: targetdesign-workbench:0.1.0
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - ./data:/data      # genomes, indexes and exported runs
+    restart: unless-stopped

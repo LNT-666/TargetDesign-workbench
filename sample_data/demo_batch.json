@@ -1,0 +1,43 @@
+{
+  "batch_label": "sample-batch",
+  "shared": {
+    "genome_fasta": "sample_data/demo_genome.fa",
+    "nuclease": "cas9",
+    "pam_mode": "custom",
+    "engine": "auto",
+    "index_path": "",
+    "max_mismatch": 3,
+    "memory_mode": "auto",
+    "gc_min": 40,
+    "gc_max": 70
+  },
+  "scopes": [
+    {
+      "scope_id": "demo",
+      "search_fasta": "sample_data/demo_genome.fa",
+      "mask_same_as_target": true
+    }
+  ],
+  "patterns": [
+    {
+      "pattern_id": "NGG",
+      "mode": "single_motif_flank",
+      "overlay": {
+        "motif": "NGG",
+        "flank": 20,
+        "side": "downstream"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "group_id": "G1",
+      "scope_ids": [
+        "demo"
+      ],
+      "pattern_ids": [
+        "NGG"
+      ]
+    }
+  ]
+}

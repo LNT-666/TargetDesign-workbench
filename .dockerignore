@@ -1,0 +1,32 @@
+# version control, local environments, caches
+.git
+.gitignore
+.gitattributes
+.venv/
+.venv310/
+basic/.venv/
+__pycache__/
+*.pyc
+
+# large local data: never part of the image
+example/chr21_22.fa
+example/chr21_22.fa.fai
+example/GCF_000001405.40_GRCh38.p14_genomic.fna
+example/GCF_000001405.40_GRCh38.p14_genomic.fna.fai
+example/GCF_000001405.40_GRCh38.p14_genomic.gff
+example/engine_benchmark/run_blast/
+scy-test/
+genome_index/
+models/
+external_tools/
+logs/
+out/
+output/
+backup/
+webapp/jobs/
+
+# build products and internal notes
+native/build*/
+native/bin/
+*.exe
+docs/SSH_ACCESS.md

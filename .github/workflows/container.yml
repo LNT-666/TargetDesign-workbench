@@ -1,0 +1,133 @@
+name: container
+
+# Builds the stand-alone application container, smoke-tests it, and publishes it to
+# ghcr.io. This runs on GitHub's runners, so no local Docker installation is needed.
+#
+#   - manual run: Actions -> container -> Run workflow (set version / whether to build the
+#     full target / whether to publish)
+#   - tag run:    push a tag like v0.1.0 and the version is taken from the tag
+#
+# Images produced:
+#   ghcr.io/<owner>/targetdesign-workbench:<version>         default image (core target)
+#   ghcr.io/<owner>/targetdesign-workbench:latest
+#   ghcr.io/<owner>/targetdesign-workbench:<version>-full    adds ViennaRNA, Cas-OFFinder,
+#                                                            R + NuPoP and a CPU PyTorch build
+#
+# The images are built by the repository, and their visibility follows the repository:
+# while the repository is private the packages are private too, so a reviewer cannot pull
+# them until the package visibility is changed to public (see docs/CONTAINER.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image version tag"
+        required: true
+        default: "0.1.0"
+      build_full:
+        description: "Also build the full target (ViennaRNA, Cas-OFFinder, R + NuPoP, CPU torch)"
+        type: boolean
+        default: true
+      publish:
+        description: "Push the verified images to ghcr.io"
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Resolve the image reference and the version
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the default image locally
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: core
+          load: true
+          tags: tdb-core:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the default image
+        run: |
+          set -euo pipefail
+          docker run -d --name tdb-core -p 127.0.0.1:5000:5000 tdb-core:ci
+          code=""
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/ || true)
+            if [ "$code" = "200" ]; then
+              echo "web workbench answered HTTP 200 on attempt ${attempt}"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$code" != "200" ]; then
+            echo "::error::web workbench did not answer HTTP 200 (last code: ${code})"
+            docker logs tdb-core || true
+            exit 1
+          fi
+          echo "static assets:"
+          curl -s -o /dev/null -w '  /static/styles.css -> %{http_code}\n' http://127.0.0.1:5000/static/styles.css
+          curl -s -o /dev/null -w '  /static/app.js     -> %{http_code}\n' http://127.0.0.1:5000/static/app.js
+          echo "native engine:"
+          docker exec -w /app tdb-core native/bin/offtarget-engine --version
+          echo "sample data dry run:"
+          docker exec -w /app tdb-core python tools/batch_run.py --spec sample_data/demo_batch.json --dry-run
+          echo "server log:"
+          docker logs tdb-core | tail -5
+          docker rm -f tdb-core
+
+      - name: Log in to ghcr.io
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the default image
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: core
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+
+      - name: Build and publish the full image
+        if: ${{ github.event_name == 'push' || inputs.build_full }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: full
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}-full
+          cache-from: type=gha
+
+      - name: Summarise the images
+        run: |
+          docker images --format '{{.Repository}}:{{.Tag}}  {{.Size}}' | grep -E 'tdb-core|ghcr' || true
