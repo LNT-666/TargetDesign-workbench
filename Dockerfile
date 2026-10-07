@@ -46,8 +46,14 @@ RUN apt-get update \
  && python -m pip install --upgrade pip
 WORKDIR /app
 COPY requirements.txt ./
-RUN python -m pip install -r requirements.txt \
- && python -m pip install "pandas>=1.3" "scipy>=1.10" "scikit-learn>=1.0" "matplotlib>=3.5"
+# requirements.txt is the complete runtime set of the workbench. The imports are
+# derived from the source by tools/dep_scan.py, which fails if a hard import is
+# missing from the requirement files, so this layer cannot drift from the code.
+# The desktop extras (pandas, scipy, scikit-learn, matplotlib) are deliberately
+# not installed here: no shipped module imports scipy/scikit-learn/matplotlib,
+# and pandas is only used by the TIGER scorer, which needs TensorFlow and is
+# therefore not usable in this image either.
+RUN python -m pip install -r requirements.txt
 COPY . .
 COPY --from=engine-build /src/native/bin/offtarget-engine /app/native/bin/offtarget-engine
 RUN chmod +x /app/native/bin/offtarget-engine \

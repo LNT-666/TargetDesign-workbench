@@ -56,6 +56,14 @@ jobs:
             echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
           fi
 
+      - name: Check the requirements against the imports
+        run: |
+          set -euo pipefail
+          # Static scan: fails if a hard import is undeclared, or if a module of
+          # this program is imported but not tracked by git - the two ways a clone
+          # can differ from a working copy (see tools/dep_scan.py).
+          python3 tools/dep_scan.py --check
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
