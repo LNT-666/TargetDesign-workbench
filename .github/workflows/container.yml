@@ -69,6 +69,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Check the image can import the workbench modules
+        run: |
+          set -euo pipefail
+          # Fails in a few seconds with the missing module name instead of a 60 s
+          # HTTP timeout; this is how the absent shared/output package first showed up.
+          docker run --rm --entrypoint python tdb-core:ci -c "import sys; sys.path[:0] = ['/app/shared', '/app/webapp']; import jobs, schema, services.batch, services.dataprep, services.designer, services.models; import output.candidate_export, output.output_columns, output.xlsx_utils; print('workbench modules import cleanly')"
+
       - name: Smoke test the default image
         run: |
           set -euo pipefail

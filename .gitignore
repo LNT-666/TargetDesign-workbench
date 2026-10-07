@@ -35,7 +35,9 @@ server_bundle.zip
 workspace.json
 basic/out/
 shared/logs/
-shared/output/
+# shared/output/ must NOT be ignored: it is a source package
+# (candidate_export, output_columns, xlsx_utils) imported by webapp/schema.py,
+# designer_workbench.py, basic/* and tests/. Only /output/ is a run directory.
 webapp/jobs/
 _srv.*.txt
 _probe_*.js
