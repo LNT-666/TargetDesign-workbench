@@ -5,6 +5,11 @@
 import os
 from collections import defaultdict
 
+try:
+    from data.annotation_utils import open_annotation_text
+except ImportError:  # pragma: no cover - direct script execution
+    from annotation_utils import open_annotation_text
+
 
 GENE_TYPES = {"gene", "pseudogene", "ncRNA_gene", "rRNA_gene", "tRNA_gene"}
 TRANSCRIPT_TYPES = {
@@ -91,6 +96,9 @@ class AnnotationIndex:
     def __init__(self):
         self.features = defaultdict(list)
         self.tss = defaultdict(list)
+        #: Sequence ids the annotation file actually describes.  A query on any
+        #: other id is unknown, not intergenic.
+        self.seqids = set()
         self.genes = []
         self.transcripts = []
         self._gene_id_to_idx = {}
@@ -139,14 +147,20 @@ def build_annotation_index(gff_path):
         return None
 
     index = AnnotationIndex()
-    with open(gff_path, "r", encoding="utf-8", errors="replace") as handle:
+    with open_annotation_text(gff_path) as handle:
         for line in handle:
+            if line.startswith("##sequence-region"):
+                tokens = line.split()
+                if len(tokens) >= 2:
+                    index.seqids.add(tokens[1])
+                continue
             if line.startswith("#") or not line.strip():
                 continue
             parts = line.rstrip("\n").split("\t")
             if len(parts) < 9:
                 continue
             seqid, ftype = parts[0], parts[2]
+            index.seqids.add(seqid)
             try:
                 start, end = int(parts[3]), int(parts[4])
             except ValueError:
@@ -245,6 +259,11 @@ _FEATURE_PRIORITY = {
 def annotate_interval(index, chrom, start0, end0):
     """Annotate a 0-based half-open interval, returning a dict."""
     if index is None or start0 >= end0:
+        return None
+    if index.seqids and chrom not in index.seqids:
+        # The interval sits on a sequence the annotation never described (for
+        # example a custom target FASTA).  Reporting "intergenic" here would be
+        # a lie, so leave the annotation columns blank instead.
         return None
     query_start = start0 + 1
     query_end = end0
