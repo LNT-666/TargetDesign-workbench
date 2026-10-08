@@ -1,0 +1,2 @@
+unit_id	scope_id	pattern_id	status	returncode	started	finished	unit_dir	main_table	message
+demo__NGG	demo	NGG	ok	0	2026-10-07 20:12:08	2026-10-07 20:15:57	demo__NGG	demo__NGG/query_scores_sorted.tsv	

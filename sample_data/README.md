@@ -39,7 +39,7 @@ Measured on a Linux host (256 cores) with `sample_data/demo_batch.json`, one uni
 
 | Quantity | Value |
 | --- | --- |
-| Extracted candidates (`extracted_seqs.tsv`) | 604,376 |
+| Extracted candidates (`extracted_seqs.tsv`) | 604,375 |
 | Scored rows (`query_scores_sorted.tsv`) | 623,743 |
 | Wall clock | 3 min 49 s |
 | Manifest status | `ok`, return code 0 |

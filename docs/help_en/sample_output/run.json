@@ -1,0 +1,10 @@
+{
+  "run_id": "0514",
+  "day": "20261007",
+  "label": "20261007-0514",
+  "batch_label": "sample-batch",
+  "created": "2026-10-07 20:12:08",
+  "unit_count": 1,
+  "resume": true,
+  "source": "sample_data/demo_batch.json"
+}
