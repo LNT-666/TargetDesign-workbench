@@ -14,7 +14,6 @@ Usage
 Grid sweep (16 configurations, C3):
 
     python tools/seed_plan_sweep.py \
-        --engine-exe native/bin/offtarget-engine.exe \
         --genome example/engine_benchmark_small/synthetic_genome.fa \
         --guides example/engine_benchmark_small/guides.tsv \
         --out docs/seed_plan_sweep.json --repeats 3
@@ -26,9 +25,11 @@ Plan / W(s) table (C5):
 Determinism probe (C4, fixed M=2, B=0, k=10):
 
     python tools/seed_plan_sweep.py \
-        --engine-exe native/bin/offtarget-engine.exe \
         --genome example/engine_benchmark_small/synthetic_genome.fa \
         --guides example/engine_benchmark_small/guides.tsv --determinism
+
+The engine defaults to the bundled build for this platform (``native/bin/``
+with or without ``.exe``); pass ``--engine-exe`` to drive another one.
 """
 
 from __future__ import annotations
@@ -56,6 +57,41 @@ DEFAULT_DET_BULGE = 0                   # C4
 DEFAULT_DET_K = 10                      # C4
 DEFAULT_DET_THREADS = (1, 4, 8, 32)     # C4
 HIT_TAG = '"type":"hit"'                # C4
+
+# native/bin/ is a build artifact (gitignored) and the bundle ships a build for
+# each platform, so the default is the one this platform can execute.
+DEFAULT_ENGINE_EXE = ("native/bin/offtarget-engine.exe" if os.name == "nt"
+                      else "native/bin/offtarget-engine")
+
+
+def resolve_engine_exe(value: str) -> str:
+    """Return the engine path, or exit with a message that says what is wrong."""
+    path = Path(value).expanduser()
+    if not path.is_file():
+        raise SystemExit(
+            "engine executable not found: %s\n"
+            "Build it from native/ (CMakeLists.txt or the Dockerfile) or pass "
+            "--engine-exe <path>; the bundled build for this platform is %s."
+            % (path, DEFAULT_ENGINE_EXE))
+    if os.name == "nt":
+        with open(path, "rb") as handle:
+            if handle.read(4) == b"\x7fELF":
+                raise SystemExit(
+                    "%s is a POSIX build (ELF); this platform needs the "
+                    "Windows build, e.g. --engine-exe "
+                    "native/bin/offtarget-engine.exe" % path)
+    else:
+        if not os.access(str(path), os.X_OK):
+            raise SystemExit(
+                "engine executable is not runnable: %s (chmod +x it, or pass "
+                "--engine-exe <path>)" % path)
+        with open(path, "rb") as handle:
+            if handle.read(2) == b"MZ":
+                raise SystemExit(
+                    "%s is a Windows build (PE); this platform needs the POSIX "
+                    "build, e.g. --engine-exe native/bin/offtarget-engine" % path)
+    return str(path.resolve())
+
 
 # --- C5: Python transcription of seed_plan.cpp -----------------------------
 
@@ -299,7 +335,7 @@ def sha256_of_hits(hit_lines: list[str]) -> str:
 
 
 def run_sweep(args) -> int:
-    exe = str(Path(args.engine_exe).resolve())
+    exe = resolve_engine_exe(args.engine_exe)
     genome = Path(args.genome).resolve()
     guides = Path(args.guides).resolve()
     out_path = Path(args.out)
@@ -460,7 +496,7 @@ def run_plan_table(args) -> int:
 
 
 def run_determinism(args) -> int:
-    exe = str(Path(args.engine_exe).resolve())
+    exe = resolve_engine_exe(args.engine_exe)
     genome = Path(args.genome).resolve()
     guides = Path(args.guides).resolve()
     k = args.det_k
@@ -522,8 +558,9 @@ def parse_csv(value: str, cast):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--engine-exe", default="native/bin/offtarget-engine.exe",
-                        help="path to the native engine executable")
+    parser.add_argument("--engine-exe", default=DEFAULT_ENGINE_EXE,
+                        help="path to the native engine executable "
+                             "(default: the bundled build for this platform)")
     parser.add_argument("--genome", default="example/engine_benchmark_small/synthetic_genome.fa")
     parser.add_argument("--guides", default="example/engine_benchmark_small/guides.tsv")
     parser.add_argument("--out", default="docs/seed_plan_sweep.json",

@@ -127,7 +127,22 @@ def main():
     checkpoint = os.path.join(root, args.checkpoint)
     output_path = os.path.join(root, args.output)
 
-    import tensorflow as tf
+    try:
+        import tensorflow as tf
+    except ImportError:
+        raise SystemExit(
+            "TensorFlow is required: the checkpoint reader and the reference "
+            "forward pass both come from it. Install it in a separate "
+            "environment (the docstring above uses Python 3.10 with "
+            "tensorflow==2.10.0) and run this script there.")
+    if not any(os.path.isfile(candidate) for candidate in (
+            checkpoint, checkpoint + ".index", checkpoint + ".meta")):
+        raise SystemExit(
+            "TensorFlow checkpoint not found: %s\n"
+            "Looked for that prefix and for %s.index / %s.meta. Pass "
+            "--checkpoint <prefix>; the model shipped with this repository is "
+            "models/offtar_pt_cnn_reg/model.ckpt-ptreg."
+            % (checkpoint, checkpoint, checkpoint))
     reader = tf.compat.v1.train.NewCheckpointReader(checkpoint)
     weights = read_checkpoint(reader, output_path)
 

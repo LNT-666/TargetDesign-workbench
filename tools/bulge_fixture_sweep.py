@@ -26,7 +26,6 @@ that both scripts share one transcription of ``seed_plan.cpp``.
 Usage
 -----
     python tools/bulge_fixture_sweep.py \
-        --engine-exe native/bin/offtarget-engine.exe \
         --out-dir example/engine_benchmark_bulge \
         --json docs/bulge_fixture_sweep.json
 
@@ -136,7 +135,13 @@ def build_fixture(seed: int, contigs: int, contig_bases: int,
         target, mismatches, bulges = build_target(guide, kind)
         planted = target if strand == "+" else reverse_complement(target)
         sequence = sequences[contig_index]
-        assert offset + len(planted) <= len(sequence), "plant runs off contig"
+        if offset + len(planted) > len(sequence):
+            raise SystemExit(
+                "fixture does not fit: plant %d (%s) needs %d bp from offset "
+                "%d but each contig has %d bp; raise --contig-bases (the "
+                "default is %d) or --contigs"
+                % (index, kind, len(planted), offset, len(sequence),
+                   DEFAULT_CONTIG_BASES))
         sequences[contig_index] = (sequence[:offset] + planted
                                    + sequence[offset + len(planted):])
         plants.append({
@@ -357,7 +362,7 @@ def evaluate_plants(plants: list[dict], hits: list[dict], max_mismatch: int,
 
 
 def run_sweep(args) -> int:
-    exe = str(Path(args.engine_exe).resolve())
+    exe = sps.resolve_engine_exe(args.engine_exe)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -558,8 +563,9 @@ def main(argv=None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--engine-exe",
-                        default="native/bin/offtarget-engine.exe",
-                        help="path to the native engine executable")
+                        default=sps.DEFAULT_ENGINE_EXE,
+                        help="path to the native engine executable "
+                             "(default: the bundled build for this platform)")
     parser.add_argument("--out-dir", default="example/engine_benchmark_bulge",
                         help="fixture and run outputs")
     parser.add_argument("--json", default="docs/bulge_fixture_sweep.json",
