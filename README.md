@@ -100,6 +100,12 @@ Linux/macOS 使用 `requirements.txt`，并按需安装 BLAST+。
 .\.venv\Scripts\python.exe webapp\app.py
 ```
 
+Linux/macOS 想让它常驻后台、并用一条命令重启（详见 `docs/WEBAPP.md`）：
+
+```bash
+bash tools/serve_webapp.sh start     # 默认 0.0.0.0:5000；restart / stop / status 同理
+```
+
 ## 命令行示例
 
 基础 motif 提取和搜索：

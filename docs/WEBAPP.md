@@ -37,6 +37,21 @@ python webapp\app.py --host 127.0.0.1
 python webapp\app.py --port 8765
 ```
 
+后台常驻与重启（Linux/macOS）：
+
+```bash
+bash tools/serve_webapp.sh start     # 默认 0.0.0.0:5000；等首页返回 200 才报成功
+bash tools/serve_webapp.sh status    # PID、占用端口的进程、HTTP 状态码、日志路径
+bash tools/serve_webapp.sh restart   # 改完代码后换上新代码
+bash tools/serve_webapp.sh stop
+```
+
+脚本用 `nohup` 起后台进程，PID 写进 `logs/webapp.pid`，输出追加到
+`logs/webapp.log`（`logs/` 在 `.gitignore` 内，不进仓库）。`stop`/`restart` 会先结束
+**当前占用该端口的进程**：手工 `nohup` 起的老进程没有 PID 文件也能停掉，否则端口被
+旧进程占着、新代码会静默不生效。`--host` / `--port` 覆盖默认值，
+`PYTHON=/path/to/python` 指定解释器，`WEBAPP_WAIT_SECONDS` 调整启动等待上限。
+
 页面静态资源来自 `webapp/index.html` + `webapp/static/app.js` +
 `webapp/static/styles.css`（LF、无 BOM、无外链）；只有 `app.js` 与`styles.css` 这两个文件名在服务端白名单内。
 
