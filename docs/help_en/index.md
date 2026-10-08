@@ -41,8 +41,8 @@ Requirements: Docker Engine 24 or newer (or Podman with the equivalent
 `build`/`run` commands) and about 4 GB of free disk space.
 
 ```bash
-docker build -t targetdesign-workbench:0.1.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.1.0
+docker build -t targetdesign-workbench:0.2.0 .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.2.0
 ```
 
 Then open <http://localhost:5000>. The port is published on the loopback

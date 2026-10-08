@@ -6,7 +6,8 @@ The staging tree lives OUTSIDE the working repository, so the development tree i
 never modified: the script only reads from the repository and writes copies to
 ``--out`` (default ``<repo parent>/upload``).
 
-    python tools/build_release_stage.py                 # rebuild the stage (manuscript v4)
+    python tools/build_release_stage.py                 # rebuild the stage (manuscript short)
+    python tools/build_release_stage.py --version v4    # stage the long archival manuscript
     python tools/build_release_stage.py --version v1    # stage the previous manuscript
     python tools/build_release_stage.py --check-only    # leak-scan an existing stage
     python tools/build_release_stage.py --no-clean      # keep existing subdirs
@@ -39,16 +40,27 @@ DEFAULT_OUT = REPO.parent / "upload"
 ZIP_NAME = "TargetDesign-workbench_supplementary.zip"
 ZIP_STAMP = (2026, 9, 23, 0, 0, 0)
 
-VERSIONS = ("v1", "v2", "v4")
-DEFAULT_VERSION = "v4"
+VERSIONS = ("v1", "v2", "v4", "short")
+#: "short" (SUBMISSION_SHORT_v1) is the Web Server Issue submission; v4 is the long
+#: archival version, so the default stage follows the submission.
+DEFAULT_VERSION = "short"
+#: Manuscript stem per version, mirroring docs/submission/build_submission_docx.py.
+STEM = {
+    "v1": "SUBMISSION_MAIN_v1",
+    "v2": "SUBMISSION_MAIN_v2",
+    "v4": "SUBMISSION_MAIN_v4",
+    "short": "SUBMISSION_SHORT_v1",
+}
 
 
 def submission_files(version: str) -> list:
     """Journal-submission files for one manuscript version."""
+    stem = STEM[version]
     return [
-        f"docs/submission/SUBMISSION_MAIN_{version}.docx",
-        f"docs/submission/SUBMISSION_MAIN_{version}.md",
+        f"docs/submission/{stem}.docx",
+        f"docs/submission/{stem}.md",
         "docs/submission/SUPPLEMENTARY_v1.md",
+        "docs/submission/SUPPLEMENTARY_v1.pdf",
     ]
 SUBMISSION_FIGURES = [
     *(f"docs/figures/fig{i}_{slug}_v1.{ext}"
@@ -59,6 +71,19 @@ SUBMISSION_FIGURES = [
     "docs/figures/graphical_abstract.pdf",
     "docs/figures/graphical_abstract.png",
 ]
+#: The short paper drops the two engine-internals figures and numbers the art that
+#: remains in the order the text cites it, mirroring SHORT_FIGURES in
+#: docs/submission/build_submission_docx.py.
+SUBMISSION_FIGURES_SHORT = [
+    *(f"docs/figures/{name}.{ext}"
+      for name in ("fig1_architecture_v1", "fig2_layouts_v1", "fig3_interface_v1",
+                   "fig4_output_table_v1", "fig5_capability_matrix_v1",
+                   "fig6_thread_scaling_v1")
+      for ext in ("pdf", "png")),
+    "docs/figures/graphical_abstract.pdf",
+    "docs/figures/graphical_abstract.png",
+]
+SUBMISSION_FIGURES_BY_VERSION = {"short": SUBMISSION_FIGURES_SHORT}
 SUPPLEMENTARY_DATA = [
     ("native/bin/offtarget-engine.exe", "bin/offtarget-engine.exe"),
     ("native/bin/offtarget-engine", "bin/offtarget-engine"),
@@ -239,7 +264,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--version", choices=VERSIONS, default=DEFAULT_VERSION,
-                    help="manuscript version to stage (default: %(default)s)")
+                    help="manuscript version to stage (default: %(default)s; short = Web Server Issue submission)")
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--no-clean", action="store_true")
     args = ap.parse_args()
@@ -270,7 +295,7 @@ def main() -> int:
 
     for rel in submission_files(args.version):
         copy_file(REPO / rel, stage / "submission" / Path(rel).name, rows)
-    for rel in SUBMISSION_FIGURES:
+    for rel in SUBMISSION_FIGURES_BY_VERSION.get(args.version, SUBMISSION_FIGURES):
         copy_file(REPO / rel, stage / "submission" / "figures" / Path(rel).name, rows)
     for rel, dest in SUPPLEMENTARY_DATA:
         copy_file(REPO / rel, stage / "supplementary-data" / dest, rows)
@@ -287,7 +312,8 @@ def main() -> int:
                   *(f"{rel}  (untracked before the release)" for rel in RELEASE_SET if rel != ".gitignore")]
     (stage / "repo" / "RELEASE_FILE_LIST.txt").write_text("\n".join(list_lines) + "\n", encoding="utf-8", newline="")
 
-    main_md = (REPO / f"docs/submission/SUBMISSION_MAIN_{args.version}.md").read_text(encoding="utf-8")
+    stem = STEM[args.version]
+    main_md = (REPO / f"docs/submission/{stem}.md").read_text(encoding="utf-8")
     placeholders = len(re.findall(r"\[TO FILL", main_md))
     placeholder_lines = sum(1 for line in main_md.splitlines() if "[TO FILL" in line)
     hits = scan(stage, local)
@@ -295,14 +321,17 @@ def main() -> int:
     manifest = [
         "# Upload staging tree", "",
         f"- built from the working repository (read-only source), paths below are repository-relative",
-        f"- journal submission bundle: `submission/` (manuscript `SUBMISSION_MAIN_{args.version}`)",
+        f"- journal submission bundle: `submission/` (manuscript `{stem}`)",
         f"- supplementary data bundle: `supplementary-data/` (zip: `{ZIP_NAME}`, {zip_bytes:,} B)",
         f"- public release set: `repo/` (12 evidence items + `.gitignore` + `RELEASE_FILE_LIST.txt`)",
         f"- files staged: {len(rows)}", "",
         "## Pending before upload", "",
-        f"- `SUPPLEMENTARY_v1.md` must still be exported to PDF (NAR: supplementary data preferably PDF).",
+        "- `SUPPLEMENTARY_v1.pdf` is the supplementary file to upload (NAR: supplementary"
+        " data preferably PDF); `SUPPLEMENTARY_v1.md` is its source.",
         f"- `[TO FILL]` placeholders still present in the manuscript: {placeholders} occurrence(s) on {placeholder_lines} line(s).",
-        "- `submission/figures/` carries PDF (print) and PNG (preview); check the journal's figure format list before uploading.",
+        "- `submission/figures/` carries PDF (print) and PNG (preview), numbered in the"
+        " order the text cites them; the artwork-format check is recorded in"
+        " `docs/NAR_FORMAT_CHECKLIST.md` section 6.",
         "- `repo/.gitignore` is the working copy with the lines naming local-only tooling removed;"
         " the development copy is unchanged.",
         "", "## Leak scan (pre-upload gate)", "",
@@ -321,7 +350,7 @@ def main() -> int:
     (stage / "MANIFEST.md").write_text("\n".join(manifest) + "\n", encoding="utf-8", newline="")
 
     print(f"stage: {stage}")
-    print(f"manuscript: SUBMISSION_MAIN_{args.version}.md")
+    print(f"manuscript: {stem}.md")
     print(f"files staged: {len(rows)}  zip: {zip_bytes:,} B")
     print(f"leak hits: {len(hits)}")
     for path, label, count, sample in hits:

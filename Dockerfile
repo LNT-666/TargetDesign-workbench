@@ -2,10 +2,10 @@
 #
 # TargetDesign-workbench - stand-alone application container image.
 #
-#   docker build -t targetdesign-workbench:0.1.0 .                     # default (core) image
-#   docker build --target full -t targetdesign-workbench:0.1.0-full .  # core + optional adapters
+#   docker build -t targetdesign-workbench:0.2.0 .                     # default (core) image
+#   docker build --target full -t targetdesign-workbench:0.2.0-full .  # core + optional adapters
 #
-#   docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.1.0
+#   docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.2.0
 #
 # then open http://localhost:5000 . The container starts the local web workbench
 # (webapp/app.py, Python standard library only) together with the native C++20

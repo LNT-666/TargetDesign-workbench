@@ -13,7 +13,7 @@ local Docker installation:
 
 ```bash
 docker pull ghcr.io/lnt-666/targetdesign-workbench:latest       # default image
-docker pull ghcr.io/lnt-666/targetdesign-workbench:0.1.0-full   # with the optional adapters
+docker pull ghcr.io/lnt-666/targetdesign-workbench:0.2.0-full   # with the optional adapters
 docker run --rm -p 127.0.0.1:5000:5000 ghcr.io/lnt-666/targetdesign-workbench:latest
 ```
 
@@ -30,8 +30,8 @@ be pulled without an account and without a prior `docker login`.
 ## Build and run
 
 ```bash
-docker build -t targetdesign-workbench:0.1.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.1.0
+docker build -t targetdesign-workbench:0.2.0 .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.2.0
 ```
 
 Then open <http://localhost:5000>. The port is published on the loopback interface only;
@@ -78,8 +78,8 @@ Neither needs a download or any host installation.
 
 | Target | Contents | Command |
 | --- | --- | --- |
-| `core` (default) | engine + web workbench + core Python stack (numpy, h5py, biopython, pyfaidx, openpyxl, pandas, scipy, scikit-learn, matplotlib) | `docker build -t tdb:0.1.0 .` |
-| `full` | `core` plus ViennaRNA, Cas-OFFinder, R + NuPoP (crispAI adapter) and a CPU PyTorch build | `docker build --target full -t tdb:0.1.0-full .` |
+| `core` (default) | engine + web workbench + core Python stack (numpy, h5py, biopython, pyfaidx, openpyxl, pandas, scipy, scikit-learn, matplotlib) | `docker build -t tdb:0.2.0 .` |
+| `full` | `core` plus ViennaRNA, Cas-OFFinder, R + NuPoP (crispAI adapter) and a CPU PyTorch build | `docker build --target full -t tdb:0.2.0-full .` |
 
 ## What is not inside the image
 
@@ -95,7 +95,7 @@ Neither needs a download or any host installation.
 ## Command-line access to the same container
 
 ```bash
-docker run --rm -v targetdesign-data:/data targetdesign-workbench:0.1.0 \
+docker run --rm -v targetdesign-data:/data targetdesign-workbench:0.2.0 \
   python tools/batch_run.py --spec example/batch/example_batch.json
 ```
 
