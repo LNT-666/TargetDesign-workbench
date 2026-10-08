@@ -17,9 +17,9 @@ docker pull ghcr.io/lnt-666/targetdesign-workbench:0.1.0-full   # with the optio
 docker run --rm -p 127.0.0.1:5000:5000 ghcr.io/lnt-666/targetdesign-workbench:latest
 ```
 
-Image visibility follows the repository: while the repository is private the packages are private
-too, so they must be switched to public (GitHub -> the package page -> Package settings -> Change
-visibility) before someone without repository access can pull them.
+Image visibility is set separately from the repository: the package must be switched to public
+(GitHub -> the package page -> Package settings -> Change visibility) before someone without
+repository access can pull it.
 ## Requirements
 
 - Docker Engine 24 or newer (Docker Desktop on Windows and macOS), or Podman with the
@@ -51,8 +51,8 @@ so a successful build already reports the engine version and passes the engine t
 
 Verification status: the `core` image is built, smoke-tested and published by
 `.github/workflows/container.yml` on a GitHub runner, as
-`ghcr.io/lnt-666/targetdesign-workbench:0.1.0` and `:latest` (currently private; the packages
-become publicly pullable once the repository is switched to public). The engine build and its
+`ghcr.io/lnt-666/targetdesign-workbench:0.1.0` and `:latest` (the package is not public yet; set
+it to public in the package settings so that anyone can pull the image). The engine build and its
 `ctest` suite were also checked on a Linux host with GCC 13.3 and CMake 3.28 (1/1 test passed,
 `offtarget-engine 0.1.0 index-format=1`), and the web workbench answered HTTP 200 on `/`,
 `/static/styles.css` and `/static/app.js`. The `full` target is built by the same workflow; see

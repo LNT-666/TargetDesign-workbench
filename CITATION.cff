@@ -1,9 +1,3 @@
-# Citation metadata for the TargetDesign-workbench software release.
-#
-# [TO FILL] entries are unresolved placeholders: do not invent values for them.
-# Before creating the GitHub release that Zenodo archives, every [TO FILL] in
-# this file and in .zenodo.json must be replaced with verified information.
-
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "TargetDesign-workbench"
@@ -15,20 +9,23 @@ abstract: >-
   and command-line tools.
 type: software
 authors:
-  - family-names: "[TO FILL]"
-    given-names: "[TO FILL]"
-    affiliation: "[TO FILL]"
-    # orcid: "https://orcid.org/[TO FILL]"
+  - family-names: "Song"
+    given-names: "Ji"
+    affiliation: "School of Mathematics, Sun Yat-sen University, Guangzhou, Guangdong 510275, China"
+  - family-names: "Yang"
+    given-names: "Naisu"
+    affiliation: "College of Bioscience & Biotechnology, Yangzhou University, Yangzhou, Jiangsu 225009, China; Genetics and Genome Biology Program, The Hospital for Sick Children, Toronto, Ontario M5G 1E8, Canada"
 contact:
-  - family-names: "[TO FILL]"
-    given-names: "[TO FILL]"
-    email: "[TO FILL]"
+  - family-names: "Yang"
+    given-names: "Naisu"
 license: MIT
 repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
-version: "1.0.0"
-# date-released: "[TO FILL]"  # add the GitHub release date (YYYY-MM-DD)
-# doi: "10.5281/zenodo.[TO FILL]"  # add the Zenodo version DOI after archiving
+version: "0.1.0"
+# date-released: ""          # set to the GitHub release date (YYYY-MM-DD) when the release is created
+# doi: "10.5281/zenodo.0"    # set to the Zenodo version DOI after Zenodo archives the release
+# ORCID iDs and the corresponding author email are not recorded yet. Add them here and in
+# .zenodo.json, and re-tag before the release is created, if they should appear in the archive.
 keywords:
   - CRISPR
   - guide RNA design

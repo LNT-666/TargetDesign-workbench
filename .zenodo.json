@@ -4,13 +4,16 @@
   "upload_type": "software",
   "access_right": "open",
   "license": "mit",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "language": "eng",
   "creators": [
     {
-      "name": "[TO FILL: family name, given names]",
-      "affiliation": "[TO FILL: institution]",
-      "orcid": "[TO FILL: 0000-0000-0000-0000]"
+      "name": "Song, Ji",
+      "affiliation": "School of Mathematics, Sun Yat-sen University, Guangzhou, Guangdong 510275, China"
+    },
+    {
+      "name": "Yang, Naisu",
+      "affiliation": "College of Bioscience & Biotechnology, Yangzhou University, Yangzhou, Jiangsu 225009, China; Genetics and Genome Biology Program, The Hospital for Sick Children, Toronto, Ontario M5G 1E8, Canada"
     }
   ],
   "keywords": [
