@@ -23,6 +23,7 @@ external_tools/
 /shared/logs/
 /out/
 /output/
+/resource/
 /backup/
 webapp/jobs/
 

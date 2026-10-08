@@ -32,7 +32,7 @@ import services.dataprep as dataprep  # noqa: E402
 import services.designer as designer  # noqa: E402
 import services.models as models_service  # noqa: E402
 from design.pattern_spec import PatternKind  # noqa: E402
-from utils.paths import default_output_dir  # noqa: E402
+from utils.paths import default_output_dir, default_resource_dir  # noqa: E402
 
 
 def write_file(path, text):
@@ -256,6 +256,10 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(dataprep_doc["species"])
         self.assertIn("Coding region", dataprep_doc["region_types"])
         self.assertIn("gene_name", dataprep_doc["id_types"])
+        self.assertTrue(dataprep_doc["output_dir"])
+        self.assertEqual(dataprep_doc["output_dir"], default_output_dir())
+        self.assertTrue(dataprep_doc["resource_dir"])
+        self.assertEqual(dataprep_doc["resource_dir"], default_resource_dir())
 
     def test_path_fields_carry_a_browse_kind(self):
         designer_doc = self.doc["designer"]
@@ -606,9 +610,13 @@ class DataPrepServiceTests(unittest.TestCase):
             os.path.join(self.tmp.name, "a.gff"), "##gff-version 3\n")
         self.output_dir = os.path.join(self.tmp.name, "out")
 
-    def test_require_output_dir_and_file(self):
-        with self.assertRaises(ValueError):
-            dataprep.require_output_dir({})
+    def test_resolve_fixed_dirs_and_file(self):
+        self.assertEqual(dataprep.resolve_prep_dir(), default_output_dir())
+        self.assertEqual(dataprep.resolve_resource_dir({}),
+                         default_resource_dir())
+        self.assertEqual(
+            dataprep.resolve_resource_dir({"output_dir": self.output_dir}),
+            self.output_dir)
         with self.assertRaises(ValueError):
             dataprep.require_file("", "Genome FASTA")
         with self.assertRaises(ValueError):
@@ -620,10 +628,11 @@ class DataPrepServiceTests(unittest.TestCase):
         manager = mock.Mock()
         with self.assertRaises(ValueError) as caught:
             dataprep.submit_prepare({}, manager)
-        self.assertIn("Output Directory is required", str(caught.exception))
-        with self.assertRaises(ValueError):
+        self.assertIn("Genome FASTA is required", str(caught.exception))
+        with self.assertRaises(ValueError) as caught:
             dataprep.submit_prepare(
                 {"output_dir": self.output_dir, "genome": self.genome}, manager)
+        self.assertIn("Annotation file is required", str(caught.exception))
         manager.create_job.assert_not_called()
 
     def test_submit_prepare_queues_a_dataprep_job(self):
@@ -650,26 +659,24 @@ class DataPrepServiceTests(unittest.TestCase):
         self.assertIn("Search scope", str(caught.exception))
         manager.create_job.assert_not_called()
 
-    def test_submit_build_index_needs_a_destination(self):
+    def test_submit_build_index_uses_the_fixed_resource_dir(self):
         manager = mock.Mock()
         manager.create_job.return_value = "abcdefabcdef"
         with self.assertRaises(ValueError) as caught:
-            dataprep.submit_build_index({"genome": self.genome}, manager)
-        self.assertIn("Index output directory or prefix is required",
-                      str(caught.exception))
-        result = dataprep.submit_build_index(
-            {"genome": self.genome, "prefix": os.path.join(self.tmp.name, "idx")},
-            manager)
+            dataprep.submit_build_index({}, manager)
+        self.assertIn("Genome FASTA is required", str(caught.exception))
+        result = dataprep.submit_build_index({"genome": self.genome}, manager)
         self.assertEqual(result["job_id"], "abcdefabcdef")
         self.assertEqual(manager.create_job.call_args[0][0], "dataprep")
 
-    def test_submit_download_requires_species_and_output(self):
+    def test_submit_download_requires_species(self):
         manager = mock.Mock()
-        with self.assertRaises(ValueError):
+        manager.create_job.return_value = "abcdefabcdef"
+        with self.assertRaises(ValueError) as caught:
             dataprep.submit_download({"output_dir": "x"}, manager)
-        with self.assertRaises(ValueError):
-            dataprep.submit_download({"species": "human"}, manager)
-        manager.create_job.assert_not_called()
+        self.assertIn("Organism is required", str(caught.exception))
+        result = dataprep.submit_download({"species": "human"}, manager)
+        self.assertEqual(result["job_id"], "abcdefabcdef")
 
     def test_bodies_are_lazy_callables(self):
         for body in (dataprep.download_body({"species": "human"}),

@@ -32,6 +32,8 @@ tools/release_scan_denylist.local.txt
 logs/
 out/
 /output/
+# fixed download / index directory (shared/utils/paths.RESOURCE_DIRNAME)
+/resource/
 backup/
 *.log
 server_bundle.zip

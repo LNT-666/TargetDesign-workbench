@@ -159,6 +159,10 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 - 面板默认收起；展开时从左侧滑入并覆盖主区（几何与 4 种关闭方式见上）。
 - 内容顺序与桌面端一致：先 `Data prep`（下载、基因组/注释、Search scope、
   Mask gene、Prepare/BLAST/索引），后 `Models`（分组状态与下载/删除）。
+- Data prep 不再提供 `Output directory` / `Index prefix` 输入：基因组/注释准备、
+  Target/Mask 抽取、BLAST 库落点由服务端固定为 `<program_root>/output`，索引落点
+  固定为 `<program_root>/resource`（面板内以只读说明 `#dp-fixed-dirs-hint` 显示）；
+  `Download output directory` 仍可填写，默认 `<program_root>/resource`。
 - 面板里的作业与主区共用同一个作业队列（同一时刻最多 1 个重作业），日志与进度
   显示在面板内的作业框中；面板收起也不影响作业继续运行。
 - 回填后的「已带入」提示同时出现在**两处**：主区的 `#designer-loaded-hint` 与面板内的
@@ -185,6 +189,10 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `blastdb` | 主区 `blastdb` |
 | `index_path` | 主区 `index_path`（Run Settings 内） |
 
+- `output_dir` 不再是抽屉输入：它只作为作业 `outputs` 里的固定目录路径出现，页面
+  不回填到任何输入框；`index_path` 只回填主区 Run Settings 的 `index_path`。
+- `dataprep.download` 的 `outputs.download_output`（download 的实际落点）在
+  `dp-download-output` 为空时回填到抽屉里的 `Download output directory`。
 - **只填空字段**：值为空则跳过；用户已经手填（主区输入框或抽屉输入框）的字段一律
   不覆盖，不允许静默带参。
 - 回填后就地在公共输入区显示一行提示，例如
@@ -223,12 +231,12 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 
   | 作业 | `outputs` |
   | --- | --- |
-  | `dataprep.download` | `genome_fasta`、`annotation`、`output_dir` |
-  | `dataprep.prepare` | `genome_fasta`、`annotation`、`target_fasta`、`mask_fasta`、`output_dir`，有则加 `blastdb` |
-  | `dataprep.extract-target` | `target_fasta`、`output_dir` |
-  | `dataprep.extract-mask` | `mask_fasta`、`output_dir` |
-  | `dataprep.build-blastdb` | `blastdb`、`output_dir` |
-  | `dataprep.build-index` | `index_path`、`output_dir` |
+  | `dataprep.download` | `genome_fasta`、`annotation`、`output_dir`（固定 `resource`）、`download_output`（download 实际落点） |
+  | `dataprep.prepare` | `genome_fasta`、`annotation`、`target_fasta`、`mask_fasta`、`output_dir`（固定 `output`），有则加 `blastdb` |
+  | `dataprep.extract-target` | `target_fasta`、`output_dir`（固定 `output`） |
+  | `dataprep.extract-mask` | `mask_fasta`、`output_dir`（固定 `output`） |
+  | `dataprep.build-blastdb` | `blastdb`、`output_dir`（固定 `output`） |
+  | `dataprep.build-index` | `index_path`、`output_dir`（固定 `resource`） |
   | `designer.find` / `designer.score` | `search_fasta`（sequence 模式）或 `bed_regions`（bed 模式）、`output_dir`、`extract_output`、`run_dir`、`params_file`，有则加 `scores` / `guides` / `offtargets` / `blast_results` |
 
   只写绝对路径，且只写实际存在的产物（`build-index` 的前缀按其
@@ -244,7 +252,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `GET` | `/static/<app.js\|styles.css>` | 白名单静态资源 |
 | `GET` | `/help`、`/help/tutorial` | 把 `docs/help_en/index.md` / `tutorial.md` 渲染成 HTML（标准库最小 Markdown，不引外部依赖）；文件缺失返回 404 |
 | `GET` | `/help/sample_output/<file>` | 以 `text/plain` 返回 `docs/help_en/sample_output/` 下已存在的文件（只放行该目录） |
-| `GET` | `/api/schema` | 表单选项：pattern、预设、引擎、模型分组、模型显示名 `model_labels`、Data prep 选项等（全部来自 `shared/`） |
+| `GET` | `/api/schema` | 表单选项：pattern、预设、引擎、模型分组、模型显示名 `model_labels`、Data prep 选项（含固定目录 `output_dir` / `resource_dir`）等（全部来自 `shared/`） |
 | `GET` | `/api/jobs` | 作业列表（新的在前，含 `outputs`） |
 | `GET` | `/api/jobs/<id>` | 作业状态、进度、`log_tail`、`result`、`outputs` |
 | `GET` | `/api/jobs/<id>/log?offset=N` | 从第 N 个字符起的日志增量 |
@@ -299,10 +307,12 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `dp-download-output` | `dir` | Data prep 抽屉 |
 | `dp-genome` | `fasta` | Data prep 抽屉 |
 | `dp-annotation` | `annotation` | Data prep 抽屉 |
-| `dp-output` | `dir` | Data prep 抽屉 |
 | `dp-blastdb` | `db` | Data prep 抽屉 |
-| `dp-index-prefix` | `index` | Data prep 抽屉 |
 | `outputs-dir` | `dir` | Results / Output |
+
+Data prep 抽屉的基因组/注释准备、Target/Mask 抽取与索引落点由服务端固定为
+`<program_root>/output` 与 `<program_root>/resource`，页面不再提供输入，因此上表
+没有对应条目（`Download output directory` 仍可浏览/覆盖）。
 
 `kind` 只决定列表里出现哪些**文件**，目录永远列出（`dir` 例外：它把文件全滤掉）。
 `fasta` / `annotation` / `bed` / `db` / `index` 按 `shared/` 认得的后缀匹配，

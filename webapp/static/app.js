@@ -416,9 +416,7 @@ const OUTPUT_FIELD_MAP = {
 const DRAWER_FIELD_MAP = {
   genome_fasta: 'dp-genome',
   annotation: 'dp-annotation',
-  output_dir: 'dp-output',
   blastdb: 'dp-blastdb',
-  index_path: 'dp-index-prefix',
 };
 
 function cleanText(value) {
@@ -536,8 +534,8 @@ function applyJobOutputs(job) {
     lines.push(drawerId + ' = ' + plan.drawerUpdates[drawerId]);
   });
   if ($('dp-download-output') && !cleanText($('dp-download-output').value)
-      && outputs.output_dir) {
-    $('dp-download-output').value = outputs.output_dir;
+      && outputs.download_output) {
+    $('dp-download-output').value = outputs.download_output;
   }
   if (outputs.target_fasta && $('dp-target-num')) {
     $('dp-target-num').title = outputs.target_fasta;
@@ -1158,6 +1156,18 @@ function fillDataPrepOptions(schema) {
   });
   $('dp-skip-mask').checked = !!dp.skip_mask_default;
   $('dp-mask-same').checked = dp.mask_same_as_target_default !== false;
+  if (dp.resource_dir) {
+    $('dp-download-output').placeholder = 'default: ' + dp.resource_dir;
+    if (!$('dp-download-output').value.trim()) {
+      $('dp-download-output').value = dp.resource_dir;
+    }
+  }
+  const fixedDirsHint = $('dp-fixed-dirs-hint');
+  if (fixedDirsHint) {
+    fixedDirsHint.textContent = 'Outputs are written to the fixed directories: '
+      + dp.output_dir + ' (genome/annotation, BLAST database) and '
+      + dp.resource_dir + ' (genome index).';
+  }
   $('dp-skip-mask').addEventListener('change', syncMaskFields);
   $('dp-mask-same').addEventListener('change', syncMaskFields);
   syncMaskFields();
@@ -1180,7 +1190,6 @@ function dpPayload(extra) {
     species: $('dp-species').value,
     genome: $('dp-genome').value.trim(),
     annotation: $('dp-annotation').value.trim(),
-    output_dir: $('dp-output').value.trim(),
     blastdb: $('dp-blastdb').value.trim(),
     target_id: $('dp-target-id').value.trim(),
     target_region: $('dp-target-region').value,
@@ -1192,7 +1201,6 @@ function dpPayload(extra) {
     mask_region: $('dp-mask-region').value,
     mask_num: $('dp-mask-num').value.trim(),
     mask_id_type: $('dp-mask-id-type').value,
-    prefix: $('dp-index-prefix').value.trim(),
   }, extra || {});
 }
 
@@ -1289,12 +1297,8 @@ function applyDataPrepResult(result) {
   if (result.annotation) {
     $('dp-annotation').value = result.annotation;
   }
-  if (result.output_dir) {
-    $('dp-output').value = result.output_dir;
-  }
   if (result.download_output) {
     $('dp-download-output').value = result.download_output;
-    $('dp-output').value = result.download_output;
   }
   if (result.target_fasta) {
     state.targetFasta = result.target_fasta;
@@ -1305,9 +1309,6 @@ function applyDataPrepResult(result) {
   }
   if (result.blastdb) {
     $('dp-blastdb').value = result.blastdb;
-  }
-  if (result.index_prefix) {
-    $('dp-index-prefix').value = result.index_prefix;
   }
 }
 
@@ -1328,10 +1329,6 @@ function initDataPrep() {
     startDataPrepJob('/api/dataprep/build-blastdb', dpPayload(), 'Build BLAST DB', 'dp-job');
   });
   $('dp-build-index').addEventListener('click', function () {
-    if (!$('dp-index-prefix').value.trim() && !$('dp-output').value.trim()) {
-      showBanner('Set an index prefix or an output directory first.', true);
-      return;
-    }
     startDataPrepJob('/api/dataprep/build-index', dpPayload(), 'Build genome index', 'dp-job');
   });
 }
@@ -1914,9 +1911,7 @@ const PICKER_INPUT_KINDS = {
   'dp-download-output': 'dir',
   'dp-genome': 'fasta',
   'dp-annotation': 'annotation',
-  'dp-output': 'dir',
   'dp-blastdb': 'db',
-  'dp-index-prefix': 'index',
   'outputs-dir': 'dir',
 };
 

@@ -37,6 +37,7 @@ from design.workbench_form import (  # noqa: E402
 from output.candidate_export import SUPPORTED_FORMATS  # noqa: E402
 from scoring.scoring import PROTEIN_GROUP_LABELS  # noqa: E402
 import scoring.model_registry as model_registry  # noqa: E402
+from utils.paths import default_output_dir, default_resource_dir  # noqa: E402
 
 
 #: Order matters: it mirrors designer_workbench._create_run_bar.
@@ -415,5 +416,7 @@ def build_schema():
             "id_types": list(ID_TYPES),
             "skip_mask_default": False,
             "mask_same_as_target_default": True,
+            "output_dir": default_output_dir(),
+            "resource_dir": default_resource_dir(),
         },
     }

@@ -37,6 +37,10 @@ from utils.child_process import (  # noqa: E402
     terminate_process_tree,
     unregister_child,
 )
+from utils.paths import (  # noqa: E402
+    ensure_default_output_dir,
+    ensure_default_resource_dir,
+)
 
 
 DOWNLOAD_SCRIPT = os.path.join("shared", "data", "download_data.py")
@@ -60,11 +64,14 @@ def _read_json(path: str) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def require_output_dir(payload: Dict[str, Any]) -> str:
-    output_dir = _clean(payload.get("output_dir"))
-    if not output_dir:
-        raise ValueError("Output Directory is required")
-    return output_dir
+def resolve_prep_dir() -> str:
+    """Fixed output directory for genome/annotation work and extractions."""
+    return ensure_default_output_dir()
+
+
+def resolve_resource_dir(payload: Dict[str, Any]) -> str:
+    """Resource directory for downloads/indexes, honouring an override."""
+    return _clean(payload.get("output_dir")) or ensure_default_resource_dir()
 
 
 def require_file(value, label: str) -> str:
@@ -314,9 +321,7 @@ def download_body(payload: Dict[str, Any]):
         species = _clean(payload.get("species"))
         if not species:
             raise ValueError("Organism is required")
-        output_dir = _clean(payload.get("output_dir"))
-        if not output_dir:
-            raise ValueError("Download output directory is required")
+        output_dir = resolve_resource_dir(payload)
         os.makedirs(output_dir, exist_ok=True)
         returncode = _run_command(
             [sys.executable, DOWNLOAD_SCRIPT, "--species", species,
@@ -340,6 +345,7 @@ def download_body(payload: Dict[str, Any]):
             "genome_fasta": genome,
             "annotation": annotation,
             "output_dir": output_dir,
+            "download_output": output_dir,
         })
         return 0
 
@@ -350,7 +356,7 @@ def prepare_body(payload: Dict[str, Any]):
     """Genome + annotation preparation and Target/Mask extractions."""
 
     def run(ctx) -> int:
-        output_dir = require_output_dir(payload)
+        output_dir = resolve_prep_dir()
         os.makedirs(output_dir, exist_ok=True)
         genome, annotation = _prepare_inputs(payload, output_dir, ctx)
         if not _clean(payload.get("target_id")):
@@ -385,7 +391,7 @@ def prepare_body(payload: Dict[str, Any]):
 
 def extract_target_body(payload: Dict[str, Any]):
     def run(ctx) -> int:
-        output_dir = require_output_dir(payload)
+        output_dir = resolve_prep_dir()
         os.makedirs(output_dir, exist_ok=True)
         genome, annotation = _prepare_inputs(payload, output_dir, ctx)
         target_fasta = extract_target_fasta(
@@ -406,7 +412,7 @@ def extract_target_body(payload: Dict[str, Any]):
 
 def extract_mask_body(payload: Dict[str, Any]):
     def run(ctx) -> int:
-        output_dir = require_output_dir(payload)
+        output_dir = resolve_prep_dir()
         os.makedirs(output_dir, exist_ok=True)
         genome, annotation = _prepare_inputs(payload, output_dir, ctx)
         target_fasta = None
@@ -435,7 +441,7 @@ def extract_mask_body(payload: Dict[str, Any]):
 
 def build_blastdb_body(payload: Dict[str, Any]):
     def run(ctx) -> int:
-        output_dir = require_output_dir(payload)
+        output_dir = resolve_prep_dir()
         os.makedirs(output_dir, exist_ok=True)
         genome = prepare_genome(payload.get("genome"), output_dir, ctx)
         prefix = ensure_blastdb(genome, output_dir=output_dir, log=ctx.line)
@@ -450,23 +456,17 @@ def build_blastdb_body(payload: Dict[str, Any]):
 def build_index_body(payload: Dict[str, Any]):
     def run(ctx) -> int:
         genome = require_file(payload.get("genome"), "Genome FASTA")
-        prefix = _clean(payload.get("prefix"))
-        output_dir = _clean(payload.get("output_dir"))
-        if not prefix and not output_dir:
-            raise ValueError("Index output directory or prefix is required")
-        cmd = [sys.executable, INDEX_SCRIPT, genome]
-        if prefix:
-            cmd += ["--prefix", prefix]
-        else:
-            os.makedirs(output_dir, exist_ok=True)
-            cmd += ["--output-dir", output_dir]
+        output_dir = resolve_resource_dir(payload)
+        os.makedirs(output_dir, exist_ok=True)
+        cmd = [sys.executable, INDEX_SCRIPT, genome,
+               "--output-dir", output_dir]
         if payload.get("k"):
             cmd += ["--k", str(int(payload["k"]))]
         if payload.get("max_memory_mb"):
             cmd += ["--max-memory-mb", str(int(payload["max_memory_mb"]))]
         returncode = _run_command(cmd, ctx, cwd=ROOT)
         if returncode == 0:
-            index_path = prefix or os.path.join(
+            index_path = os.path.join(
                 output_dir, os.path.splitext(os.path.basename(genome))[0])
             ctx.set_result({"index_prefix": index_path})
             ctx.set_outputs({
@@ -486,14 +486,11 @@ def _submit(manager, title, body, payload, params=None):
 def submit_download(payload: Dict[str, Any], manager) -> Dict[str, Any]:
     if not _clean(payload.get("species")):
         raise ValueError("Organism is required")
-    if not _clean(payload.get("output_dir")):
-        raise ValueError("Download output directory is required")
     return _submit(manager, "Download genome and annotation",
                    download_body(payload), payload)
 
 
 def submit_prepare(payload: Dict[str, Any], manager) -> Dict[str, Any]:
-    require_output_dir(payload)
     require_file(payload.get("genome"), "Genome FASTA")
     require_file(payload.get("annotation"), "Annotation file")
     if not _clean(payload.get("target_id")):
@@ -502,7 +499,6 @@ def submit_prepare(payload: Dict[str, Any], manager) -> Dict[str, Any]:
 
 
 def submit_extract_target(payload: Dict[str, Any], manager) -> Dict[str, Any]:
-    require_output_dir(payload)
     require_file(payload.get("genome"), "Genome FASTA")
     require_file(payload.get("annotation"), "Annotation file")
     if not _clean(payload.get("target_id")):
@@ -512,7 +508,6 @@ def submit_extract_target(payload: Dict[str, Any], manager) -> Dict[str, Any]:
 
 
 def submit_extract_mask(payload: Dict[str, Any], manager) -> Dict[str, Any]:
-    require_output_dir(payload)
     require_file(payload.get("genome"), "Genome FASTA")
     require_file(payload.get("annotation"), "Annotation file")
     if payload.get("mask_same_as_target", True):
@@ -525,7 +520,6 @@ def submit_extract_mask(payload: Dict[str, Any], manager) -> Dict[str, Any]:
 
 
 def submit_build_blastdb(payload: Dict[str, Any], manager) -> Dict[str, Any]:
-    require_output_dir(payload)
     require_file(payload.get("genome"), "Genome FASTA")
     return _submit(manager, "Build BLAST DB", build_blastdb_body(payload),
                    payload)
@@ -533,8 +527,5 @@ def submit_build_blastdb(payload: Dict[str, Any], manager) -> Dict[str, Any]:
 
 def submit_build_index(payload: Dict[str, Any], manager) -> Dict[str, Any]:
     require_file(payload.get("genome"), "Genome FASTA")
-    if not _clean(payload.get("prefix")) and not _clean(
-            payload.get("output_dir")):
-        raise ValueError("Index output directory or prefix is required")
     return _submit(manager, "Build genome index", build_index_body(payload),
                    payload)

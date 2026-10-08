@@ -60,8 +60,8 @@ be downloaded. `sample_data/README.md` documents them in more detail.
 ### 2.1 Container
 
 ```bash
-docker build -t targetdesign-workbench:0.1.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.1.0
+docker build -t targetdesign-workbench:0.2.0 .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.2.0
 ```
 
 **Expected:** the build finishes and the run prints the web address. Open
@@ -102,9 +102,13 @@ group:
 | --- | --- |
 | Genome file (FASTA) | `sample_data/demo_genome.fa` |
 | Annotation file (GTF/GFF3) | leave empty (the synthetic genome has no gene annotation) |
-| Output directory | a directory you can write to, for example `output` |
 | Existing Genome database path | leave empty |
-| Index prefix / index output directory | leave empty (the search builds an index on demand) |
+
+The output locations are fixed by the server, so there is nothing to fill in:
+genome/annotation preparation, Target/Mask extraction and the BLAST database go
+to `<program_root>/output`, and the genome index goes to
+`<program_root>/resource`. The `Download output directory` field (in the
+**Download** group) is still editable and defaults to `<program_root>/resource`.
 
 Then click **Build genome index**. **Expected:** the job builds a `.ggi` index
 and, when it finishes, back-fills the Designer's **Index Prefix** (the hint
