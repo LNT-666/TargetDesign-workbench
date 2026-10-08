@@ -17,9 +17,8 @@ docker pull ghcr.io/lnt-666/targetdesign-workbench:0.1.0-full   # with the optio
 docker run --rm -p 127.0.0.1:5000:5000 ghcr.io/lnt-666/targetdesign-workbench:latest
 ```
 
-Image visibility is set separately from the repository: the package must be switched to public
-(GitHub -> the package page -> Package settings -> Change visibility) before someone without
-repository access can pull it.
+Image visibility is set separately from the repository. This package is public, so the images can
+be pulled without an account and without a prior `docker login`.
 ## Requirements
 
 - Docker Engine 24 or newer (Docker Desktop on Windows and macOS), or Podman with the
@@ -51,12 +50,14 @@ so a successful build already reports the engine version and passes the engine t
 
 Verification status: the `core` image is built, smoke-tested and published by
 `.github/workflows/container.yml` on a GitHub runner, as
-`ghcr.io/lnt-666/targetdesign-workbench:0.1.0` and `:latest` (the package is not public yet; set
-it to public in the package settings so that anyone can pull the image). The engine build and its
-`ctest` suite were also checked on a Linux host with GCC 13.3 and CMake 3.28 (1/1 test passed,
+`ghcr.io/lnt-666/targetdesign-workbench:0.1.0` and `:latest`, together with
+`ghcr.io/lnt-666/targetdesign-workbench:0.1.0-full` for the optional adapters. The package is
+public, so anyone can pull the images without an account (verified anonymously on 2026-10-08:
+`tags/list` answers 200 and all three tags resolve). The engine build and its `ctest` suite were
+also checked on a Linux host with GCC 13.3 and CMake 3.28 (1/1 test passed,
 `offtarget-engine 0.1.0 index-format=1`), and the web workbench answered HTTP 200 on `/`,
-`/static/styles.css` and `/static/app.js`. The `full` target is built by the same workflow; see
-`.github/workflows/container.yml`. Neither this workstation nor the lab server has Docker or
+`/static/styles.css` and `/static/app.js`. Both targets are built and published by the same
+workflow, `.github/workflows/container.yml`. Neither this workstation nor the lab server has Docker or
 Podman, so the image was not rebuilt locally.
 
 ## Data
