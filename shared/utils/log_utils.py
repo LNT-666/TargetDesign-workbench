@@ -74,3 +74,24 @@ def install_excepthook(writer):
         writer.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)).rstrip())
 
     sys.excepthook = _hook
+
+
+def parse_progress_line(line):
+    """Parse a ``PROGRESS: <label...> <percent>`` log line.
+
+    Returns ``(percent, label)`` where the trailing integer is the percent
+    and every word between ``PROGRESS:`` and it is the label, or ``None``
+    when the line is not a well-formed progress line.
+    """
+    text = (line or "").strip()
+    if not text.startswith("PROGRESS:"):
+        return None
+    parts = text.split()
+    if len(parts) < 3:
+        return None
+    try:
+        percent = int(parts[-1])
+    except ValueError:
+        return None
+    label = " ".join(parts[1:-1]) or parts[1]
+    return percent, label

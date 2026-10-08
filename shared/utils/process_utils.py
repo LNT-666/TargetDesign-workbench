@@ -9,6 +9,8 @@ import json
 import re
 from tkinter import messagebox
 
+from utils.log_utils import parse_progress_line
+
 
 def run_subprocess(gui, cmd, description, on_finish=None, progress_callback=None):
     """在后台线程中运行子进程，并实时输出日志"""
@@ -64,18 +66,18 @@ def run_subprocess(gui, cmd, description, on_finish=None, progress_callback=None
 def run_download(gui):
     species = gui.entry_download_species.get().strip()
     if not species:
-        messagebox.showerror("参数缺失", "请输入物种名")
+        messagebox.showerror("Missing parameters", "Enter a species name")
         return
     output_dir = gui.entry_download_output.get().strip()
     if not output_dir:
-        messagebox.showerror("参数缺失", "请选择下载输出目录")
+        messagebox.showerror("Missing parameters", "Choose a download output directory")
         return
     source = gui.combo_datasource.get()
     os.makedirs(output_dir, exist_ok=True)
 
     gui.progress_frame.grid()
     gui.progress_var.set(0)
-    gui.progress_label.set("准备下载...")
+    gui.progress_label.set("Preparing download...")
 
     cmd = [
         sys.executable, "download_data.py",
@@ -85,16 +87,11 @@ def run_download(gui):
     ]
 
     def progress_callback(line):
-        if line.startswith("PROGRESS:"):
-            parts = line.strip().split()
-            if len(parts) >= 3:
-                label = parts[1]
-                try:
-                    percent = int(parts[2])
-                    gui.progress_var.set(percent)
-                    gui.progress_label.set(f"{label} {percent}%")
-                except ValueError:
-                    pass
+        parsed = parse_progress_line(line)
+        if parsed is not None:
+            percent, label = parsed
+            gui.progress_var.set(percent)
+            gui.progress_label.set(f"{label} {percent}%")
 
     def on_finish(returncode):
         gui.root.after(0, _hide_progress, gui)
@@ -112,22 +109,22 @@ def run_download(gui):
                     if gtf_file and os.path.exists(gtf_file):
                         gui.entry_gtf.delete(0, tk.END)
                         gui.entry_gtf.insert(0, gtf_file)
-                    gui.log("下载完成，已自动填入基因组和 GTF 路径。")
+                    gui.log("Download complete; genome and GTF paths filled in automatically")
                 except Exception as e:
-                    gui.log(f"读取下载信息失败: {e}")
+                    gui.log(f"Failed to read download info: {e}")
             else:
-                gui.log("未找到下载信息文件，请手动指定基因组和 GTF 路径。")
+                gui.log("Download info file not found; specify the genome and GTF paths manually")
         else:
             messagebox.showerror(
-                "下载失败",
-                "下载基因组和注释失败，请查看日志了解详情。\n"
-                "可能是网络问题或复水进度卡住，可以尝试：\n"
-                "1. 检查网络连接\n"
-                "2. 如果已手动执行过复水，再次运行下载脚本可能自动继续。\n"
-                "3. 或切换到 Ensembl 数据源。"
+                "Download failed",
+                "Failed to download the genome and annotation; see the log for details.\n"
+                "This may be a network problem or a stalled download. You can try:\n"
+                "1. Check the network connection\n"
+                "2. If the download was already started manually, running the script again may resume it.\n"
+                "3. Or switch to the Ensembl data source."
             )
 
-    run_subprocess(gui, cmd, "下载基因组和注释", on_finish, progress_callback)
+    run_subprocess(gui, cmd, "Download genome and annotation", on_finish, progress_callback)
 
 
 def _hide_progress(gui):
