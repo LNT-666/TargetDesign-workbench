@@ -47,6 +47,8 @@ RESERVED_KEYS: Tuple[str, ...] = (
     "input_mode",
     "result_label",
     "output_dir",
+    "mask_fasta",
+    "mask_same_as_target",
 )
 
 #: Keys that configure the :class:`WorkbenchFormState` struct itself instead
@@ -75,6 +77,8 @@ class ScopeSpec:
     scope_id: str
     search_fasta: str = ""
     regions: str = ""
+    mask_fasta: str = ""
+    mask_same_as_target: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {"scope_id": self.scope_id}
@@ -82,6 +86,9 @@ class ScopeSpec:
             data["search_fasta"] = self.search_fasta
         if self.regions:
             data["regions"] = self.regions
+        if self.mask_fasta:
+            data["mask_fasta"] = self.mask_fasta
+        data["mask_same_as_target"] = bool(self.mask_same_as_target)
         return data
 
 
@@ -194,6 +201,42 @@ def normalize_units(spec: BatchSpec) -> List[BatchUnit]:
     return units
 
 
+def _scope_mask_values(
+    mask_fasta: Any, raw_same: Any
+) -> Tuple[str, bool]:
+    """Normalise a scope's mask fields, applying the default rules.
+
+    A scope with no explicit mask defaults to ``mask_same_as_target=True``;
+    a scope with an explicit mask defaults to ``mask_same_as_target=False``.
+    """
+
+    mask = str(mask_fasta or "").strip()
+    if raw_same is None or (
+        isinstance(raw_same, str) and not raw_same.strip()
+    ):
+        return mask, not mask
+    if isinstance(raw_same, bool):
+        return mask, raw_same
+    if isinstance(raw_same, (int, float)):
+        return mask, bool(raw_same)
+    return mask, str(raw_same).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _scope_from_mapping(data: Dict[str, Any]) -> ScopeSpec:
+    """Build a :class:`ScopeSpec` from a raw mapping (JSON scope/TSV row)."""
+
+    mask_fasta, same_as_target = _scope_mask_values(
+        data.get("mask_fasta"), data.get("mask_same_as_target")
+    )
+    return ScopeSpec(
+        scope_id=str(data.get("scope_id") or "").strip(),
+        search_fasta=str(data.get("search_fasta") or ""),
+        regions=str(data.get("regions") or ""),
+        mask_fasta=mask_fasta,
+        mask_same_as_target=same_as_target,
+    )
+
+
 def scope_input_keys(scope: ScopeSpec) -> Dict[str, Any]:
     """Return the input-mode keys for one scope.
 
@@ -203,17 +246,32 @@ def scope_input_keys(scope: ScopeSpec) -> Dict[str, Any]:
 
     search_fasta = (scope.search_fasta or "").strip()
     regions = (scope.regions or "").strip()
+    mask_fasta = (scope.mask_fasta or "").strip()
+    same_as_target = bool(scope.mask_same_as_target)
     if search_fasta and regions:
         raise ValueError(
             "scope %s sets both search_fasta and regions" % scope.scope_id
         )
+    if mask_fasta and same_as_target:
+        raise ValueError(
+            "scope %s sets both mask_fasta and mask_same_as_target"
+            % scope.scope_id
+        )
     if search_fasta:
-        return {"input_mode": "sequence", "search_fasta": search_fasta}
-    if regions:
-        return {"input_mode": "bed", "bed_regions": regions}
-    raise ValueError(
-        "scope %s sets neither search_fasta nor regions" % scope.scope_id
-    )
+        keys: Dict[str, Any] = {
+            "input_mode": "sequence", "search_fasta": search_fasta,
+        }
+    elif regions:
+        keys = {"input_mode": "bed", "bed_regions": regions}
+    else:
+        raise ValueError(
+            "scope %s sets neither search_fasta nor regions" % scope.scope_id
+        )
+    if mask_fasta:
+        keys["mask_fasta"] = mask_fasta
+    else:
+        keys["mask_same_as_target"] = same_as_target
+    return keys
 
 
 def build_unit_form_state(spec: BatchSpec, unit: BatchUnit):
@@ -384,17 +442,26 @@ def validate_spec(
 
     for scope in spec.scopes:
         scope_id = (scope.scope_id or "").strip()
+        mask_fasta = (scope.mask_fasta or "").strip()
+        if mask_fasta and bool(scope.mask_same_as_target):
+            errors.append(
+                "scope %s must not set both mask_fasta and "
+                "mask_same_as_target" % scope_id
+            )
         for key, value in (
             ("search_fasta", scope.search_fasta),
             ("regions", scope.regions),
+            ("mask_fasta", mask_fasta),
         ):
             value = (value or "").strip()
             if value and not os.path.isfile(value):
                 missing("scope %s %s not found: %s" % (scope_id, key, value))
-    for key in ("genome_fasta", "mask_fasta"):
-        value = str((spec.shared or {}).get(key) or "").strip()
-        if value and not os.path.isfile(value):
-            missing("shared %s not found: %s" % (key, value))
+    value = str((spec.shared or {}).get("genome_fasta") or "").strip()
+    if value and not os.path.isfile(value):
+        missing("shared genome_fasta not found: %s" % value)
+    value = str((spec.shared or {}).get("annotation") or "").strip()
+    if value and not os.path.isfile(value):
+        missing("shared annotation not found: %s" % value)
 
     return errors, warnings
 
@@ -451,10 +518,15 @@ def load_units_tsv(path: str) -> BatchSpec:
             scope_id = (row.get("scope_id") or "").strip()
             pattern_id = (row.get("pattern_id") or "").strip()
             if scope_id and scope_id not in scopes:
+                mask_fasta, same_as_target = _scope_mask_values(
+                    row.get("mask_fasta"), row.get("mask_same_as_target")
+                )
                 scopes[scope_id] = ScopeSpec(
                     scope_id=scope_id,
                     search_fasta=(row.get("search_fasta") or "").strip(),
                     regions=(row.get("regions") or "").strip(),
+                    mask_fasta=mask_fasta,
+                    mask_same_as_target=same_as_target,
                 )
             if pattern_id and pattern_id not in patterns:
                 mode = "single_motif_flank"
@@ -511,12 +583,7 @@ def spec_from_dict(data: Dict[str, Any]) -> BatchSpec:
 
     data = data or {}
     scopes = [
-        ScopeSpec(
-            scope_id=str(scope.get("scope_id") or ""),
-            search_fasta=str(scope.get("search_fasta") or ""),
-            regions=str(scope.get("regions") or ""),
-        )
-        for scope in (data.get("scopes") or [])
+        _scope_from_mapping(scope) for scope in (data.get("scopes") or [])
     ]
     patterns = [
         PatternVariant(

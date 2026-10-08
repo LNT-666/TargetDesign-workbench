@@ -2,7 +2,6 @@
   "batch_label": "example-batch",
   "shared": {
     "genome_fasta": "example/chr21_22.fa",
-    "mask_fasta": "",
     "nuclease": "tnpb",
     "tnpb_subtype": "unknown",
     "pam_mode": "custom",
@@ -16,16 +15,18 @@
   "scopes": [
     {
       "scope_id": "scope_fa",
-      "search_fasta": "example/chr21_22.fa"
+      "search_fasta": "example/chr21_22.fa",
+      "mask_same_as_target": true
     },
     {
       "scope_id": "scope_bed",
-      "regions": "example/chr21_22_regions.bed"
+      "regions": "example/chr21_22_regions.bed",
+      "mask_same_as_target": true
     }
   ],
   "patterns": [
     {
-      "pattern_id": "P_basic_ttag",
+      "pattern_id": "TTAG",
       "mode": "single_motif_flank",
       "overlay": {
         "motif": "TTAG",
@@ -34,7 +35,7 @@
       }
     },
     {
-      "pattern_id": "P_basic_tcaa",
+      "pattern_id": "TCAA",
       "mode": "single_motif_flank",
       "overlay": {
         "motif": "TCAA",
@@ -43,7 +44,7 @@
       }
     },
     {
-      "pattern_id": "P_gap",
+      "pattern_id": "TTAG_10-40_TCAA",
       "mode": "motif_gap_motif",
       "overlay": {
         "left_motif": "TTAG",
@@ -61,12 +62,12 @@
     {
       "group_id": "G1",
       "scope_ids": ["scope_fa", "scope_bed"],
-      "pattern_ids": ["P_basic_ttag", "P_gap"]
+      "pattern_ids": ["TTAG", "TTAG_10-40_TCAA"]
     },
     {
       "group_id": "G2",
       "scope_ids": ["scope_fa"],
-      "pattern_ids": ["P_basic_tcaa"]
+      "pattern_ids": ["TCAA"]
     }
   ]
 }

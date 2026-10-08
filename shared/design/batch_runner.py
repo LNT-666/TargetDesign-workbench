@@ -29,6 +29,7 @@ from design.pattern_runner import (
 from design.pattern_spec import PatternKind
 from design.workbench_form import build_pattern_spec, build_runner_config
 from utils.paths import default_output_dir
+from utils.run_index import RUN_LOG_NAME, write_meta as write_run_meta
 
 
 _BATCH_LABEL_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -59,8 +60,8 @@ SUMMARY_KEY_COLUMNS: List[str] = [
 _SUMMARY_STATUSES = ("ok", "skipped")
 
 
-def batch_root(batch_label: str) -> str:
-    """Return ``default_output_dir()/<batch_label>`` after validating the label."""
+def validate_batch_label(batch_label: str) -> str:
+    """Return the trimmed label, or raise when it is not a safe identifier."""
 
     label = (batch_label or "").strip()
     if (
@@ -72,7 +73,13 @@ def batch_root(batch_label: str) -> str:
             "illegal batch_label: %r (allowed: A-Za-z0-9._-, no paths)"
             % batch_label
         )
-    return os.path.join(default_output_dir(), label)
+    return label
+
+
+def batch_root(batch_label: str) -> str:
+    """Legacy ``output/<batch_label>`` path; kept for label validation."""
+
+    return os.path.join(default_output_dir(), validate_batch_label(batch_label))
 
 
 def main_scores_path(kind: Any, unit_dir: str) -> str:
@@ -109,12 +116,14 @@ class BatchRunner:
         batch_root_dir: str,
         on_line: Optional[Any] = None,
         resume: bool = True,
+        run_meta: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.spec = spec
         self.units = list(units or [])
         self.batch_root_dir = batch_root_dir
         self._on_line = on_line
         self.resume = bool(resume)
+        self.run_meta = dict(run_meta) if run_meta else None
         self._rows: List[Dict[str, str]] = []
         self._prior_rows: List[Dict[str, str]] = []
         self._stop = False
@@ -124,17 +133,66 @@ class BatchRunner:
             batch_root_dir, "summary", "batch_scores.tsv"
         )
         self.batch_json_path = os.path.join(batch_root_dir, "batch.json")
+        self.log_path = os.path.join(batch_root_dir, RUN_LOG_NAME)
+        self._log_handle = None
 
     # -- output ---------------------------------------------------------
     def _emit(self, line: Any) -> None:
-        """Forward one progress line, never letting a bad handler abort the run."""
+        """Append one progress line to the run log and forward it."""
 
+        text = str(line)
+        handle = self._log_handle
+        if handle is not None:
+            try:
+                handle.write(text + "\n")
+                handle.flush()
+            except Exception:
+                pass
         if self._on_line is None:
             return
         try:
-            self._on_line(str(line))
+            self._on_line(text)
         except Exception:
             pass
+
+    def _open_log(self) -> None:
+        """Open ``run.log`` in append mode and write a header line."""
+
+        try:
+            os.makedirs(
+                os.path.dirname(os.path.abspath(self.log_path)), exist_ok=True
+            )
+            self._log_handle = open(
+                self.log_path,
+                "a",
+                encoding="utf-8",
+                errors="replace",
+                newline="",
+            )
+        except OSError:
+            self._log_handle = None
+            return
+        run_id = str((self.run_meta or {}).get("run_id") or "")
+        self._emit(
+            "INFO: batch %s | run %s | %s"
+            % (self.spec.batch_label, run_id or "-", self._now())
+        )
+
+    def _close_log(self) -> None:
+        handle = self._log_handle
+        self._log_handle = None
+        if handle is None:
+            return
+        try:
+            handle.close()
+        except OSError:
+            pass
+
+    def _write_run_meta(self) -> None:
+        try:
+            write_run_meta(self.batch_root_dir, self.run_meta or {})
+        except OSError as exc:
+            self._emit("WARN: could not write run.json: %s" % exc)
 
     @staticmethod
     def _now() -> str:
@@ -155,7 +213,15 @@ class BatchRunner:
     def run(self) -> int:
         os.makedirs(self.batch_root_dir, exist_ok=True)
         write_batch_json(self.spec, self.units, self.batch_json_path)
+        if self.run_meta is not None:
+            self._write_run_meta()
+        self._open_log()
+        try:
+            return self._run_units()
+        finally:
+            self._close_log()
 
+    def _run_units(self) -> int:
         self._prior_rows = self._load_prior_manifest()
         prior = {row["unit_id"]: row for row in self._prior_rows}
         if not self.resume and os.path.isfile(self.manifest_path):

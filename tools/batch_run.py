@@ -3,18 +3,28 @@
 """Command-line batch entry point: many search scopes x many pattern configs."""
 
 import argparse
+import datetime
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "shared"))
 
-from design.batch_runner import BatchRunner, batch_root  # noqa: E402
+from design.batch_runner import (  # noqa: E402
+    BatchRunner,
+    validate_batch_label,
+)
 from design.batch_spec import (  # noqa: E402
     load_batch_json,
     load_units_tsv,
     normalize_units,
     validate_spec,
+)
+from utils.paths import default_output_dir  # noqa: E402
+from utils.run_index import (  # noqa: E402
+    RUN_LOG_NAME,
+    allocate_run,
+    find_run,
 )
 
 
@@ -51,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="print validation and the units table, then exit without running",
+    )
+    parser.add_argument(
+        "--run-id",
+        dest="run_id",
+        metavar="ID",
+        help=(
+            "reuse an existing run folder instead of allocating a new one; "
+            "accepts 0114, 20261006-0114 or 20261006/0114"
+        ),
     )
     parser.add_argument(
         "--only",
@@ -130,24 +149,56 @@ def main(argv=None) -> int:
         print("ERROR: batch expands to zero units")
         return 2
 
-    if args.dry_run:
-        _print_units(units)
-        return 0
-
     try:
-        root = batch_root(spec.batch_label)
+        label = validate_batch_label(spec.batch_label)
     except ValueError as exc:
         print("ERROR: %s" % exc)
         return 2
 
+    output_root = default_output_dir()
+    if args.dry_run:
+        print(
+            "RUN_DIR: %s%s<YYYYMMDD>-<ID> (id assigned when the run starts)"
+            % (output_root, os.sep)
+        )
+        _print_units(units)
+        return 0
+
+    if args.run_id:
+        index = find_run(output_root, args.run_id)
+        if index is None:
+            print(
+                "ERROR: no run %r under %s" % (args.run_id, output_root)
+            )
+            return 2
+    else:
+        index = allocate_run(output_root)
+
+    spec.batch_label = label
+    run_meta = {
+        "run_id": index.run_id,
+        "day": index.day,
+        "label": index.label,
+        "batch_label": label,
+        "created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "unit_count": len(units),
+        "resume": bool(args.resume),
+        "source": args.spec or args.units_tsv,
+    }
+    print("RUN_ID: %s" % index.label, flush=True)
+    print("RUN_DIR: %s" % index.path, flush=True)
+
     runner = BatchRunner(
         spec,
         units,
-        root,
+        index.path,
         on_line=lambda line: print(line, flush=True),
         resume=args.resume,
+        run_meta=run_meta,
     )
-    return runner.run()
+    returncode = runner.run()
+    print("RUN_LOG: %s" % os.path.join(index.path, RUN_LOG_NAME), flush=True)
+    return returncode
 
 
 if __name__ == "__main__":

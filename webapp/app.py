@@ -138,6 +138,18 @@ def model_action_route(path: str):
     return (parts[0], parts[1])
 
 
+def batch_run_route(path: str):
+    """Split ``/api/batch/runs/<ref>[/<action>]`` into (ref, action)."""
+
+    prefix = "/api/batch/runs/"
+    if not path.startswith(prefix):
+        return (None, None)
+    parts = [part for part in path[len(prefix):].split("/") if part]
+    if not parts or len(parts) > 2:
+        return (None, None)
+    return (parts[0], parts[1] if len(parts) > 1 else None)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "CrisprWorkbenchLocal/2.0"
 
@@ -207,6 +219,18 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/fs/list":
                 self._api_fs_list(query)
                 return
+            if path == "/api/batch/runs":
+                limit = (query.get("limit") or ["20"])[0]
+                day = (query.get("day") or [""])[0] or None
+                self._send_json(batch.list_runs(limit=limit, day=day))
+                return
+            run_ref, run_action = batch_run_route(path)
+            if run_ref is not None and run_action == "download":
+                self._api_batch_run_download(run_ref, query)
+                return
+            if run_ref is not None and run_action is None:
+                self._send_json(batch.run_detail(run_ref))
+                return
             job_id, action = job_route(path)
             if job_id is not None:
                 if action is None:
@@ -217,6 +241,9 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if action == "candidates":
                     self._api_job_candidates(job_id)
+                    return
+                if action == "results":
+                    self._api_job_results(job_id)
                     return
                 if action == "download":
                     self._api_job_download(job_id, query)
@@ -339,6 +366,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send_json(designer.candidates(job_id, manager))
 
+    def _api_job_results(self, job_id: str):
+        """The run's deliverable table, used by the ``full`` results view."""
+        manager = get_manager()
+        if manager.get_job(job_id) is None:
+            self._send_error_json("job not found", 404)
+            return
+        self._send_json(designer.results(job_id, manager))
+
     def _api_job_download(self, job_id: str, query):
         manager = get_manager()
         filename = (query.get("file") or [""])[0] or ""
@@ -359,6 +394,22 @@ class Handler(BaseHTTPRequestHandler):
             headers={
                 "Content-Disposition":
                     'attachment; filename="%s"' % os.path.basename(filename)
+            },
+        )
+
+    def _api_batch_run_download(self, ref: str, query):
+        """Download one file from a batch run folder (path stays inside it)."""
+
+        filename = (query.get("file") or [""])[0] or ""
+        path = batch.run_file_path(ref, filename)
+        with open(path, "rb") as handle:
+            body = handle.read()
+        self._send_bytes(
+            body,
+            "application/octet-stream",
+            headers={
+                "Content-Disposition":
+                    'attachment; filename="%s"' % os.path.basename(path)
             },
         )
 

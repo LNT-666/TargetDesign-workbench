@@ -1,5 +1,6 @@
 import csv
 import glob
+import json
 import os
 import sys
 import tempfile
@@ -265,6 +266,32 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertIn("PROGRESS_TARGET: 2/2", lines)
         self.assertIn("PROGRESS: batch 50", lines)
         self.assertIn("PROGRESS: batch 100", lines)
+
+    def test_run_writes_log_and_meta(self):
+        self._start_patches()
+        FakePatternRunner.behavior = {}
+        FakePatternRunner.calls = []
+        spec, units, _runner = self._make_runner()
+        runner = BatchRunner(
+            spec,
+            units,
+            self.tmp,
+            run_meta={"run_id": "0114", "label": "20261006-0114"},
+        )
+        self.assertEqual(runner.run(), 0)
+
+        with open(runner.log_path, "r", encoding="utf-8") as handle:
+            log = handle.read()
+        self.assertIn("INFO: batch unit-test-batch | run 0114", log)
+        self.assertIn("PROGRESS_TARGET: 1/2", log)
+        self.assertIn("PROGRESS: batch 100", log)
+
+        with open(
+            os.path.join(self.tmp, "run.json"), "r", encoding="utf-8"
+        ) as handle:
+            meta = json.load(handle)
+        self.assertEqual(meta["run_id"], "0114")
+        self.assertEqual(meta["label"], "20261006-0114")
 
     def test_bad_on_line_handler_does_not_abort(self):
         self._start_patches()
