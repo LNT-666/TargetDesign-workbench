@@ -5,19 +5,9 @@
 
 ## 一、命中统计字段
 
-| 字段 | 含义 |
-| --- | --- |
-| `total_matches` | 当前 query 在搜索引擎里命中的记录数。 |
-| `valid_matches` | 去掉屏蔽基因、重复区间等排除区域后的命中数。 |
-| `sum_mismatch` | 所有有效命中的错配数之和。 |
-| `MM0` | 错配数为 0 的命中数，即完全匹配位点数。 |
-| `MM1` | 错配数为 1 的命中数。 |
-| `MM2` | 错配数为 2 的命中数。 |
-| `MMn` | 最后一列，统计错配数 >= n 的命中数。n 等于本次运行的 `max_mismatch`。 |
-
-注意：`MM0` 统计的是“满足完整 query 长度的匹配位点”，不是 BLAST 的任意局部短匹配。例如 BLAST 只比对上 25 bp query 中的 16 bp，即使错配为 0，也不会进入 MM0。
-
-MM 输出列随 `max_mismatch` 变化：预算 0/1/2/3/4 分别输出 `MM0`、`MM0-MM1`、`MM0-MM2`、`MM0-MM3`、`MM0-MM4`。最后一列始终为合并桶，例如 `max_mismatch=4` 时 `MM4` 表示错配数 >= 4。
+`total_matches`、`valid_matches`、`sum_mismatch`、`MM0` ... `MMn` 的字段定义，
+以及 `max_mismatch` 对输出列的裁剪规则，见 `docs/OUTPUTS.md` 的「3.1 公共统计列」。
+其中 `MM0` 统计的是“满足完整 query 长度的匹配位点”，不是 BLAST 的任意局部短匹配。
 
 ## 二、MM0 应该有多少
 
@@ -105,15 +95,9 @@ PairRank，不再为每个 hit 单独调用 `compute_guide_scores()`。未选择
 不会被探测或推理；选择 `cfd`、`identity` 或规则模型时不会因为本地存在
 CRISPR-M/DeepCRISPR 模型文件而额外运行深度推理。
 
-TnpB 的 off-target 当前直接走 `identity`：
-
-```text
-similarity = 相同碱基数 / min(guide 长度, off-target spacer 长度)
-off_target_specificity = 1 / (1 + sum(similarity) - 主要完全匹配贡献)
-```
-
-该分支不应用 seed penalty，也不使用 TEEP。PAM/TAM 必须在搜索/过滤阶段开启并
-提供正确 motif，才会影响 `off_pairs`。
+TnpB 的 off-target 当前直接走 `identity` 相似度规则；公式、是否应用 seed
+penalty 以及 PAM/TAM 的生效条件见 `docs/TNPB.md` 的「2.3 `identity` off-target
+规则」。
 
 ## 四、On-target 分数
 
@@ -174,11 +158,8 @@ TnpB 当前直接走 identity，不应用 seed penalty。`omega` 是默认的本
 
 Pattern Designer 的模型选择支持多选。最终结果表中的每个勾选 on-target 模型
 输出 `on_target_score_<model>`，每个勾选 off-target 模型输出
-`off_target_specificity_<model>`；模型或积分规则名称不单独占列，而是由这些
-评分列名体现。计算层仍保留 `on_target_score`、`off_target_specificity`
-主列，用于表示第一个勾选模型的主分；`on_target_model_<model>`、
-`off_target_model_<model>`、`rna_model`、`omega_model` 等名称字段仅供内部
-记录，不写入最终表格。
+`off_target_specificity_<model>`；列命名与内部字段的取舍见 `docs/OUTPUTS.md`
+的「3.2 特异性与 on-target 分数列」「3.6 旧列与不再输出的内容」。
 
 `AT_score` 仅在对应 system preset 为 `tnpb` 时计算和输出。单 motif 使用
 `AT_score`，Pattern A 使用 `left_AT_score` / `right_AT_score`，Y-ZBP 的

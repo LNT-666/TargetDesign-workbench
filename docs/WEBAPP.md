@@ -57,7 +57,7 @@ python webapp\app.py --port 8765
 ├───────────────┴──────────────────────────────┴──────────────────────────┤
 │ Run Settings（可折叠）                                                    │
 │ Run Log（可折叠，默认展开）                                                │
-│ 候选表（隐藏 query_seq/gap_seq）+ 导出格式下拉 + 导出按钮                     │
+│ 结果表（完整=输出表 / 精简=候选列）+ 表/格式下拉 + 导出按钮                    │
 │ Results / Output（可折叠：作业列表、作业详情、输出目录文件列表）                 │
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -89,7 +89,7 @@ python webapp\app.py --port 8765
   “最近一次作业”摘要（`<kind> · <status> · <耗时>`，点击跳到下部 Run Log）。
 - 主区三列：左 = 公共输入（可折叠，默认展开）+ Left TAM；中 = Middle + Structure
   Preview；右 = Right TAM。
-- 下部常驻：Run Settings、Run Log、候选表与导出控件、`Results / Output`
+- 下部常驻：Run Settings、Run Log、结果表与导出控件、`Results / Output`
   的内容（作业列表、作业详情、输出目录文件列表）都在页面下部，不折叠掉。
 - 模式切换导致的字段显隐规则与桌面端一致（`designer_workbench.py:737-880` 的三种
   布局），切换模式**不清空**已填字段。
@@ -117,22 +117,24 @@ Designer 的三种 pattern 与桌面端一致：
 
 `Batch` 区块把一次提交展开成多个单元（unit = 一个 search scope × 一份 pattern 配置）并串行跑完 `PatternRunner`；内核、manifest 与汇总契约见 `docs/BATCH.md`，这里只讲 web 入口。
 
-流程：填 `Batch label`（留空则用 `web-batch-<YYYYmmdd-HHMMSS>`）→ `Add scope` 加若干范围（`scope_id` 可留空，服务端按文件名去后缀派生；路径可用 Browse）→ 在 Designer 里配好 pattern、填 `pattern id`、点 `Add current Designer pattern`（把**当前 Designer 表单**原样快照成该 pattern 的配置）→ 在每个 pattern 的 Scopes 多选里指定范围（不选 = 全部范围）→ `Preview units` → `Run batch`；日志/进度走同一 JobManager，产物可下载。
+流程：填 `Batch label`（留空则用 `web-batch-<YYYYmmdd-HHMMSS>`）→ `Add scope` 加若干范围（`scope_id` 可留空，服务端按文件名去后缀派生；路径可用 Browse）→ 每个 scope 行的 `Mask` 列默认勾选 `Same as scope`，取消勾选后可键入或 Browse 一个独立 mask FASTA → 在 Designer 里配好 pattern，`pattern id` 可留空（此时使用当前 Designer pattern 的默认名，输入框 placeholder 会显示该名字）或显式填写 → 在 `Add current Designer pattern` 旁边的 `Applies to` 勾选框里勾选这个 pattern 要覆盖的 scope（默认全选；勾选框名即该 scope 的有效 `scope_id`，`scope_id` 留空时按文件名去后缀显示）→ 点 `Add current Designer pattern`（把**当前 Designer 表单**原样快照成该 pattern 的配置，并带上刚才勾选的 scope）→ 添加后仍可在 Patterns 表的 `Applies to` 列增删 scope → `Preview units` → `Run batch`；日志/进度走同一 JobManager，产物可下载。
 
 payload 字段（`POST /api/batch/preview` 与 `POST /api/batch/jobs` 共用）：
 
-- `batch_label`（可选）、`resume`（可选布尔，默认 true）。
-- `scopes`（必填、非空）：每项 `{scope_id?, search_fasta}` 或 `{scope_id?, regions}`。
-- `patterns`（必填、非空）：每项 `{pattern_id, mode, overlay}`，或直接给一份 Designer 表单快照（`mode` + `values` + `struct` 键），服务按该 mode 的 schema 字段切出 overlay。
-- `assignments`（UI 路径）：`{pattern_id: [scope_id, ...]}`；某 pattern 缺省 → 指派给全部 scopes。
+- `batch_label`（可选）、`run_id`（可选，复用已有运行编号）、`resume`（可选布尔，默认 true）。
+- `scopes`（必填、非空）：每项 `{scope_id?, search_fasta}` 或 `{scope_id?, regions}`，可再带 scope-owned 的 mask：`mask_same_as_target?`（默认 `true`，用该 scope 的有效 search FASTA 自掩码）或 `mask_fasta?`（显式 mask，与 `mask_same_as_target` 互斥）。序列 scope 的默认 mask 是 `search_fasta`，BED scope 的默认 mask 是从 `regions + genome_fasta` 抽出的 window FASTA。
+- `patterns`（必填、非空）：每项 `{pattern_id?, mode, overlay}`，或直接给一份 Designer 表单快照（`mode` + `values` + `struct` 键），服务按该 mode 的 schema 字段切出 overlay。省略 `pattern_id` 时按 `docs/BATCH.md` 的默认命名规则生成；自动名撞车追加 `_2`、`_3`，显式重复仍报错。
+- `assignments`（UI 路径）：`{pattern_id: [scope_id, ...]}`；由 `Applies to` 勾选框生成，某 pattern 缺省 → 指派给全部 scopes。想表达 `ab用1, c用2` 就是 pattern 1 只勾 a/b、pattern 2 只勾 c，预览会得到 `a__1`、`b__1`、`c__2`。
 - `groups`（高级路径）：给了就直接用（忽略 `assignments`）。
 - 顶层也可带当轮 Designer 表单值（与 `/api/designer/jobs` 的 `values` 同义），服务把非 pattern 键放进 `shared`。
 
-转换规则：`shared` 只收 `COMMON_FIELDS + RUN_FIELDS + pair_rank_*`（去掉 `search_fasta`/`bed_regions`/`result_label`）加 `struct` 键；pattern 的 `overlay` 只收该 mode 的 pattern 键加 `struct`/`side_*` 键。保留键（`search_fasta`/`bed_regions`/`input_mode`/`result_label`/`output_dir`）出现在 `shared`/`overlay` 会直接报错。
+转换规则：`shared` 只收 `COMMON_FIELDS + RUN_FIELDS + pair_rank_*`（去掉 `search_fasta`/`bed_regions`/`mask_fasta`/`mask_same_as_target`/`result_label`）加 `struct` 键；pattern 的 `overlay` 只收该 mode 的 pattern 键加 `struct`/`side_*` 键。保留键（`search_fasta`/`bed_regions`/`input_mode`/`result_label`/`output_dir`/`mask_fasta`/`mask_same_as_target`）出现在 `shared`/`overlay` 会直接报错；每个 scope 的 mask 独立留在自己的 `ScopeSpec` 上，不进入批次级 `shared`。
 
 units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G_<pattern_id>`，顺序同 `patterns`），所以 UI 路径下是 **pattern 主序 → scope 次序**（与 CLI 示例的 scope 主序不同）。
 
-产物与取消：批次根目录仍是 `output/<batch_label>/`；作业结束后把 `manifest.tsv` 与 `batch_scores.tsv`（来自 `summary/batch_scores.tsv`）复制到 `<job_dir>/export/` 供下载。`Cancel job` 调 `BatchRunner.stop()`：当前 unit 的 `PatternRunner` 被停、整批返回 130。
+产物与取消：批次根目录仍是 `output/<YYYYMMDD>-<ID>/（提交时分配运行编号，规则见 `docs/BATCH.md`「运行编号」）`；作业结束后把 `manifest.tsv` 与 `batch_scores.tsv`（来自 `summary/batch_scores.tsv`）复制到 `<job_dir>/export/`（含 `manifest.tsv`、`batch_scores.tsv`、`run.log`、`run.json`） 供下载。`Cancel job` 调 `BatchRunner.stop()`：当前 unit 的 `PatternRunner` 被停、整批返回 130。
+
+页面 Batch 区块顶部新增「Task code (Run id)」小组：跑完一次 batch 会显示并填入本次任务码（一次 batch 共享同一个码），可点 `Copy` 复制；输入任意任务码（`20261006-0114` 或四位 `0114`）点 `View` 查看那一次运行的 batch label、路径、unit 状态统计与可下载文件；查看时会像刚跑完一样把结果表（按 manifest 填 `unit_id`/`scope_id`/`pattern_id`/`status`/`returncode`）和下方导出按钮按该次运行重新填满，点 `Recent runs` 列出最近 20 次运行。
 
 ## 面板：Data prep / Models
 
@@ -159,7 +161,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `outputs` 键 | 回填位置 |
 | --- | --- |
 | `genome_fasta` | 主区 `genome_fasta` |
-| `annotation` | 抽屉的注释输入框（主区不显示注释字段，仅记录） |
+| `annotation` | 主区 `annotation`（注释 GFF3，决定 `Annotation` 等四列） |
 | `target_fasta` | 主区 `search_fasta` |
 | `mask_fasta` | 主区 `mask_fasta`（勾选 `skip_mask` 时不回填，留空） |
 | `blastdb` | 主区 `blastdb` |
@@ -186,6 +188,17 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   `/api/jobs/<id>/log?offset=` 增量拉取日志并显示 `Analyzing target i/n`。
 - 导出写入 `<job_dir>/export/<文件名>`，再通过
   `/api/jobs/<id>/download?file=export/<文件名>` 下载；浏览器不写任意本地路径。
+- 结果表有两种视图，导出与页面显示的表格始终一致（所见即所得）：
+
+  | `Table` | 数据源 | 列 | 可用格式 |
+  | --- | --- | --- | --- |
+  | `Full (output table)`（默认） | 本次运行落在 `<output_dir>` 的交付表（`<label>_scores.tsv`，Y-ZBP 为 `<label>_scores.sorted.tsv`），取自 `GET /api/jobs/<id>/results` | 文件原样的全部列与列序（含 `query_seq`、评分列、注释列） | `csv` / `tsv` / `xlsx` |
+  | `Concise (candidates)` | `read_extract_candidates()` 的候选行，隐藏 `query_seq` / `gap_seq`（历史行为） | 候选列 | 全部 `SUPPORTED_FORMATS` |
+
+  `Full` 与 `output/<label>_scores.tsv` 逐列逐行相同，导出文件名以 `_results_`
+  区分（例如 `<label>_results_<时间戳>.csv`）；尚未跑 `Score & Off-target`
+  （没有 `scores` 产物）时自动回落到 `Concise` 并在表上方说明。
+  用户手动改过 `Table` 后按用户选择，不再自动切换。
 - `status.json` 带 `"outputs": {<键>: <绝对路径>}`（无产物时为 `{}`），
   `GET /api/jobs` 与 `GET /api/jobs/<id>` 都会返回该字段；旧作业目录缺这个键时
   读接口按 `{}` 补上，不写回文件。各作业写入的键：
@@ -198,10 +211,12 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   | `dataprep.extract-mask` | `mask_fasta`、`output_dir` |
   | `dataprep.build-blastdb` | `blastdb`、`output_dir` |
   | `dataprep.build-index` | `index_path`、`output_dir` |
-  | `designer.find` / `designer.score` | `search_fasta`（sequence 模式）或 `bed_regions`（bed 模式）、`output_dir`、`extract_output` |
+  | `designer.find` / `designer.score` | `search_fasta`（sequence 模式）或 `bed_regions`（bed 模式）、`output_dir`、`extract_output`、`run_dir`、`params_file`，有则加 `scores` / `guides` / `offtargets` / `blast_results` |
 
   只写绝对路径，且只写实际存在的产物（`build-index` 的前缀按其
-  `<prefix>.ggi` / `<prefix>.json` 兄弟文件判断）。
+  `<prefix>.ggi` / `<prefix>.json` 兄弟文件判断）。`result` 里的 `run_dir` /
+  `params_file` / 交付文件键同样只写存在的路径；`run_dir` 是本次运行子目录，
+  未填 run-label 时等于 `output_dir`。
 
 ## API
 
@@ -214,18 +229,22 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `GET` | `/api/jobs/<id>` | 作业状态、进度、`log_tail`、`result`、`outputs` |
 | `GET` | `/api/jobs/<id>/log?offset=N` | 从第 N 个字符起的日志增量 |
 | `GET` | `/api/jobs/<id>/candidates` | Designer 候选表（隐藏 `query_seq` / `gap_seq`） |
+| `GET` | `/api/jobs/<id>/results` | 本次运行的交付表（`outputs.scores`，即 `output/<label>_scores.tsv`）：`{columns, rows, total, available, file}`；无产物时 `available=false` |
 | `GET` | `/api/jobs/<id>/download?file=export/...\|out/...` | 下载作业内的白名单文件 |
 | `GET` | `/api/models` | 模型分组、状态、路径、`description`、`url` |
 | `GET` | `/api/outputs?dir=<绝对路径>` | 列出目录内允许扩展名的文件 |
 | `GET` | `/api/fs/list?dir=<绝对路径>&kind=<kind>&hidden=1` | 只读列目录（kind 过滤、strip 剥离表、roots 根模式；`hidden=1` 才列隐藏项） |
-| `POST` | `/api/designer/preview` | 描述当前 pattern、返回 `errors` / `warnings` |
-| `POST` | `/api/designer/preset` | 单个 TAM 侧的 `Apply`：返回字段更新和模型候选 |
+| `POST` | `/api/designer/preview` | 描述当前 pattern、返回 `errors` / `warnings` / `pattern_name`（不可用时为空串） |
+| `POST` | `/api/designer/preset` | 单个 TAM 侧的系统预设：返回字段更新（含运行级 `nuclease`）和模型候选；页面选中预设即调用（不改变 `Use for Run` 生效侧），`Apply` 按钮用于重复应用并切到该侧 |
 | `POST` | `/api/designer/active-side` | `Use for Run`：切换生效侧并返回规则更新 |
 | `POST` | `/api/designer/jobs` | 提交 Designer 阶段（`stage`: `find` / `score`） |
-| `POST` | `/api/batch/preview` | 预览批量：返回 `batch_label`、`batch_root`、`units`、`errors`、`warnings`（缺文件降级为 warning） |
-| `POST` | `/api/batch/jobs` | 提交批量作业（kind=`batch`）；校验失败返回 400 |
+| `POST` | `/api/batch/preview` | 预览批量：返回 `batch_label`、`batch_root`（预览时为输出目录，提交后为当次运行目录）、`units`、`errors`、`warnings`（缺文件降级为 warning） |
+| `POST` | `/api/batch/jobs`（响应含 `run_id`） | 提交批量作业（kind=`batch`）；校验失败返回 400 |
+| `GET` | `/api/batch/runs?limit=&day=` | 最近的批量运行（一次 batch = 一个任务码），每条含 `run_id`、`batch_label`、`unit_count`、`units`、`created`、`path`、`files` |
+| `GET` | `/api/batch/runs/<run_id>` | 按任务码查看一次运行；`<run_id>` 可用 `20261006-0114`，也可用四位 `0114`（跨天取最近一天）；返回 `units` 统计、`columns`+`rows`（manifest 结果表）与 `files`；找不到返回 404 |
+| `GET` | `/api/batch/runs/<run_id>/download?file=<相对路径>` | 下载该运行目录内的文件（`manifest.tsv`、`summary/batch_scores.tsv`、`run.log`、`run.json` 等）；路径越界或非法返回 400 |
 | `POST` | `/api/dataprep/download` | 下载基因组与注释 |
-| `POST` | `/api/dataprep/prepare` | 基因组 + 注释 + Search scope + Mask (+ BLAST) 一步准备 |
+| `POST` | `/api/dataprep/prepare` | 基因组 + 注释 + Search scope + Mask 一步准备（不再自动建 BLAST 库，需要时用 `build-blastdb`） |
 | `POST` | `/api/dataprep/extract-target` | 抽取 Search scope FASTA |
 | `POST` | `/api/dataprep/extract-mask` | 抽取 Mask FASTA |
 | `POST` | `/api/dataprep/build-blastdb` | 构建 BLAST 库 |
@@ -233,7 +252,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `POST` | `/api/models/<key>/download` | 下载模型权重 |
 | `POST` | `/api/models/<key>/delete` | 删除模型本地文件 |
 | `POST` | `/api/jobs/<id>/cancel` | 取消作业 |
-| `POST` | `/api/jobs/<id>/export` | 导出选中候选行（`format`、`rows`、`filename`） |
+| `POST` | `/api/jobs/<id>/export` | 导出选中行（`format`、`rows`、`filename`、`columns`）；`columns=concise` 为候选列（历史行为），`columns=full` 写出 `results` 交付表，仅支持 `csv` / `tsv` / `xlsx` |
 
 表单校验失败返回 `400` + `{"error": "..."}`，路径或文件不存在返回 `404`。
 
@@ -254,6 +273,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `genome_fasta` | `fasta` | Common Inputs |
 | `mask_fasta` | `fasta` | Common Inputs |
 | `blastdb` | `db` | Common Inputs |
+| `annotation` | `annotation` | Common Inputs |
 | `index_path` | `index` | Run Settings |
 | `dp-download-output` | `dir` | Data prep 抽屉 |
 | `dp-genome` | `fasta` | Data prep 抽屉 |

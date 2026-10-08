@@ -25,6 +25,14 @@ rna_bulges, dna_bulges, cigar, aligned_guide, aligned_target
 PAM 检查一律使用 alignment 的 `target_start` / `target_end`，不再用
 `seed_start + probe_len` 推测目标末端。
 
+提取出的查询窗口本身就可能带有 PAM：`basic/extract.py` 按 `motif` 锚定窗口，
+而 `motif` 允许只是 PAM 的简并/部分前缀（例如 TnpB 用 `TTR` 锚定 `TTGAT`）。
+这时 PAM 位于窗口 motif 那一端向内 `len(pam)` 个碱基处，检查对象是该位点
+对齐到基因组后的实际序列，而不是窗口外侧的序列；锚定哪一端由 `--side`
+（窗口布局）与 `--pam-side` 共同决定，与窗口存储的链方向无关。只有当窗口
+两端都无法识别 motif 时（例如 `tools/search_indexed.py` 直接传 guide），
+才回退到窗口外的 `target_start` / `target_end` 检查。
+
 ## 引擎
 
 | engine | 说明 | 依赖 |
@@ -33,6 +41,16 @@ PAM 检查一律使用 alignment 的 `target_start` / `target_end`，不再用
 | `blast` | NCBI BLAST+ `blastn` | `blastn`、`makeblastdb` |
 | `gggenome` | GGGenome 在线 API | 网络 |
 | `indexed` | 本地持久化基因组索引，穷尽列出错配范围内位点 | Python fallback：numpy、Biopython、pyfaidx；native：C++ binary |
+
+引擎选型对比（优点 / 缺点）：
+
+| engine | 优点 | 缺点 |
+| --- | --- | --- |
+| `exact` | 小基因组穷尽、无外部工具 | 大基因组内存和耗时高 |
+| `indexed` | 索引可复用，搜索穷尽且可重复 | 首次建索引较慢、占用磁盘 |
+| `blast` | 大型基因组方案成熟 | 依赖 BLAST+，首次建库和全基因组搜索较慢 |
+| `gggenome` | 无本地依赖 | 需要网络，逐 guide 查询较慢，受在线服务限制 |
+| `auto` | 默认省心，按运行期引擎链自动选择 | 小/中型优先 native indexed，其次 blast；大型优先 blast；显式 db/index 独占 |
 
 ## 能力矩阵
 

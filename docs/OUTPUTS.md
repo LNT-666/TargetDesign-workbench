@@ -22,6 +22,10 @@
    `off_target_specificity_cfd`）。模型名称不单独占列：
    `on_target_model_<model>`、`off_target_model_<model>`、`rna_model`、
    `omega_model` 等只存在于内部评分结果，单 motif / 双靶候选表不再输出。
+   调用方没有显式给模型（`auto`，批处理/CLI 省略模型时）按该核酸酶的默认
+   模型落列，不会写成 `on_target_score_auto`：cas9 → `cropsr` / `cfd`，
+   tnpb → `omega` / `identity`，cas12a / cas12b → `rules` / `rules`，
+   cas13 → `rna_rules` / `pfs`。
 4. **主分列**：单 motif 与 unique guide 表保留不带后缀的 `off_target_specificity`，
    含义是第一个勾选 off-target 模型的主分，也是这两张表的排序依据。
    Pattern A 主表没有该列，排序由 PairRank 列表达。
@@ -29,10 +33,18 @@
    表示错配数 `>= N`。预算 0/1/2 分别只输出 `MM0`、`MM0-MM1`、`MM0-MM2`。
    单 motif 用大写 `MMn`；Pattern A 的左右侧列使用小写 `left_mm0` / `right_mm0`。
 6. **BED / XLSX**：BED 给出候选区间，XLSX 由对应 TSV 转换，需显式开启 `--xlsx`。
-7. **运行标签**：GUI 的 Run label 会把主表重命名为 `<label>_scores.tsv`、
-   `<label>_guides.tsv`、`<label>_offtargets.tsv`，列内容不变。
+7. **运行标签与参数**：GUI 的 Run label 会把本次运行的中间产物写入
+   `<output_dir>/<run_label>/`（含 `params.json`），并把主表重命名为
+   `<label>_scores.tsv`、`<label>_guides.tsv`、`<label>_offtargets.tsv`，
+   列内容不变；完整参数另复制为 `<output_dir>/<label>_params.json`。
+   交付文件仍保留在 `<output_dir>/`，短名映射不变；Run label 为空时
+   中间产物仍直接写 `<output_dir>/`。
 
 ## 二、输出文件清单
+
+带 Run label 的运行，中间产物位于 `<output_dir>/<run_label>/` 且含
+`params.json`；`<run_label>_params.json` 是同一参数的顶层副本，与
+`<run_label>_scores.tsv` 等交付文件并列。
 
 ### 2.1 单 motif（`basic/`）
 
@@ -97,7 +109,7 @@ Pattern A 的坐标列：`left_target_start` / `left_target_end` /
 | `Self-complementarity`、`Self-comp-hint` | 最长反向互补长度及提示；计算范围可能覆盖完整 query window，与 TnpB 的 `guide_structure_penalty` 不是同一个量 |
 | `legacy_total_score` | 旧版匹配压力分（`10*MM0 + 1*(MM0+MM1) + 0.1*...`）；不是 0-1 分数，不能与 `off_target_specificity` 直接比较，不建议用于最终排序 |
 | `pos_id`、`seq_id`、`strand`、`motif_pos`、`qid`、`query_seq` | 单 motif 的位置与序列列；Pattern A 用 `left_*` / `right_*` 替代 `query_seq` |
-| `Annotation`、`Nearest-TSS`、`Isoforms`、`Downstream-ATG` | 传入注释 GFF 时的注释列；无注释时整列隐藏 |
+| `Annotation`、`Nearest-TSS`、`Isoforms`、`Downstream-ATG` | 传入注释 GFF/GTF 时的注释列：设计器填 `Annotation GFF3`（等价 `--annotation`，批处理里是 `shared.annotation`）。无注释时整列隐藏；注释文件里没有该 `seq_id`（例如自定义 target FASTA 的 `tyr-exon1`）时同样留空，并打印 `Warning: the annotation describes none of the ...` |
 
 `MM0` 统计的是覆盖完整 query 长度的匹配位点，不是 BLAST 的任意局部短匹配：只比对上
 25 bp query 中 16 bp 的 HSP 即使零错配也不计入。若 `MM0` 达到几十甚至几百，优先检查
@@ -190,7 +202,7 @@ Pattern A 主表与 Y-ZBP 的 `scores.sorted.tsv` 会写入以下列：
 `docs/PAIR_RANKING.md` 第四章的 `experiment_calibrated` 模式（`r_left`、`r_right`、
 `r_both`、`E_both_LCB`、`kappa_pair`、`pair_offtarget_burden_measured` 等）目前只是
 规范草案，代码尚未实现，当前不会输出这些列。已下线的引擎（bowtie2、casoffinder）
-与已删除的 `docs/EXPERIMENTAL_OUTPUTS.md` 涉及的文件和列同样不再适用。
+与已删除的 `EXPERIMENTAL_OUTPUTS.md` 涉及的文件和列同样不再适用。
 
 ## 四、按结果判断的推荐顺序
 

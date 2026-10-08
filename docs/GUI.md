@@ -25,8 +25,10 @@
 3. Results / Output：查看运行摘要、输出文件和日志；参数统一在 Pattern Designer 中设置。
 
 打开 Pattern Designer 时会自动带入 Data prep 中填写的 Genome FASTA、
-Output Directory、BLAST db，以及已提取的 Target/Mask FASTA。若尚未提取
-Target FASTA，点击 Find Targets 会弹出明确提示，而不会静默无反应。
+Annotation GFF3、Output Directory、BLAST db，以及已提取的 Target/Mask FASTA。
+Annotation GFF3 为空时打分表会隐藏 `Annotation` / `Nearest-TSS` / `Isoforms` /
+`Downstream-ATG` 四列。若尚未提取 Target FASTA，点击 Find Targets 会弹出
+明确提示，而不会静默无反应。
 
 ## Pattern Designer 参数区
 
@@ -99,6 +101,14 @@ Off-target 默认按侧使用 cas9: cfd、cas12a/b: rules、cas13: pfs、tnpb: i
 `reference_only_model`，单侧用 `reference_only_model`，双靶用
 `left_reference_only_model` / `right_reference_only_model`，随运行一起传给
 评分流程。
+运行级 `nuclease`（传给 `analyze_scores.py` 的 `--nuclease`，也是结果表
+`nuclease` 列的取值）取生效侧 System Preset 的 nuclease。`cas9` 是表单默认
+值，所以在非 cas9 预设下会被预设覆盖——不会出现 `--preset tnpb` 却配
+`--nuclease cas9`、把 TnpB 结果显示成 cas9 的情况（桌面端选预设即时应用，
+网页端选预设同样即时应用，未点 `Apply` 也不会让该列失真）；反过来，显式选择
+的非 cas9 值（例如批量 `shared.nuclease`）优先于默认的 cas9 预设，`custom`
+预设没有系统规则，始终沿用表单里的显式值。该规则统一收敛在
+`system_presets.resolve_run_nuclease()`，前端、批量和命令行共用。
 窗口默认最大化（1440x900 兜底）；Common Inputs、Middle、Run Settings、Run Log
 均可折叠，候选结果移入统一工作台的 `Results / Output` 页查看。
 Run Settings 下方常驻进度条：流程输出 `PROGRESS:` 百分比时按真实进度显示，
@@ -121,6 +131,9 @@ exact 在大基因组上会自动回退到 blast，避免直接建立超大内�
 | 刷新结果 | 重新读取结果摘要和输出文件列表 |
 
 输出文件支持双击打开。
+
+每次运行的中间产物在本运行子目录 `<output_dir>/<run_label>/`，完整参数见
+`<output_dir>/<run_label>_params.json`。
 
 ## 专用工具
 

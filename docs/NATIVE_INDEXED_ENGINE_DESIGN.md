@@ -699,6 +699,10 @@ every unified field, not only coordinates.
 
 ### 15.5 Performance benchmark
 
+The recorded native measurements live in `docs/NATIVE_INDEXED_BENCHMARK.md`;
+this section only fixes what a benchmark run must record for the design to be
+considered verified.
+
 Use:
 
 - `example/chr21_22.fa` for correctness and quick benchmarks

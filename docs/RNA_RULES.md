@@ -63,8 +63,9 @@ python shared\design\library_pipeline.py regions.tsv genome.fa outdir `
   --target-rna AUGGCCAUUAAAGCCCACACGU
 ```
 
-输出 TSV 会包含 `rna_model`、`guide_mfe`、`guide_accessibility`、
-`dr_spacer_duplex_mfe`、`rule_source` 等列。
+最终 TSV 实际输出哪些 RNA 子特征列，以 `docs/OUTPUTS.md` 的「3.4 TnpB 与 RNA
+子特征列」为准；`rna_model`、`rule_source` 等内部字段只保留在评分结果中，不写入
+当前候选表。
 
 ## 验收状态
 

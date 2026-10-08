@@ -132,19 +132,8 @@ python tools\convert_deepcrispr.py
 
 ### ViennaRNA（Phase 4 的 RNA 可及性计算）
 
-Linux / macOS 推荐：
-
-```bash
-conda install -c bioconda viennarna
-```
-
-或从源码安装：
-
-```bash
-pip install ViennaRNA
-```
-
-Windows 原生支持有限，建议在 WSL 或 Linux 容器中安装。
+安装方式（conda / pip / WSL）与未安装时的回退行为见 `docs/RNA_RULES.md` 的
+「ViennaRNA 安装」。
 
 ### 其它可选工具
 

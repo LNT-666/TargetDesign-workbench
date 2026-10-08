@@ -11,6 +11,32 @@
 | azimuth | `azimuth_V3_model_nopos.portable.npz` | NumPy GBDT 树（100 棵）+ 特征顺序 | 194,548 B | `9659ED5B58A77A94F7306CE20BDE571949656DEA7756EF8E99784A8E89A5E6FB` | - | **可用**：与官方 1000 条参考样例 Spearman 0.993，MAE 0.0073 |
 | teep | 无本地文件 | 在线 HTTP API | - | - | web_api | **可用但依赖网络**：调用 `https://www.tnpb.app/` 的 TEEP CNN/RNN 预测；没有本地权重、缓存或版本锁定 |
 
+## 选用对比
+
+On-target 模型：
+
+| 模型 | 用途 | 特点 | 优点 | 缺点 |
+| --- | --- | --- | --- | --- |
+| CROPSR | Cas9 on-target | 已发表的 Doench/CROPSR 逻辑回归系数；对 30mer 窗口计算，长窗口取最佳 30mer | 纯数值计算，速度快、无外部依赖、结果可复现 | 只面向 Cas9/30mer 结构，非标准窗口会退回启发式 |
+| Azimuth V3 nopos | Cas9 on-target | GBDT 回归（100 棵树），含 order1/order2、GC、NGGX、Tm 特征 | 参考验证好（Spearman 0.993）；不依赖旧版 sklearn | 当前不是默认入口；训练数据年代较早 |
+| DeepCpf1 | Cas12a/Cpf1 on-target | 序列 CNN 模型，HDF5 权重 | 面向 Cas12a/Cpf1 的专项模型 | 需显式选择；输入不足 34 bp 时回退启发式 |
+| TEEP | ISDra2 TnpBmax on-target | 在线 CNN + Bi-LSTM API，预测 20 nt 引导序列 | 针对 ISDra2/TnpBmax 的专项预测 | 需要网络、逐条查询较慢；失败时退回通用启发式，不会退回 omegaRNA 规则 |
+| omegaRNA 规则 | TnpB on-target 编辑效率 | 本地确定性规则：长度、GC、发夹、repeat | 离线可用、快速、稳定 | 是简化规则，不是训练模型；属 on-target 效率规则，不是特异性评分 |
+| Cas13 RNA 规则 | Cas13a/b/d on-target | 有 ViennaRNA 时计算 accessibility、MFE、DR-spacer、靶 RNA 扰动；无则用 U/A 富集启发式 | 可解释、离线可用、包含 RNA 结构信息 | 质量依赖 ViennaRNA 是否安装，启发式部分较粗 |
+| TIGER | Cas13d on-target | TensorFlow SavedModel，对 23 nt spacer 给出 0-1 活性分数；有 `target_rna`+`spacer_start` 时自动抠 3 nt 上游上下文 | 23 nt Cas13d 专项预测，准确性优于简化规则 | 只适用于 23 nt spacer；需要 TensorFlow 运行时 |
+| 内置启发式 | 通用 on-target | GC、seed GC、homopolymer、复杂度加权 | 任何输入都能出分，速度最快 | 精度最低，只适合兜底 |
+
+Off-target 模型：
+
+| 模型 | 用途 | 特点 | 优点 | 缺点 |
+| --- | --- | --- | --- | --- |
+| CFD | Cas9 off-target | 位置特异错配表 + PAM 权重 | 极快、无需模型文件、稳定 | 非学习模型，主要面向 SpCas9 |
+| CRISPR-M | Cas9 off-target | 多头注意力 + 卷积 + 双向 LSTM，NumPy 前向 | 对 off-target 排序能力通常优于 CFD；无需 TensorFlow | 需要约 20MB 模型文件；推理比 CFD 慢 |
+| DeepCRISPR | Cas9 off-target | CNN 模型，已转为 portable NumPy | 免 TensorFlow，权重转换已验证 | 需要 portable 模型文件；推理较慢 |
+| crispAI | Cas9 off-target | uncertainty-aware 聚合模型，外部适配器调用上游 agg-score | 输出保留后验不确定性信息 | 需要 R/NuPoP、Cas-OFFinder、GRCh38；见 `docs/CRISPAI.md` |
+| identity/preset 启发式 | 非 Cas9 off-target | 序列相似度 + seed 惩罚 | 无需模型，快速覆盖 Cas12/Cas13/TnpB | 近似评分，缺少学习模型精度 |
+| TIGER | Cas13d off-target | 对每个 off-target spacer 用 TIGER 打分并按 `1/(1+sum)` 聚合；模型不可用时回退 PFS 规则 | 23 nt Cas13d 专项 off-target 活性评估 | 只适用于 23 nt spacer；需要 TensorFlow 运行时 |
+
 ## CRISPR-M
 
 `tcrispr_model.h5` 是 CRISPR-M 的 Keras HDF5 权重文件。`shared/scoring/deep_models.py` 已实现

@@ -151,17 +151,22 @@ off_target_specificity = 1 / (1 + total)
 
 ### 3.1 ISDra2 与 TnpBmax
 
-默认 TnpB preset 标记为 `isdra2`。TEEP 的训练数据来自 TnpBmax，即用于哺乳动物
-细胞优化的 ISDra2 TnpB 版本。对另外的 TnpB 同源蛋白或其他编辑架构，TEEP
+只有一个 `tnpb`（TnpB / omegaRNA）preset，不假定具体同源蛋白；同源蛋白在
+preset 内部的 **TnpB subtype** 选项里选（`unknown` / `ISDra2`）。选
+`ISDra2` 时才标记为 `isdra2`。TEEP 的训练数据来自 TnpBmax，即用于哺乳动物
+细胞优化的 ISDra2 TnpB 版本；对另外的 TnpB 同源蛋白或其他编辑架构，TEEP
 没有验证；本地 `omega` 规则也只是通用序列启发式。程序仍允许在
 `nuclease=custom` 下调用这些模型，但此时应视为参考结果。
 
 ### 3.2 TAM 默认值
 
-ISDra2 TnpB 的经典 TAM 是 `5'-TTGAT`。系统 preset 现在默认使用
-`pam="TTGAT"`、`pam_side="5prime"`、`pam_required=True`，因此默认
-library 搜索会强制经典 TAM。若用户切换到自定义模式，应显式维持相同约束，
-否则结果不能解释为经典 ISDra2 TAM 搜索。
+TAM 因 TnpB 系统而异，所以 `tnpb` preset 本身 **不启用任何 TAM 规则**：
+`pam=""`、`pam_side=""`、`pam_required=False`，不会默认过滤或强加某个
+TAM。ISDra2 TnpB 的经典 TAM 是 `5'-TTGAT`；在 `tnpb` preset 里把
+**TnpB subtype** 选成 `ISDra2` 即启用该 TAM（等价
+`pam="TTGAT"`、`pam_side="5prime"`、`pam_required=True`），不会产生第二个
+preset 条目。其他 TnpB 变体请把 subtype 留在 `unknown` 或自行填写对应的
+TAM motif 与 side。
 
 ### 3.3 旧结果文件
 
@@ -252,7 +257,8 @@ library 搜索会强制经典 TAM。若用户切换到自定义模式，应显�
 ## 五、按结果判断的推荐顺序
 
 1. 确认运行使用 ISDra2/TnpBmax 适用的数据；其他 TnpB 只作参考。
-2. ISDra2 preset 默认使用 `5'-TTGAT` TAM，并强制 PAM 过滤。
+2. 需要经典 ISDra2 TAM 时把 `tnpb` preset 的 **TnpB subtype** 选成
+   `ISDra2`；`unknown` 下不强制任何 TAM。
 3. 先用 `off_target_specificity_identity` 排除额外相似位点多的候选。
 4. 本地筛选优先看 `on_target_score_omega`；要比较在线 TEEP 时，再同时查看
    `on_target_score_teep`，并确认运行日志中没有 TEEP 回退。
