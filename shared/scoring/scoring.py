@@ -101,6 +101,52 @@ ALL_OFF_TARGET_MODELS = _ordered_model_union(
     PRESET_OFF_TARGET_MODELS.values()
 )
 
+#: Concrete public model names that an ``auto`` choice reports as, per
+#: nuclease.  Without this, a caller that leaves the model unset (the batch
+#: default, CLI ``--on-target-model auto``) writes ``on_target_score_auto``,
+#: which is not a declared column, so every real model column ends up empty
+#: and the writer hides it.
+_AUTO_ON_TARGET_DEFAULTS = {
+    key: values[0] for key, values in PRESET_ON_TARGET_MODELS.items()
+}
+_AUTO_OFF_TARGET_DEFAULTS = {
+    key: values[0] for key, values in PRESET_OFF_TARGET_MODELS.items()
+}
+
+
+def _canonical_model_choice(choice, role, nuclease, preset_key=None):
+    """Resolve an ``auto`` model choice to its concrete public model name.
+
+    The active preset decides which model family the scorer uses, so it takes
+    precedence over the nuclease when a caller passes a mismatched pair (the
+    workbench does this for a TAM side whose preset differs from the run-level
+    nuclease).
+    """
+
+    choice = str(choice or "").strip().lower()
+    if choice != "auto":
+        return choice
+    if role == "on_target":
+        defaults = _AUTO_ON_TARGET_DEFAULTS
+    elif role == "off_target":
+        defaults = _AUTO_OFF_TARGET_DEFAULTS
+    else:
+        raise ValueError("unknown model role: %s" % role)
+    for key in (str(preset_key or "").lower(), str(nuclease or "cas9").lower()):
+        if key in defaults:
+            return defaults[key]
+    return choice
+
+
+def _unique_model_choices(choices):
+    """Return choices in order without duplicates (canonicalisation may merge)."""
+
+    unique = []
+    for choice in choices:
+        if choice not in unique:
+            unique.append(choice)
+    return unique
+
 
 def model_choices_for_preset(preset_key, role):
     """Return the model choices exposed by a preset or by custom mode."""
@@ -538,11 +584,11 @@ def _cas9_on_target_score(seq, model_choice):
 def _deep_off_target_score(seq, off_pairs, model_choice, assume_one_primary):
     """Score off-targets with a local deep model when it is usable."""
     fallback_notes = {
-        "cfd": "本地深度模型不可用，off-target 已回退 CFD 评分",
-        "crispr_m_unavailable": "CRISPR-M 模型未就绪，off-target 已回退 CFD 评分",
-        "crispr_m_error": "CRISPR-M 预测失败，off-target 已回退 CFD 评分",
-        "deepcrispr_unavailable": "DeepCRISPR 模型未就绪，off-target 已回退 CFD 评分",
-        "deepcrispr_error": "DeepCRISPR 预测失败，off-target 已回退 CFD 评分",
+        "cfd": "Local deep model unavailable; off-target fell back to CFD scoring",
+        "crispr_m_unavailable": "CRISPR-M model not ready; off-target fell back to CFD scoring",
+        "crispr_m_error": "CRISPR-M prediction failed; off-target fell back to CFD scoring",
+        "deepcrispr_unavailable": "DeepCRISPR model not ready; off-target fell back to CFD scoring",
+        "deepcrispr_error": "DeepCRISPR prediction failed; off-target fell back to CFD scoring",
     }
     choice = (model_choice or "auto").lower()
     if choice == "rules":
@@ -1315,7 +1361,7 @@ def _compute_guide_scores_single(
                 tiger_on_target = on_target
         if preset_key == "cas13":
             subtype_note = (
-                "Cas13 RNA 评分规则仅适用于 %s 亚型，其他 Cas13 变体结果仅供参考。"
+                "Cas13 RNA scoring rules apply only to the %s subtype; results for other Cas13 variants are for reference only"
                 % preset_key
             )
     elif reference_only_model == "teep" and nuclease == "tnpb":
@@ -1332,7 +1378,7 @@ def _compute_guide_scores_single(
         reference_only = True
         reference_note = "TEEP trained on ISDra2 TnpB; applied to another TnpB, result is not validated."
         subtype_note = (
-            "TEEP 仅适用于 ISDra2 TnpB（isdra2）亚型；此处作为参考模型使用，结果未经验证。"
+            "TEEP applies only to the ISDra2 TnpB (isdra2) subtype; it is used here as a reference model and results are not validated"
         )
     elif preset_key == "tnpb":
         cfd_specificity = ""
@@ -1342,8 +1388,8 @@ def _compute_guide_scores_single(
             tnpb_scoring.omega_rna_on_target_score(
                 seq, direct_repeat=direct_repeat)
         subtype_note = (
-            "TnpB omegaRNA/TEEP 规则仅适用于 ISDra2 TnpB（isdra2）亚型，"
-            "其他 TnpB 变体结果仅供参考。"
+            "TnpB omegaRNA/TEEP rules apply only to the ISDra2 TnpB (isdra2) subtype; "
+            "results for other TnpB variants are for reference only"
         )
     elif nuclease == "cas9" or preset_key == "cas9":
         cfd_specificity = aggregate_off_target_specificity(
@@ -1360,7 +1406,7 @@ def _compute_guide_scores_single(
                 off_specificity = aggregate_off_target_specificity(
                     seq, off_pairs, assume_one_primary)
                 off_target_model = "cfd"
-                off_note = "指定的 off-target 模型不可用，已回退 CFD 评分"
+                off_note = "Specified off-target model unavailable; fell back to CFD scoring"
         on_target, on_target_model = _cas9_on_target_score(seq, on_target_model)
     elif nuclease == "tnpb":
         cfd_specificity = ""
@@ -1370,8 +1416,8 @@ def _compute_guide_scores_single(
             tnpb_scoring.omega_rna_on_target_score(
                 seq, direct_repeat=direct_repeat)
         subtype_note = (
-            "TnpB omegaRNA/TEEP 规则仅适用于 ISDra2 TnpB（isdra2）亚型，"
-            "其他 TnpB 变体结果仅供参考。"
+            "TnpB omegaRNA/TEEP rules apply only to the ISDra2 TnpB (isdra2) subtype; "
+            "results for other TnpB variants are for reference only"
         )
     elif reference_only_model == "cas9" and nuclease != "custom":
         cfd_specificity = aggregate_off_target_specificity(
@@ -1416,7 +1462,7 @@ def _compute_guide_scores_single(
         if on_ref or off_ref:
             reference_only = True
             reference_note = (
-                "模型未针对自定义核酸酶验证；结果仅供参考，不应用于实验决策。"
+                "Model is not validated for custom nucleases; for reference only; not for experimental decisions"
             )
     else:
         cfd_specificity = ""
@@ -1426,8 +1472,8 @@ def _compute_guide_scores_single(
         on_target_model = "nuc_features"
         if nuclease in ("cas13/tnpb", "cas13", "tnpb"):
             subtype_note = (
-                "未指定具体亚型，使用通用启发式评分；"
-                "特定亚型模型的结果会标注其适用范围。"
+                "No specific subtype specified; using generic heuristic scoring; "
+                "subtype-specific model results will note their scope"
             )
 
     if has_precomputed_off_target:
@@ -1437,7 +1483,7 @@ def _compute_guide_scores_single(
             reference_only = True
             if not reference_note:
                 reference_note = (
-                    "模型未针对自定义核酸酶验证；结果仅供参考，不应用于实验决策。"
+                    "Model is not validated for custom nucleases; for reference only; not for experimental decisions"
                 )
     if off_target_model == "crispr_m":
         ai_off_target["crispr_m_off_target"] = off_specificity
@@ -1555,6 +1601,14 @@ def compute_guide_scores(
     off_choices = _normalize_model_choices(
         off_target_models if off_target_models is not None else off_target_model,
         "rules",
+    )
+    on_choices = _unique_model_choices(
+        _canonical_model_choice(choice, "on_target", nuclease, preset_key)
+        for choice in on_choices
+    )
+    off_choices = _unique_model_choices(
+        _canonical_model_choice(choice, "off_target", nuclease, preset_key)
+        for choice in off_choices
     )
     primary_on = on_choices[0]
     primary_off = off_choices[0]

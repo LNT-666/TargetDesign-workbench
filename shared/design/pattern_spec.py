@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
@@ -171,3 +172,29 @@ class PatternSpec:
             "left_side",
             "right_side",
         ]
+
+
+def default_pattern_name(spec: PatternSpec) -> str:
+    """Return the human-readable default id for a validated pattern."""
+
+    spec.validate()
+    if spec.kind is PatternKind.SINGLE_MOTIF_FLANK:
+        assert spec.motif is not None
+        raw = spec.motif.sequence
+    elif spec.kind is PatternKind.MOTIF_GAP_MOTIF:
+        assert spec.left is not None and spec.right is not None
+        raw = "%s_%s-%s_%s" % (
+            spec.left.sequence,
+            spec.min_gap,
+            spec.max_gap,
+            spec.right.sequence,
+        )
+    else:
+        assert spec.left is not None and spec.right is not None
+        raw = "%s_%s_%s" % (
+            spec.left.sequence,
+            spec.y_sequence,
+            spec.right.sequence,
+        )
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("._-")
+    return cleaned or "pattern"

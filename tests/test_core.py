@@ -15,7 +15,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHARED = os.path.join(ROOT, "shared")
 sys.path.insert(0, SHARED)
 
-from design.system_presets import apply_preset, get_preset, rule_summary  # noqa: E402
+from design.system_presets import (  # noqa: E402
+    apply_preset,
+    get_preset,
+    resolve_preset_pam,
+    rule_summary,
+)
 from design.guide_design import find_guides, filter_guides  # noqa: E402
 from scoring.scoring import (  # noqa: E402
     ALL_OFF_TARGET_MODELS, ALL_ON_TARGET_MODELS,
@@ -54,11 +59,22 @@ class PresetTests(unittest.TestCase):
     def test_rule_summary(self):
         self.assertIn("seed 1-6", rule_summary("cas12a"))
 
-    def test_tnpb_defaults_to_classic_ttgat_tam(self):
+    def test_tnpb_preset_does_not_assume_a_tam(self):
         preset = get_preset("tnpb")
-        self.assertEqual(preset["pam"], "TTGAT")
-        self.assertEqual(preset["pam_side"], "5prime")
-        self.assertTrue(preset["pam_required"])
+        self.assertEqual(preset["tnpb_subtype"], "unknown")
+        self.assertEqual(preset["pam"], "")
+        self.assertFalse(preset["pam_required"])
+
+    def test_tnpb_isdra2_subtype_turns_on_the_classic_tam(self):
+        # ISDra2 is a subtype option inside the single ``tnpb`` preset, not a
+        # second preset; selecting it enables the classic 5' TTGAT TAM.
+        self.assertEqual(
+            resolve_preset_pam("tnpb", "isdra2"),
+            ("TTGAT", "5prime", True),
+        )
+        self.assertEqual(
+            resolve_preset_pam("tnpb", "unknown"), ("", "", False)
+        )
 
     def test_pam_required_preset_forces_hard_filter(self):
         args = argparse.Namespace(mode="preset", pam="TTTN", require_pam=False)
@@ -204,6 +220,34 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(result["off_target_specificity"], 1.0)
         self.assertEqual(result["crispr_m_off_target"], 1.0)
         self.assertEqual(result["deepcrispr_off_target"], "")
+
+    def test_auto_models_report_concrete_model_columns(self):
+        # A caller that leaves the models unset (batch default, CLI "auto")
+        # must still surface the score columns under the concrete default
+        # names; ``_auto`` is not a declared column, so it would be dropped.
+        # The active preset wins over the nuclease, matching the scorer's
+        # branch order for a TAM side whose preset differs from the run.
+        for nuclease, preset_key, on_key, off_key in (
+            ("cas9", None, "on_target_score_cropsr",
+             "off_target_specificity_cfd"),
+            ("tnpb", None, "on_target_score_omega",
+             "off_target_specificity_identity"),
+            ("cas9", "tnpb", "on_target_score_omega",
+             "off_target_specificity_identity"),
+        ):
+            result = compute_guide_scores(
+                "GAACACAAAGCATAGACTGC",
+                [],
+                nuclease=nuclease,
+                preset_key=preset_key,
+                on_target_model="auto",
+                off_target_model="auto",
+            )
+            label = "%s/%s" % (nuclease, preset_key)
+            self.assertIn(on_key, result, label)
+            self.assertIn(off_key, result, label)
+            self.assertNotIn("on_target_score_auto", result, label)
+            self.assertNotIn("off_target_specificity_auto", result, label)
 
     def test_apply_guide_feature_columns_attaches_library_columns(self):
         seq = "GAACACAAAGCATAGACTGC"

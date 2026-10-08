@@ -39,6 +39,28 @@ def _write_genome(path):
         handle.write(PAIRED_FASTA)
 
 
+def _fake_genome(sequences):
+    """Return a pyfaidx-like genome object that only needs slice access."""
+    class _Record:
+        def __init__(self, sequence):
+            self._sequence = sequence
+
+        def __len__(self):
+            return len(self._sequence)
+
+        def __getitem__(self, item):
+            return self._sequence[item]
+
+    class _Genome:
+        def __init__(self, records):
+            self._records = records
+
+        def __getitem__(self, key):
+            return _Record(self._records[key])
+
+    return _Genome(dict(sequences))
+
+
 class SearchParamsTests(unittest.TestCase):
     def test_from_args(self):
         args = argparse.Namespace(
@@ -88,6 +110,92 @@ class BlastPamTests(unittest.TestCase):
                 return_value="AAA"):
             self.assertFalse(_pam_ok_blast(
                 genome, "chr1", 10, 30, "+", "NGG", "3prime"))
+
+
+class PamWindowAnchorTests(unittest.TestCase):
+    """PAMs live inside an extracted window instead of beyond its far edge."""
+
+    def test_downstream_plus_window_anchors_the_pam_at_its_five_prime_edge(self):
+        from search.blast_utils import pam_span_in_window
+
+        window = "TTGAT" + "A" * 20
+        self.assertEqual(
+            pam_span_in_window(window, "TTGAT", "TTGAT", "downstream"),
+            ((0, 5), "TTGAT"))
+
+    def test_degenerate_motif_anchors_the_full_pam(self):
+        from search.blast_utils import pam_span_in_window
+
+        window = "TTGAT" + "A" * 20
+        self.assertEqual(
+            pam_span_in_window(window, "TTR", "TTGAT", "downstream"),
+            ((0, 5), "TTGAT"))
+        # A relaxed anchor still points at the strict PAM span, which is what
+        # makes the TTR/TTGAT TnpB configuration usable.
+        relaxed = "TTAGT" + "A" * 20
+        self.assertEqual(
+            pam_span_in_window(relaxed, "TTR", "TTGAT", "downstream"),
+            ((0, 5), "TTGAT"))
+
+    def test_downstream_minus_window_anchors_the_pam_at_its_three_prime_edge(self):
+        from search.blast_utils import pam_span_in_window, reverse_complement
+
+        window = "A" * 20 + reverse_complement("TTGAT")
+        self.assertEqual(
+            pam_span_in_window(window, "TTGAT", "TTGAT", "downstream"),
+            ((20, 25), reverse_complement("TTGAT")))
+
+    def test_upstream_plus_window_anchors_the_pam_at_its_three_prime_edge(self):
+        from search.blast_utils import pam_span_in_window
+
+        window = "A" * 20 + "TTGAT"
+        self.assertEqual(
+            pam_span_in_window(window, "TTGAT", "TTGAT", "upstream"),
+            ((20, 25), "TTGAT"))
+
+    def test_upstream_minus_window_anchors_the_pam_at_its_five_prime_edge(self):
+        from search.blast_utils import pam_span_in_window, reverse_complement
+
+        window = reverse_complement("TTGAT") + "A" * 20
+        self.assertEqual(
+            pam_span_in_window(window, "TTGAT", "TTGAT", "upstream"),
+            ((0, 5), reverse_complement("TTGAT")))
+
+    def test_guide_only_query_has_no_embedded_pam(self):
+        from search.blast_utils import pam_span_in_window
+
+        self.assertIsNone(pam_span_in_window("A" * 20, None, "TTGAT"))
+        self.assertIsNone(pam_span_in_window("A" * 20, "TTGAT", "TTGAT"))
+
+    def test_embedded_pam_is_read_from_the_aligned_strand(self):
+        from search.blast_utils import _pam_ok_window, reverse_complement
+
+        sequence = list("C" * 400)
+        sequence[100:105] = list("TTGAT")
+        sequence[200:205] = list("TTGAC")
+        sequence[300:305] = list(reverse_complement("TTGAT"))
+        genome = _fake_genome({"chr1": "".join(sequence)})
+
+        self.assertTrue(_pam_ok_window(
+            genome, "chr1", 100, 105, "+", 1, (0, 5), "TTGAT"))
+        self.assertFalse(_pam_ok_window(
+            genome, "chr1", 200, 205, "+", 1, (0, 5), "TTGAT"))
+        self.assertTrue(_pam_ok_window(
+            genome, "chr1", 300, 305, "-", 1, (0, 5), "TTGAT"))
+        self.assertFalse(_pam_ok_window(
+            genome, "chr1", 100, 105, "-", 1, (0, 5), "TTGAT"))
+
+    def test_embedded_pam_is_resolved_when_blast_trims_its_end(self):
+        from search.blast_utils import _pam_ok_window
+
+        genome = _fake_genome(
+            {"chr1": "C" * 100 + "TTGAT" + "C" * 95 + "TTGAC" + "C" * 100})
+        # The alignment starts at query position 3, but the PAM span (0, 5)
+        # still maps onto the genome and has to be checked there.
+        self.assertTrue(_pam_ok_window(
+            genome, "chr1", 102, 105, "+", 3, (0, 5), "TTGAT"))
+        self.assertFalse(_pam_ok_window(
+            genome, "chr1", 197, 200, "+", 3, (0, 5), "TTGAT"))
 
 
 class BackendTests(unittest.TestCase):
@@ -636,7 +744,7 @@ class BlastThreadTests(unittest.TestCase):
         finally:
             os.unlink(query_fasta)
 
-    def test_blastn_rejects_partial_query_hits(self):
+    def test_blastn_counts_trimmed_query_bases_as_mismatches(self):
         from search.blast_utils import run_blastn
 
         with tempfile.NamedTemporaryFile(
@@ -647,6 +755,8 @@ class BlastThreadTests(unittest.TestCase):
         def fake_popen(cmd, **kwargs):
             out_path = cmd[cmd.index("-out") + 1]
             with open(out_path, "w", encoding="utf-8") as blast_out:
+                # A 16/20 nt local HSP: blastn trimmed the last four query
+                # bases, which are unaligned rather than matched.
                 blast_out.write(
                     "g0\tchr1\t100.0\t16\t0\t0\t1\t16\t"
                     "101\t116\t0.001\t30\n"
@@ -663,9 +773,76 @@ class BlastThreadTests(unittest.TestCase):
             with mock.patch(
                     "subprocess.Popen", side_effect=fake_popen):
                 matches = run_blastn(
-                    query_fasta, "test_db", num_threads=2)
-            self.assertEqual(len(matches["g0"]), 1)
-            self.assertEqual(matches["g0"][0]["mismatch"], 0)
+                    query_fasta, "test_db", num_threads=2, max_mismatch=4)
+            by_start = {hit["start"]: hit for hit in matches["g0"]}
+            self.assertEqual(sorted(by_start), [0, 100])
+            self.assertEqual(by_start[0]["mismatch"], 0)
+            self.assertEqual(by_start[100]["mismatch"], 4)
+
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                strict = run_blastn(
+                    query_fasta, "test_db", num_threads=2, max_mismatch=3)
+            self.assertEqual(len(strict["g0"]), 1)
+            self.assertEqual(strict["g0"][0]["start"], 0)
+        finally:
+            os.unlink(query_fasta)
+
+    def test_blastn_checks_a_pam_that_is_inside_the_query_window(self):
+        from search.blast_utils import reverse_complement, run_blastn
+
+        window = "TTGAT" + GUIDE
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
+            handle.write(">g0\n%s\n" % window)
+            query_fasta = handle.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                # plus strand with a valid PAM
+                blast_out.write(
+                    "g0\tchr1\t100.0\t25\t0\t0\t1\t25\t"
+                    "101\t125\t0.0\t40\n")
+                # plus strand with a mutated PAM
+                blast_out.write(
+                    "g0\tchr1\t96.0\t25\t1\t0\t1\t25\t"
+                    "201\t225\t0.0\t38\n")
+                # minus strand: the plus strand has to read the rc PAM
+                blast_out.write(
+                    "g0\tchr1\t100.0\t25\t0\t0\t1\t25\t"
+                    "500\t476\t0.0\t40\n")
+                # blastn trimmed the PAM end away
+                blast_out.write(
+                    "g0\tchr1\t95.0\t23\t1\t0\t3\t25\t"
+                    "301\t323\t0.0\t36\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        sequence = list("C" * 600)
+        sequence[100:105] = list("TTGAT")
+        sequence[200:205] = list("TTGAC")
+        sequence[495:500] = list(reverse_complement("TTGAT"))
+        genome = _fake_genome({"chr1": "".join(sequence)})
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                matches = run_blastn(
+                    query_fasta, "test_db", max_mismatch=4, require_pam=True,
+                    pam_motif="TTGAT", pam_side="5prime", genome=genome,
+                    window_motif="TTGAT", window_side="downstream")
+            self.assertEqual(
+                sorted(hit["start"] for hit in matches["g0"]), [100, 475])
+
+            # Without the window context the legacy outside-the-window check
+            # runs instead, and the same hits are all rejected.
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                legacy = run_blastn(
+                    query_fasta, "test_db", max_mismatch=4, require_pam=True,
+                    pam_motif="TTGAT", pam_side="5prime", genome=genome)
+            self.assertEqual(legacy.get("g0", []), [])
         finally:
             os.unlink(query_fasta)
 

@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +13,7 @@ from design.pattern_spec import (  # noqa: E402
     PatternKind,
     PatternSpec,
     Side,
+    default_pattern_name,
 )
 
 
@@ -73,6 +75,54 @@ class PatternSpecTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MotifSpec("ATCZ")
 
+    def test_default_pattern_name_for_each_kind(self):
+        single = PatternSpec(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=MotifSpec("ttag"),
+        )
+        gap = PatternSpec(
+            kind=PatternKind.MOTIF_GAP_MOTIF,
+            left=MotifSpec("TTAG"),
+            right=MotifSpec("TCAA"),
+            min_gap=10,
+            max_gap=40,
+        )
+        y_centered = PatternSpec(
+            kind=PatternKind.Y_CENTERED_MOTIFS,
+            y_sequence="TTaW",
+            left=MotifSpec("TTAT"),
+            right=MotifSpec("TTAT"),
+            left_min_distance=0,
+            left_max_distance=10,
+            right_min_distance=0,
+            right_max_distance=10,
+        )
+        self.assertEqual(default_pattern_name(single), "TTAG")
+        self.assertEqual(default_pattern_name(gap), "TTAG_10-40_TCAA")
+        self.assertEqual(
+            default_pattern_name(y_centered), "TTAT_TTAW_TTAT"
+        )
+
+    def test_default_pattern_name_cleans_and_falls_back(self):
+        dirty = SimpleNamespace(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=SimpleNamespace(sequence=" ..TTAG? "),
+            validate=lambda: None,
+        )
+        empty = SimpleNamespace(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=SimpleNamespace(sequence="???"),
+            validate=lambda: None,
+        )
+        self.assertEqual(default_pattern_name(dirty), "TTAG")
+        self.assertEqual(default_pattern_name(empty), "pattern")
+
+    def test_default_pattern_name_rejects_invalid_spec(self):
+        with self.assertRaises(ValueError):
+            default_pattern_name(
+                PatternSpec(kind=PatternKind.SINGLE_MOTIF_FLANK)
+            )
+
     def test_candidate_columns_match_pattern_kind(self):
         single = PatternSpec(
             kind=PatternKind.SINGLE_MOTIF_FLANK,
@@ -91,4 +141,3 @@ class PatternSpecTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

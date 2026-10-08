@@ -117,22 +117,84 @@ SYSTEM_PRESETS = {
     "tnpb": {
         "label": "TnpB / omegaRNA",
         "nuclease": "tnpb",
-        "tnpb_subtype": "isdra2",
+        "tnpb_subtype": "unknown",
         "spacer_len": None,
-        "pam": "TTGAT",
-        "pam_side": "5prime",
+        "pam": "",
+        "pam_mode": "custom",
+        "pam_side": "",
         "seed_start": None,
         "seed_end": None,
         "target_type": "dna",
         "score_profile": "tnpb",
         "prefer": "",
-        "pam_required": True,
-        "description": "ISDra2 TnpB omegaRNA design; 5' TTGAT TAM is "
-                       "required by default, with optional online TEEP "
-                       "reference scoring.",
+        "pam_required": False,
+        "description": "Generic TnpB omegaRNA design; no TAM is assumed. "
+                       "Pick the ISDra2 subtype to require the classic "
+                       "5' TTGAT TAM.",
         "rule_key": "tnpb",
     },
 }
+
+
+#: TnpB subtypes selectable inside the single ``tnpb`` preset.
+TNPB_SUBTYPES = ("unknown", "isdra2")
+
+#: Display labels for the TnpB subtype selector.
+TNPB_SUBTYPE_LABELS = {
+    "unknown": "Unknown",
+    "isdra2": "ISDra2",
+}
+
+#: Subtype-specific TAM defaults. A subtype with a fixed TAM enables the
+#: PAM requirement automatically; a subtype without an entry keeps the
+#: generic no-TAM behavior and the user fills the TAM fields by hand.
+TNPB_SUBTYPE_TAMS = {
+    "isdra2": {"pam": "TTGAT", "pam_side": "5prime"},
+}
+
+
+def resolve_preset_pam(preset_key, tnpb_subtype=None):
+    """Return ``(pam, pam_side, pam_required)`` for a preset + subtype.
+
+    The preset's own PAM wins when it defines one.  The generic ``tnpb``
+    preset has no PAM; selecting a TnpB subtype with a fixed TAM (ISDra2)
+    turns that TAM on without adding a second top-level preset.
+    """
+
+    preset = get_preset(preset_key)
+    pam = preset.get("pam") or ""
+    pam_side = preset.get("pam_side") or ""
+    required = bool(preset.get("pam_required"))
+    if pam:
+        return pam, pam_side, required
+    if (preset.get("nuclease") or "").lower() == "tnpb":
+        override = TNPB_SUBTYPE_TAMS.get(
+            str(tnpb_subtype or "").strip().lower()
+        )
+        if override:
+            return override["pam"], override["pam_side"], True
+    return pam, pam_side, required
+
+
+def resolve_run_nuclease(nuclease, preset_key):
+    """Return the nuclease a run should report for the chosen system.
+
+    ``cas9`` is the form and dataclass default, so a real non-cas9 preset
+    fills it in -- a TnpB side must never be reported as SpCas9 just because
+    the nuclease field was left untouched.  An explicit non-cas9 choice, for
+    example a batch ``shared.nuclease``, still wins over the default SpCas9
+    preset, and the custom preset keeps whatever the caller asked for.
+    """
+
+    requested = str(nuclease or "").strip().lower()
+    preset_nuclease = str(
+        get_preset(preset_key).get("nuclease") or ""
+    ).strip().lower()
+    if preset_nuclease in ("", "custom"):
+        return nuclease
+    if requested in ("", "cas9") or preset_nuclease != "cas9":
+        return preset_nuclease
+    return nuclease
 
 
 MODES = {

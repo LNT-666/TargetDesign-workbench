@@ -211,6 +211,8 @@ class SearchParams:
     pam: Optional[str] = None
     pam_side: str = "3prime"
     require_pam: bool = False
+    window_motif: Optional[str] = None
+    window_side: str = "downstream"
     blastdb: Optional[str] = None
     index_path: Optional[str] = None
     output_dir: Optional[str] = None
@@ -244,6 +246,8 @@ class SearchParams:
             pam=getattr(args, "pam", None),
             pam_side=getattr(args, "pam_side", "3prime") or "3prime",
             require_pam=bool(getattr(args, "require_pam", False)),
+            window_motif=getattr(args, "window_motif", None) or None,
+            window_side=getattr(args, "window_side", None) or "downstream",
             blastdb=getattr(args, "blastdb", None) or None,
             index_path=getattr(args, "index_path", None) or None,
             output_dir=getattr(args, "output_dir", None),
@@ -378,7 +382,7 @@ class BlastBackend(OffTargetBackend):
         missing = [cmd for cmd in ("blastn", "makeblastdb")
                    if shutil.which(cmd) is None]
         if missing:
-            return False, "缺少 NCBI BLAST+：%s" % ", ".join(missing)
+            return False, "Missing NCBI BLAST+: %s" % ", ".join(missing)
         return True, ""
 
     def search(self, guides, genome_fasta, params, genome=None, **kwargs):
@@ -459,6 +463,8 @@ class BlastBackend(OffTargetBackend):
                     require_pam=params.require_pam,
                     pam_motif=params.pam or "GG",
                     pam_side=params.pam_side,
+                    window_motif=params.window_motif,
+                    window_side=params.window_side,
                     seed_mismatch_max=params.seed_mismatch_max,
                     seed_len=params.seed_len,
                     genome=genome,

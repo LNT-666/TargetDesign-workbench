@@ -4,21 +4,45 @@ import csv
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from design.pattern_spec import MotifSpec, PatternKind, PatternSpec
 from design.system_presets import (
-    get_preset, normalize_pam_mode, pam_motif_for_mode,
+    get_preset, normalize_pam_mode, pam_motif_for_mode, resolve_preset_pam,
 )
 from scoring.pair_ranking_adapter import write_pair_rank_policy_file
 from utils.child_process import (
     popen_kwargs, register_child, terminate_process_tree, unregister_child,
 )
+
+
+def split_single_query(
+    query_seq: str, strand: str, side: str, flank_length: int
+) -> Tuple[str, str]:
+    """Split a single-motif query into its ``(motif, flank)`` sequences.
+
+    ``basic/extract.py`` assembles the query as motif+flank or flank+motif
+    depending on the configured side and the strand of the hit, so the split
+    has to mirror that same rule.
+    """
+
+    query_seq = str(query_seq or "")
+    flank_length = max(0, int(flank_length or 0))
+    if not query_seq or flank_length >= len(query_seq):
+        return query_seq, ""
+    motif_first = (str(strand) == "plus") == (str(side) == "downstream")
+    if motif_first:
+        motif_length = len(query_seq) - flank_length
+        return query_seq[:motif_length], query_seq[motif_length:]
+    return query_seq[flank_length:], query_seq[:flank_length]
 
 
 @dataclass
@@ -27,6 +51,7 @@ class RunnerConfig:
     regions: str = ""
     genome_fasta: str = ""
     mask_fasta: str = ""
+    mask_same_as_target: bool = False
     output_dir: str = ""
     blastdb: str = ""
     nuclease: str = "cas9"
@@ -143,6 +168,18 @@ def _close_child_stdout(proc):
         pass
 
 
+def _json_ready(value):
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    return value
+
+
 class PatternRunner:
     """Convert a PatternSpec into the existing extract/search/score scripts."""
 
@@ -169,6 +206,15 @@ class PatternRunner:
         os.makedirs(output_dir, exist_ok=True)
         return output_dir
 
+    def _workdir(self) -> str:
+        output_dir = self._outdir()
+        label = self._run_label_suffix()
+        if not label:
+            return output_dir
+        workdir = os.path.join(output_dir, label)
+        os.makedirs(workdir, exist_ok=True)
+        return workdir
+
     def _run_label_suffix(self) -> str:
         label = (self.config.run_label or "").strip()
         label = re.sub(r"[/\\]+", "-", label)
@@ -180,6 +226,7 @@ class PatternRunner:
         if not label:
             return
         output_dir = self._outdir()
+        source_dir = self._workdir()
         if self.spec.kind is PatternKind.SINGLE_MOTIF_FLANK:
             names = (
                 "query_scores_sorted.tsv",
@@ -209,7 +256,7 @@ class PatternRunner:
                 "top_offtargets.xlsx",
             )
         for name in names:
-            old_path = os.path.join(output_dir, name)
+            old_path = os.path.join(source_dir, name)
             if not os.path.isfile(old_path):
                 continue
             stem, ext = os.path.splitext(name)
@@ -224,14 +271,167 @@ class PatternRunner:
                 os.replace(old_path, new_path)
             except OSError:
                 pass
+        params_old = os.path.join(source_dir, "params.json")
+        params_new = os.path.join(output_dir, "%s_params.json" % label)
+        if os.path.isfile(params_old):
+            try:
+                shutil.copy2(params_old, params_new)
+            except OSError:
+                pass
+
+    def _deliverable_paths(self) -> Dict[str, Optional[str]]:
+        label = self._run_label_suffix()
+        if not label:
+            return {
+                "scores": None,
+                "guides": None,
+                "offtargets": None,
+                "blast_results": None,
+            }
+        output_dir = self._outdir()
+        if self.spec.kind is PatternKind.SINGLE_MOTIF_FLANK:
+            names = {
+                "scores": "%s_scores.tsv" % label,
+                "guides": "%s_guides.tsv" % label,
+                "offtargets": "%s_offtargets.tsv" % label,
+                "blast_results": "%s_blast_results.tsv" % label,
+            }
+        elif self.spec.kind is PatternKind.MOTIF_GAP_MOTIF:
+            names = {
+                "scores": "%s_scores.tsv" % label,
+                "guides": "%s_guides.tsv" % label,
+                "offtargets": "%s_offtargets.tsv" % label,
+                "blast_results": None,
+            }
+        else:
+            names = {
+                "scores": "%s_scores.sorted.tsv" % label,
+                "guides": "%s_guides.tsv" % label,
+                "offtargets": "%s_offtargets.tsv" % label,
+                "blast_results": None,
+            }
+        return {
+            key: (os.path.join(output_dir, name) if name else None)
+            for key, name in names.items()
+        }
+
+    def _params_payload(
+        self,
+        status: str,
+        return_code: Optional[int],
+        steps: List[PipelineStep],
+    ) -> Dict[str, Any]:
+        pam_motif, pam_side, require_pam = self._pam_settings()
+        return {
+            "schema": "crispr-pattern-run-params/1",
+            "written_at": datetime.now().isoformat(timespec="seconds"),
+            "status": status,
+            "return_code": return_code,
+            "run_label": self.config.run_label or "",
+            "search": {
+                "engine": self.config.engine,
+                "pam_mode": self.config.pam_mode,
+                "pam_motif": pam_motif,
+                "pam_side": pam_side,
+                "require_pam": require_pam,
+                "max_mismatch": self.config.max_mismatch,
+                "max_bulge": self.config.max_bulge,
+                "seed_len": self.config.seed_len,
+                "seed_mismatch_max": self.config.seed_mismatch_max,
+                "timeout_s": self.config.timeout_s,
+                "max_memory_mode": self.config.max_memory_mode,
+                "max_memory_mb": self.config.max_memory_mb,
+            },
+            "inputs": {
+                "search_fasta": self._search_fasta(),
+                "regions": self.config.regions,
+                "genome_fasta": self.config.genome_fasta,
+                "mask_fasta": self._mask_fasta(),
+                "mask_same_as_target": self.config.mask_same_as_target,
+                "blastdb": self.config.blastdb,
+                "index_path": self.config.index_path,
+                "genome_build": self.config.genome_build,
+                "annotation": self.config.annotation,
+            },
+            "output": {
+                "run_dir": self._workdir(),
+                "steps": [
+                    {"name": step.name, "argv": list(step.command)}
+                    for step in steps
+                ],
+                "deliverables": self._deliverable_paths(),
+            },
+            "pattern": _json_ready(asdict(self.spec)),
+            "scoring": {
+                "nuclease": self.config.nuclease,
+                "preset": self.config.preset,
+                "mode": self.config.mode,
+                "on_target_model": self.config.on_target_model,
+                "off_target_model": self.config.off_target_model,
+                "reference_only_model": self.config.reference_only_model,
+                "gc_min": self.config.gc_min,
+                "gc_max": self.config.gc_max,
+                "self_comp_max": self.config.self_comp_max,
+                "filter_hard": self.config.filter_hard,
+                "crispai": self.config.crispai,
+                "unique_guides": self.config.unique_guides,
+                "xlsx": self.config.xlsx,
+                "exact_offtarget": self.config.exact_offtarget,
+            },
+            "environment": {
+                "python": self._py(),
+                "project_root": str(self.project_root),
+                "cwd": os.getcwd(),
+            },
+        }
+
+    def _write_params(
+        self,
+        status: str,
+        return_code: Optional[int],
+        steps: List[PipelineStep],
+        on_line: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        if not self._run_label_suffix():
+            return
+        tmp_path = None
+        try:
+            workdir = self._workdir()
+            path = os.path.join(workdir, "params.json")
+            tmp_path = path + ".tmp"
+            payload = self._params_payload(status, return_code, steps)
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+            os.replace(tmp_path, path)
+        except Exception as exc:
+            if tmp_path:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except OSError:
+                    pass
+            if on_line:
+                try:
+                    on_line("Failed to write params.json: %s" % exc)
+                except Exception:
+                    pass
 
     def extract_output_path(self) -> str:
-        output_dir = self._outdir()
+        output_dir = self._workdir()
         if self.spec.kind is PatternKind.SINGLE_MOTIF_FLANK:
             return os.path.join(output_dir, "extracted_seqs.tsv")
         if self.spec.kind is PatternKind.MOTIF_GAP_MOTIF:
             return os.path.join(output_dir, "complex_queries.tsv")
         return os.path.join(output_dir, "occurrence")
+
+    def run_dir(self) -> str:
+        """Return the directory this run writes into."""
+        return self._workdir()
+
+    def deliverable_paths(self) -> Dict[str, Optional[str]]:
+        """Return the labeled deliverable paths, reusing the landing rules."""
+        return self._deliverable_paths()
 
     def _script(self, relative_path: str) -> str:
         return str(self.project_root / relative_path)
@@ -315,12 +515,12 @@ class PatternRunner:
             "--min_right",
             str(self.spec.right_min_distance),
             "--outdir",
-            self._outdir(),
+            self._workdir(),
         ]
 
     def _single_pipeline(self) -> List[PipelineStep]:
         query = self.extract_output_path()
-        intermediate = os.path.join(self._outdir(), "blast_results.tsv")
+        intermediate = os.path.join(self._workdir(), "blast_results.tsv")
         steps = [
             PipelineStep("extract", self.build_extract_command()),
             PipelineStep(
@@ -341,8 +541,8 @@ class PatternRunner:
 
     def _y_pipeline(self) -> List[PipelineStep]:
         query_dir = self.extract_output_path()
-        scores = os.path.join(self._outdir(), "scores.tsv")
-        sorted_scores = os.path.join(self._outdir(), "scores.sorted.tsv")
+        scores = os.path.join(self._workdir(), "scores.tsv")
+        sorted_scores = os.path.join(self._workdir(), "scores.sorted.tsv")
         return [
             PipelineStep("extract", self.build_extract_command()),
             PipelineStep(
@@ -360,7 +560,7 @@ class PatternRunner:
             query,
             self._genome_fasta(),
             "--输出目录",
-            self._outdir(),
+            self._workdir(),
         ]
         if self._mask_fasta():
             command.extend(["--屏蔽基因", self._mask_fasta()])
@@ -401,7 +601,7 @@ class PatternRunner:
             self._py(),
             self._script(os.path.join("basic", "analyze_scores.py")),
             intermediate,
-            self._outdir(),
+            self._workdir(),
             "--nuclease",
             self.config.nuclease,
             "--tnpb-subtype",
@@ -437,7 +637,7 @@ class PatternRunner:
             query,
             self._mask_fasta(),
             self._genome_fasta(),
-            self._outdir(),
+            self._workdir(),
             "--blastdb",
             self.config.blastdb,
             "--engine",
@@ -552,7 +752,7 @@ class PatternRunner:
             "--target-fasta",
             self._search_fasta(),
             "-o",
-            os.path.join(self._outdir(), "scores.tsv"),
+            os.path.join(self._workdir(), "scores.tsv"),
             "--blast_db",
             self.config.blastdb,
             "--engine",
@@ -693,11 +893,13 @@ class PatternRunner:
 
     def _pam_settings(self):
         if self.config.mode == "preset":
-            preset = get_preset(self.config.preset)
-            if preset.get("pam_required") and preset.get("pam"):
-                return (preset["pam"], preset.get("pam_side") or "3prime", True)
-            if preset.get("pam"):
-                return (preset["pam"], preset.get("pam_side") or "", False)
+            pam, pam_side, required = resolve_preset_pam(
+                self.config.preset, self.config.tnpb_subtype
+            )
+            if required and pam:
+                return pam, pam_side or "3prime", True
+            if pam:
+                return pam, pam_side or "", False
             return ("", "", False)
         mode = normalize_pam_mode(
             self.config.pam_mode, self.config.pam_motif)
@@ -748,7 +950,7 @@ class PatternRunner:
         if not regions:
             raise ValueError("No valid regions in %s" % regions_path)
         windows = extract_region_sequences(genome, regions, pad=0)
-        out = os.path.join(self._outdir(), "bed_windows.fa")
+        out = os.path.join(self._workdir(), "bed_windows.fa")
         with open(out, "w", encoding="utf-8") as handle:
             for win in windows:
                 rid = "%s:%s-%s:%s:%s" % (
@@ -766,7 +968,12 @@ class PatternRunner:
         return path
 
     def _mask_fasta(self) -> str:
-        return (self.config.mask_fasta or "").strip()
+        explicit = (self.config.mask_fasta or "").strip()
+        if explicit:
+            return explicit
+        if self.config.mask_same_as_target:
+            return self._search_fasta()
+        return ""
 
     def resolved_max_memory_mb(self) -> int:
         """Resolve the command-line memory limit for this run."""
@@ -819,7 +1026,7 @@ class PatternRunner:
         policy = self.config.pair_rank_policy
         if not policy:
             raise ValueError("pair_rank_policy is required for paired designs")
-        path = os.path.join(self._outdir(), "pair_rank_policy.json")
+        path = os.path.join(self._workdir(), "pair_rank_policy.json")
         return write_pair_rank_policy_file(path, policy)
 
     def stop(self) -> None:
@@ -851,49 +1058,67 @@ class PatternRunner:
         steps = self.build_pipeline()[start:end]
         child_env = python_fallback_env()
         self._stop_requested = False
-        for step in steps:
-            if self._stop_requested:
-                return STOPPED_RETURN_CODE
-            if on_line:
-                on_line(f"[{step.name}] {' '.join(step.command)}")
-            proc = subprocess.Popen(
-                step.command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env=child_env,
-                **popen_kwargs()
-            )
-            self._register_process(proc)
-            try:
-                assert proc.stdout is not None
-                for raw_line in proc.stdout:
-                    line = raw_line.rstrip()
-                    request = parse_confirm_request(line)
-                    if request is not None:
-                        self._answer_confirm_request(
-                            proc, request, on_prompt, on_line)
-                    if on_line:
-                        on_line(line)
-                _close_child_stdin(proc)
-                returncode = proc.wait()
-            finally:
-                self._release_process(proc)
-                # A stopped or failed step must not leave descendants behind.
-                terminate_process_tree(proc)
-                _close_child_stdout(proc)
-            if self._stop_requested:
-                return STOPPED_RETURN_CODE
-            if returncode != 0:
-                return returncode
-        if start > 0 or any(
-                "score" in step.name or "sort" in step.name
-                for step in steps):
+        self._write_params("running", None, steps, on_line)
+        status = "failed"
+        return_code = None
+        try:
+            for step in steps:
+                if self._stop_requested:
+                    status = "stopped"
+                    return_code = STOPPED_RETURN_CODE
+                    break
+                if on_line:
+                    on_line(f"[{step.name}] {' '.join(step.command)}")
+                proc = subprocess.Popen(
+                    step.command,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=child_env,
+                    **popen_kwargs()
+                )
+                self._register_process(proc)
+                try:
+                    assert proc.stdout is not None
+                    for raw_line in proc.stdout:
+                        line = raw_line.rstrip()
+                        request = parse_confirm_request(line)
+                        if request is not None:
+                            self._answer_confirm_request(
+                                proc, request, on_prompt, on_line)
+                        if on_line:
+                            on_line(line)
+                    _close_child_stdin(proc)
+                    returncode = proc.wait()
+                finally:
+                    self._release_process(proc)
+                    # A stopped or failed step must not leave descendants behind.
+                    terminate_process_tree(proc)
+                    _close_child_stdout(proc)
+                if self._stop_requested:
+                    status = "stopped"
+                    return_code = STOPPED_RETURN_CODE
+                    break
+                if returncode != 0:
+                    status = "failed"
+                    return_code = returncode
+                    break
+            else:
+                status = "ok"
+                return_code = 0
+        except BaseException:
+            self._write_params("failed", None, steps, on_line)
+            raise
+        self._write_params(status, return_code, steps, on_line)
+        if status == "ok" and (
+                start > 0 or any(
+                    "score" in step.name or "sort" in step.name
+                    for step in steps)):
             self._finalize_labeled_outputs()
-        return 0
+        return return_code
 
     def _answer_confirm_request(
         self,
@@ -940,6 +1165,9 @@ class PatternRunner:
             lines[data_start:],
             delimiter="\t",
         )
+        motif = self.spec.motif
+        flank_length = motif.flank_length if motif is not None else 0
+        side = motif.side.value if motif is not None else ""
         for row in reader:
             query_seq = row.get("sequence", "")
             try:
@@ -950,6 +1178,9 @@ class PatternRunner:
                 if len(position) < 3:
                     continue
                 seq_id, strand, start = position[:3]
+                motif_seq, flank_seq = split_single_query(
+                    query_seq, strand, side, flank_length
+                )
                 rows.append({
                     "query_id": row.get("qid", ""),
                     "query_seq": query_seq,
@@ -957,6 +1188,10 @@ class PatternRunner:
                     "strand": strand,
                     "start": str(int(start) + 1),
                     "end": str(int(start) + len(query_seq)),
+                    "motif_seq": motif_seq,
+                    "flank_seq": flank_seq,
+                    "side": side,
+                    "flank_length": str(flank_length),
                     "positions_json": row.get("positions", ""),
                 })
         return rows

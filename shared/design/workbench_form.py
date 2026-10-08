@@ -20,7 +20,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from data.annotation_utils import ensure_plain_fasta
 from design.pattern_runner import RunnerConfig
 from design.pattern_spec import MotifSpec, PatternKind, PatternSpec, Side
-from design.system_presets import get_preset, preset_choices
+from design.system_presets import (
+    get_preset, preset_choices, resolve_preset_pam, resolve_run_nuclease,
+)
 from scoring.scoring import (
     MODEL_PROTEIN_GROUPS,
     PROTEIN_GROUP_LABELS,
@@ -149,6 +151,21 @@ def pam_side_to_side(value: str, default: str = "upstream") -> str:
     if value == "5prime":
         return "downstream"
     return default
+
+
+def _side_subtype(preset: Dict[str, Any], form_subtype: str) -> str:
+    """Return the effective TnpB subtype for one side.
+
+    A preset that names a concrete subtype wins; the generic ``tnpb`` preset
+    reports ``unknown`` and defers to the subtype the user picked.
+    """
+
+    preset_subtype = str(
+        preset.get("tnpb_subtype") or "unknown"
+    ).strip().lower()
+    if preset_subtype and preset_subtype != "unknown":
+        return preset_subtype
+    return str(form_subtype or "unknown").strip().lower() or "unknown"
 
 
 def active_side_keys(side: str) -> tuple:
@@ -417,7 +434,11 @@ def default_run_label(
             spec.y_sequence,
             spec.right.sequence,
         )
-    active = state.active_side
+    active = (
+        "target"
+        if spec.kind is PatternKind.SINGLE_MOTIF_FLANK
+        else state.active_side
+    )
     preset_key = (
         state.side_presets.get(active, state.side_presets.get("left"))
         or "custom"
@@ -445,16 +466,37 @@ def build_runner_config(
     spec: Optional[PatternSpec] = None,
 ) -> RunnerConfig:
     kind = spec.kind if spec is not None else state.kind()
-    motif_key, flank_key, side_key, side = active_side_keys(state.active_side)
+    # A single-motif pattern only has a target side, so its preset must come
+    # from ``target`` even when ``active_side`` still points at a pair side
+    # (a batch that never sets ``active_side``, or a UI that switched back
+    # from pair mode).  Otherwise a non-cas9 target preset is ignored and the
+    # run silently falls back to the global cas9 nuclease.
+    run_side = (
+        "target"
+        if kind is PatternKind.SINGLE_MOTIF_FLANK
+        else state.active_side
+    )
+    motif_key, flank_key, side_key, side = active_side_keys(run_side)
     preset_key = (
         state.side_presets.get(side, state.side_presets.get("left"))
         or "custom"
     )
     preset = get_preset(preset_key)
     mode = "preset" if preset_key != "custom" else "free"
-    pam = state.value(motif_key) or preset.get("pam") or ""
-    pam_side = side_to_pam_side(
-        state.value(side_key), preset.get("pam_side") or "3prime"
+    # The active side's preset is the system this run is designed for, so it
+    # owns the run-level nuclease as well: ``--mode preset --preset tnpb``
+    # must not be paired with ``--nuclease cas9`` just because the global
+    # nuclease was never refreshed by ``Apply`` (see ``resolve_run_nuclease``
+    # for how an explicit non-cas9 choice still outranks the cas9 default).
+    run_nuclease = resolve_run_nuclease(
+        state.nuclease, preset_key if mode == "preset" else "custom"
+    )
+    preset_pam, preset_pam_side, _preset_required = resolve_preset_pam(
+        preset_key, state.tnpb_subtype
+    )
+    pam = state.value(motif_key) or preset_pam or ""
+    pam_side = preset_pam_side or side_to_pam_side(
+        state.value(side_key), "3prime"
     )
     is_pair = kind in (
         PatternKind.MOTIF_GAP_MOTIF,
@@ -465,27 +507,31 @@ def build_runner_config(
         right_preset = get_preset(state.side_preset("right"))
         left_nuc = left_preset.get("nuclease") or state.nuclease
         right_nuc = right_preset.get("nuclease") or state.nuclease
-        left_tnpb = left_preset.get("tnpb_subtype") or state.tnpb_subtype
-        right_tnpb = right_preset.get("tnpb_subtype") or state.tnpb_subtype
+        left_tnpb = _side_subtype(left_preset, state.tnpb_subtype)
+        right_tnpb = _side_subtype(right_preset, state.tnpb_subtype)
+        left_preset_pam, left_preset_side, left_preset_required = \
+            resolve_preset_pam(state.side_preset("left"), left_tnpb)
+        right_preset_pam, right_preset_side, right_preset_required = \
+            resolve_preset_pam(state.side_preset("right"), right_tnpb)
         left_on_otm, left_otm, left_ref = resolve_side_models(state, "left")
         right_on_otm, right_otm, right_ref = resolve_side_models(state, "right")
         on_otm, off_otm, ref_otm = resolve_side_models(state, side)
         left_pam_motif = (
-            state.value("left_motif") or left_preset.get("pam") or ""
+            state.value("left_motif") or left_preset_pam or ""
         )
         right_pam_motif = (
-            state.value("right_motif") or right_preset.get("pam") or ""
+            state.value("right_motif") or right_preset_pam or ""
         )
-        left_pam_side = side_to_pam_side(
-            state.value("left_side"), left_preset.get("pam_side") or "3prime"
+        left_pam_side = left_preset_side or side_to_pam_side(
+            state.value("left_side"), "3prime"
         )
-        right_pam_side = side_to_pam_side(
-            state.value("right_side"), right_preset.get("pam_side") or "3prime"
+        right_pam_side = right_preset_side or side_to_pam_side(
+            state.value("right_side"), "3prime"
         )
         left_require_pam = state.bool_value(
-            "left_require_pam", bool(left_preset.get("pam_required", False)))
+            "left_require_pam", bool(left_preset_required))
         right_require_pam = state.bool_value(
-            "right_require_pam", bool(right_preset.get("pam_required", False)))
+            "right_require_pam", bool(right_preset_required))
     else:
         left_nuc = right_nuc = None
         left_tnpb = right_tnpb = None
@@ -519,13 +565,18 @@ def build_runner_config(
         ),
         genome_fasta=prepare_genome_fasta(state),
         mask_fasta=state.value("mask_fasta"),
+        mask_same_as_target=coerce_bool(
+            state.value("mask_same_as_target"), False
+        ),
         output_dir=default_output_dir(),
         blastdb=state.value("blastdb"),
+        annotation=state.value("annotation"),
         run_label=(
             state.value("result_label", "").strip()
             or default_run_label(state)
         ),
-        nuclease=state.nuclease,
+        nuclease=run_nuclease,
+        tnpb_subtype=state.tnpb_subtype,
         left_nuclease=left_nuc,
         right_nuclease=right_nuc,
         left_tnpb_subtype=left_tnpb,
@@ -598,6 +649,10 @@ def readiness_errors(state: WorkbenchFormState) -> List[str]:
     mask_fasta = state.value("mask_fasta")
     if mask_fasta and not os.path.isfile(mask_fasta):
         errors.append("Mask FASTA not found: %s" % mask_fasta)
+
+    annotation = state.value("annotation")
+    if annotation and not os.path.isfile(annotation):
+        errors.append("Annotation GFF3 not found: %s" % annotation)
 
     if state.is_pair():
         _policy, missing = pair_rank_policy_values(state)

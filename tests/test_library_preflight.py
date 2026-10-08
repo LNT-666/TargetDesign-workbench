@@ -34,7 +34,7 @@ class EngineChoicesTests(unittest.TestCase):
 class PreflightTests(unittest.TestCase):
     def test_missing_genome_is_error(self):
         errors, _ = preflight_library("exact", genome="missing.fa")
-        self.assertTrue(any("不存在" in item for item in errors))
+        self.assertTrue(any("does not exist" in item for item in errors))
 
     def test_indexed_missing_index_is_warning(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -44,7 +44,7 @@ class PreflightTests(unittest.TestCase):
             errors, warnings = preflight_library(
                 "indexed", genome=genome, index_path="idx/prefix")
             self.assertFalse(errors)
-            self.assertTrue(any("自动构建" in item for item in warnings))
+            self.assertTrue(any("built automatically" in item for item in warnings))
 
     @mock.patch("design.library_preflight.get_backend")
     def test_blast_missing_db_is_error(self, _get_backend):
@@ -55,7 +55,7 @@ class PreflightTests(unittest.TestCase):
                 handle.write(">chr1\nACGT\n")
             errors, warnings = preflight_library(
                 "blast", genome=genome, blastdb="db/prefix")
-            self.assertTrue(any("BLAST 数据库不完整" in item
+            self.assertTrue(any("BLAST database is incomplete" in item
                                 for item in errors))
             self.assertFalse(warnings)
 
@@ -69,9 +69,9 @@ class PreflightTests(unittest.TestCase):
             errors, warnings = preflight_library(
                 "blast", genome=genome)
             self.assertFalse(errors)
-            self.assertTrue(any("先构建数据库" in item for item in warnings))
+            self.assertTrue(any("built first on export" in item for item in warnings))
 
-    @mock.patch("design.library_preflight._model_ready", return_value=(False, "未下载"))
+    @mock.patch("design.library_preflight._model_ready", return_value=(False, "not downloaded"))
     def test_model_missing_warns(self, _ready):
         with tempfile.TemporaryDirectory() as tmp:
             genome = os.path.join(tmp, "genome.fa")
@@ -79,7 +79,7 @@ class PreflightTests(unittest.TestCase):
                 handle.write(">chr1\nACGT\n")
             _, warnings = preflight_library(
                 "exact", genome=genome, off_target_model="crispr_m")
-            self.assertTrue(any("crispr_m" in item and "回退" in item
+            self.assertTrue(any("crispr_m" in item and "fall back" in item
                                 for item in warnings))
 
     def test_invalid_engine_is_reported_as_an_error(self):
@@ -104,7 +104,7 @@ class PreflightTests(unittest.TestCase):
             with open(genome, "wb") as handle:
                 handle.write(b">chr1\n" + b"A" * 200)
             errors, _ = preflight_library("exact", genome=genome)
-            self.assertTrue(any("不适合大型基因组" in item
+            self.assertTrue(any("not suitable for large genomes" in item
                                 for item in errors))
 
 
@@ -117,7 +117,7 @@ class PipelinePreflightTests(unittest.TestCase):
              "--engine", "exact", "--preflight-only"],
             capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(result.returncode, 3)
-        self.assertIn("基因组 FASTA 不存在", result.stdout)
+        self.assertIn("genome FASTA does not exist", result.stdout)
 
     def test_preflight_only_ok(self):
         import subprocess

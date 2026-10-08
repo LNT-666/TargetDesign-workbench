@@ -20,7 +20,7 @@ for _path in (ROOT, SHARED):
         sys.path.insert(0, _path)
 
 from design.pattern_spec import PatternKind, Side  # noqa: E402
-from design.system_presets import get_preset  # noqa: E402
+from design.system_presets import get_preset, resolve_run_nuclease  # noqa: E402
 from design.workbench_form import (  # noqa: E402
     PAIR_RANK_POLICY_FIELDS,
     WorkbenchFormState,
@@ -124,6 +124,75 @@ class SingleModeTests(FormTestCase):
         self.assertEqual(config.timeout_s, None)
         self.assertEqual(readiness_errors(state), [])
 
+    def test_run_nuclease_follows_the_active_side_preset(self):
+        """A TnpB side must not be reported as cas9 just because the global
+        nuclease was never refreshed by ``Apply``."""
+        state = self.single_state()
+        state.side_presets["target"] = "tnpb"
+        self.assertEqual(state.nuclease, "cas9")
+        config = build_runner_config(state)
+        self.assertEqual(config.mode, "preset")
+        self.assertEqual(config.preset, "tnpb")
+        self.assertEqual(config.nuclease, "tnpb")
+
+    def test_custom_preset_keeps_the_explicit_nuclease(self):
+        state = self.single_state()
+        state.side_presets["target"] = "custom"
+        state.nuclease = "cas12a"
+        self.assertEqual(build_runner_config(state).nuclease, "cas12a")
+
+    def test_explicit_nuclease_beats_the_default_spcas9_preset(self):
+        """A batch ``shared.nuclease`` must survive the default cas9 preset
+        instead of being silently relabelled SpCas9."""
+        state = self.single_state()
+        state.nuclease = "tnpb"
+        state.side_presets["target"] = "cas9"
+        config = build_runner_config(state)
+        self.assertEqual(config.preset, "cas9")
+        self.assertEqual(config.nuclease, "tnpb")
+
+    def test_a_real_preset_overrides_a_stale_non_cas9_nuclease(self):
+        """Switching to TnpB after another system keeps the new system."""
+        state = self.single_state()
+        state.nuclease = "cas12a"
+        state.side_presets["target"] = "tnpb"
+        self.assertEqual(build_runner_config(state).nuclease, "tnpb")
+
+    def test_every_system_preset_reports_its_own_nuclease(self):
+        """No preset may fall back to the cas9 default."""
+        for key in ("cas9", "cas12a", "cas12b", "cas13", "tnpb"):
+            with self.subTest(preset=key):
+                self.assertEqual(resolve_run_nuclease("cas9", key), key)
+        # An explicit non-cas9 choice outranks the default SpCas9 preset.
+        self.assertEqual(resolve_run_nuclease("tnpb", "cas9"), "tnpb")
+        # A custom preset keeps whatever the caller asked for.
+        self.assertEqual(resolve_run_nuclease("cas12a", "custom"), "cas12a")
+
+    def test_single_pattern_reads_the_target_preset_not_the_active_side(self):
+        """A batch that never sets ``active_side`` must still read the target
+        preset instead of silently falling back to the global cas9 default."""
+        state = WorkbenchFormState(
+            values=self.single_values(),
+            mode="single_motif_flank",
+            active_side="left",
+            side_presets={"target": "cas12a"},
+        )
+        config = build_runner_config(state)
+        self.assertEqual(config.preset, "cas12a")
+        self.assertEqual(config.nuclease, "cas12a")
+        self.assertTrue(default_run_label(state).startswith("Cas12a"))
+
+    def test_annotation_file_reaches_the_runner_config(self):
+        gff = self._write("anno.gff3", "##gff-version 3\n")
+        state = self.single_state(annotation=gff)
+        config = build_runner_config(state)
+        self.assertEqual(config.annotation, gff)
+        self.assertEqual(readiness_errors(state), [])
+
+    def test_blank_annotation_stays_blank(self):
+        config = build_runner_config(self.single_state())
+        self.assertEqual(config.annotation, "")
+
     def test_bed_mode_moves_the_search_input_to_regions(self):
         bed = self._write("regions.bed", "chr1\t0\t40\n")
         state = WorkbenchFormState(
@@ -136,6 +205,16 @@ class SingleModeTests(FormTestCase):
         self.assertEqual(config.regions, bed)
         self.assertEqual(config.search_fasta, "")
         self.assertEqual(readiness_errors(state), [])
+
+    def test_scope_mask_flag_and_explicit_mask_reach_the_config(self):
+        same = build_runner_config(self.single_state(mask_same_as_target=True))
+        self.assertTrue(same.mask_same_as_target)
+        self.assertEqual(same.mask_fasta, "")
+        explicit = build_runner_config(
+            self.single_state(mask_fasta=self.mask_fasta)
+        )
+        self.assertFalse(explicit.mask_same_as_target)
+        self.assertEqual(explicit.mask_fasta, self.mask_fasta)
 
     def test_default_run_label_is_system_and_target_name(self):
         state = self.single_state()
@@ -226,11 +305,13 @@ class ErrorBranchTests(FormTestCase):
             "search_fasta": missing,
             "genome_fasta": missing,
             "mask_fasta": missing,
+            "annotation": missing,
         }, active_side="target")
         errors = readiness_errors(state)
         self.assertIn("Search FASTA not found: %s" % missing, errors)
         self.assertIn("Genome FASTA not found: %s" % missing, errors)
         self.assertIn("Mask FASTA not found: %s" % missing, errors)
+        self.assertIn("Annotation GFF3 not found: %s" % missing, errors)
 
     def test_empty_inputs_report_required_fields(self):
         state = WorkbenchFormState(

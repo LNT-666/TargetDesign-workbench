@@ -300,7 +300,7 @@ def run_crispai_aggregate(
     if errors:
         for error in errors:
             print("Warning: %s" % error)
-        print("crispAI 环境未就绪，off-target 已回退 CFD 评分。")
+        print("crispAI environment not ready; off-target fell back to CFD scoring")
         return None
     for warning in warnings:
         print("Warning: %s" % warning)
@@ -317,7 +317,7 @@ def run_crispai_aggregate(
             n_samples=n_samples, gpu=gpu,
         )
     except Exception as exc:
-        print("crispAI 运行异常: %s" % exc)
+        print("crispAI runtime error: %s" % exc)
         returncode = -1
     finally:
         try:
@@ -325,12 +325,12 @@ def run_crispai_aggregate(
         except OSError:
             pass
     if returncode != 0:
-        print("crispAI 调用失败(exit %s)，已回退 CFD；日志：%s"
+        print("crispAI call failed (exit %s); fell back to CFD; log: %s"
               % (returncode, log_path))
         return None
     mapping = parse_aggregate_output(aggregate_path)
     if not mapping:
-        print("crispAI 无有效聚合分数，已回退 CFD。")
+        print("crispAI returned no valid aggregate score; fell back to CFD")
         return None
     return mapping
 

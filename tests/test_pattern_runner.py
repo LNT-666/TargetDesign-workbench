@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -14,6 +15,7 @@ from design.pattern_runner import (  # noqa: E402
     RunnerConfig,
     parse_confirm_request,
     python_fallback_env,
+    split_single_query,
 )
 from design.pattern_spec import (  # noqa: E402
     MotifSpec,
@@ -94,6 +96,50 @@ class PatternRunnerTests(unittest.TestCase):
             content = handle.read()
         self.assertIn(">chr1:0-84:+:region1", content)
 
+    def test_scope_default_mask_uses_search_fasta(self):
+        spec = PatternSpec(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=MotifSpec("TTAT", 10, Side.UPSTREAM),
+        )
+        default = PatternRunner(
+            spec, make_config(mask_fasta="", mask_same_as_target=False)
+        )
+        self.assertEqual(default._mask_fasta(), "")
+        same = PatternRunner(
+            spec, make_config(mask_fasta="", mask_same_as_target=True)
+        )
+        self.assertEqual(same._mask_fasta(), "input.fa")
+        explicit = PatternRunner(
+            spec, make_config(mask_fasta="mask.fa", mask_same_as_target=True)
+        )
+        self.assertEqual(explicit._mask_fasta(), "mask.fa")
+
+    def test_bed_scope_default_mask_uses_window_fasta(self):
+        tmp = tempfile.mkdtemp()
+        genome = os.path.join(tmp, "genome.fa")
+        bed = os.path.join(tmp, "regions.bed")
+        with open(genome, "w", encoding="utf-8") as handle:
+            handle.write(">chr1\n" + "A" * 40 + "TTAT" + "G" * 40 + "\n")
+        with open(bed, "w", encoding="utf-8") as handle:
+            handle.write("chr1\t0\t84\tregion1\t0\t+\n")
+        spec = PatternSpec(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=MotifSpec("TTAT", 5, Side.UPSTREAM),
+        )
+        config = RunnerConfig(
+            regions=bed,
+            genome_fasta=genome,
+            output_dir=tmp,
+            search_fasta="",
+            preset="cas9",
+            engine="exact",
+            mask_same_as_target=True,
+        )
+        runner = PatternRunner(spec, config)
+        self.assertEqual(
+            runner._mask_fasta(), os.path.join(tmp, "bed_windows.fa")
+        )
+
     def test_run_pipeline_supports_find_and_score_split(self):
         spec = PatternSpec(
             kind=PatternKind.SINGLE_MOTIF_FLANK,
@@ -167,6 +213,34 @@ class PatternRunnerTests(unittest.TestCase):
         self.assertIn("--engine", y_cmd)
         self.assertIn("indexed", y_cmd)
 
+    def test_annotation_reaches_every_score_command(self):
+        spec = PatternSpec(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=MotifSpec("TTAT", 10, Side.UPSTREAM),
+        )
+        command = PatternRunner(
+            spec, make_config(annotation="anno.gff3")
+        ).build_pipeline()[-1].command
+        self.assertEqual(
+            command[command.index("--annotation") + 1], "anno.gff3"
+        )
+        blank = PatternRunner(spec, make_config()).build_pipeline()[-1].command
+        self.assertNotIn("--annotation", blank)
+
+        gap = PatternSpec(
+            kind=PatternKind.MOTIF_GAP_MOTIF,
+            left=MotifSpec("ATCG", 5, Side.UPSTREAM),
+            right=MotifSpec("CCGG", 7, Side.DOWNSTREAM),
+            min_gap=10,
+            max_gap=20,
+        )
+        gap_command = PatternRunner(
+            gap, make_config(annotation="anno.gff3")
+        ).build_pipeline()[-1].command
+        self.assertEqual(
+            gap_command[gap_command.index("--annotation") + 1], "anno.gff3"
+        )
+
     def test_max_bulge_and_pam_mode_reach_offtarget_commands(self):
         config = make_config(
             engine="exact",
@@ -213,7 +287,9 @@ class PatternRunnerTests(unittest.TestCase):
                 run_label="Cas12f/TTR",
             )
             runner = PatternRunner(spec, config)
-            old_path = os.path.join(tmp, "query_scores_sorted.tsv")
+            run_dir = os.path.join(tmp, "Cas12f-TTR")
+            os.makedirs(run_dir, exist_ok=True)
+            old_path = os.path.join(run_dir, "query_scores_sorted.tsv")
             with open(old_path, "w", encoding="utf-8") as handle:
                 handle.write("qid\n")
             runner._finalize_labeled_outputs()
@@ -221,6 +297,92 @@ class PatternRunnerTests(unittest.TestCase):
                 tmp, "Cas12f-TTR_scores.tsv")
             self.assertTrue(os.path.isfile(new_path))
             self.assertFalse(os.path.isfile(old_path))
+
+    def test_run_labeled_steps_use_a_per_run_dir(self):
+        spec = PatternSpec(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=MotifSpec("TTAT", 10, Side.UPSTREAM),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = PatternRunner(
+                spec, make_config(output_dir=tmp, run_label="Run/One"))
+            run_dir = os.path.join(tmp, "Run-One")
+            self.assertEqual(runner._workdir(), run_dir)
+            command = runner.build_extract_command()
+            print("STEP_ARGV: %s" % " ".join(command))
+            self.assertEqual(
+                command[-1], os.path.join(run_dir, "extracted_seqs.tsv"))
+            for step in runner.build_pipeline():
+                self.assertTrue(
+                    any(run_dir in arg for arg in step.command), step)
+
+    def test_params_file_records_search_and_scoring_parameters(self):
+        spec = PatternSpec(
+            kind=PatternKind.SINGLE_MOTIF_FLANK,
+            motif=MotifSpec("TTAT", 10, Side.UPSTREAM),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            config = make_config(
+                output_dir=tmp,
+                run_label="Params/A",
+                annotation="anno.gff3",
+                engine="indexed",
+                max_mismatch=3,
+                max_bulge=1,
+                seed_len=10,
+                seed_mismatch_max=2,
+                pam_mode="custom",
+                pam_motif="NGG",
+                pam_side="3prime",
+                require_pam=True,
+                timeout_s=30,
+                max_memory_mode="custom",
+                max_memory_mb=1024,
+                nuclease="cas12a",
+                on_target_model="rules",
+                off_target_model="cfd",
+                reference_only_model="none",
+                gc_min=35,
+                gc_max=75,
+                self_comp_max=3,
+                filter_hard=True,
+                crispai=True,
+                unique_guides=True,
+                xlsx=True,
+                exact_offtarget=True,
+            )
+            runner = PatternRunner(spec, config)
+            with mock.patch(
+                "design.pattern_runner.subprocess.Popen"
+            ) as popen:
+                proc = mock.Mock()
+                proc.stdout = []
+                proc.wait.return_value = 0
+                popen.return_value = proc
+                self.assertEqual(runner.run_pipeline(), 0)
+
+            run_dir = os.path.join(tmp, "Params-A")
+            params_path = os.path.join(run_dir, "params.json")
+            self.assertTrue(os.path.isfile(params_path))
+            with open(params_path, encoding="utf-8") as handle:
+                params = json.load(handle)
+            self.assertEqual(params["status"], "ok")
+            self.assertEqual(params["return_code"], 0)
+            self.assertEqual(params["inputs"]["annotation"], "anno.gff3")
+            self.assertEqual(params["search"]["pam_motif"], "NGG")
+            self.assertEqual(params["search"]["max_mismatch"], 3)
+            self.assertEqual(params["scoring"]["on_target_model"], "rules")
+            self.assertTrue(params["output"]["steps"])
+            self.assertTrue(any(
+                run_dir in arg
+                for step in params["output"]["steps"]
+                for arg in step["argv"]
+            ))
+            self.assertTrue(os.path.isfile(
+                os.path.join(tmp, "Params-A_params.json")))
+            text = json.dumps(params, ensure_ascii=False, indent=2)
+            print("PARAMS_JSON_HEAD:")
+            print("\n".join(text.splitlines()[:40]))
 
     def test_motif_gap_motif_extract_command(self):
         spec = PatternSpec(
@@ -422,7 +584,9 @@ class PatternRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config = make_config(output_dir=tmp, run_label="TTR-TTAA-TTR")
             runner = PatternRunner(spec, config)
-            old_path = os.path.join(tmp, "scores.sorted.tsv")
+            run_dir = os.path.join(tmp, "TTR-TTAA-TTR")
+            os.makedirs(run_dir, exist_ok=True)
+            old_path = os.path.join(run_dir, "scores.sorted.tsv")
             with open(old_path, "w", encoding="utf-8") as handle:
                 handle.write("occurrence\n")
             runner._finalize_labeled_outputs()
@@ -489,6 +653,30 @@ class PatternRunnerTests(unittest.TestCase):
             self.assertEqual(rows[0]["query_id"], "uniq_0")
             self.assertEqual(rows[0]["seq_id"], "chr1")
             self.assertEqual(rows[0]["start"], "11")
+            self.assertEqual(rows[0]["motif_seq"], "TTAT")
+            self.assertEqual(rows[0]["flank_seq"], "AATT")
+            self.assertEqual(rows[0]["side"], "upstream")
+            self.assertEqual(rows[0]["flank_length"], "4")
+
+    def test_split_single_query_matches_extract_layout(self):
+        # basic/extract.py: plus/upstream and minus/downstream put the flank
+        # first; plus/downstream and minus/upstream put the motif first.
+        self.assertEqual(
+            split_single_query("AATTTTAT", "plus", "upstream", 4),
+            ("TTAT", "AATT"),
+        )
+        self.assertEqual(
+            split_single_query("TTATCCCC", "plus", "downstream", 4),
+            ("TTAT", "CCCC"),
+        )
+        self.assertEqual(
+            split_single_query("TTATCCCC", "minus", "upstream", 4),
+            ("TTAT", "CCCC"),
+        )
+        self.assertEqual(
+            split_single_query("AATTTTAT", "minus", "downstream", 4),
+            ("TTAT", "AATT"),
+        )
 
     def test_read_single_extract_candidates_accepts_target_start(self):
         spec = PatternSpec(

@@ -22,7 +22,7 @@ try:
 except ImportError:
     Fasta = None
 
-from search.iupac import iupac_to_regex
+from search.iupac import IUPAC_REGEX, iupac_to_regex
 from search.alignment import cigar_from_operations
 from data.annotation_utils import ensure_plain_fasta, is_gzip_file
 
@@ -262,6 +262,108 @@ def _pam_matches(seq, pam_pattern):
     )
 
 
+#: IUPAC code -> the concrete bases it allows.
+_IUPAC_BASE_SETS = {
+    code: frozenset(re.findall(r"[ACGT]", chars))
+    for code, chars in IUPAC_REGEX.items()
+}
+
+
+def pam_patterns_may_overlap(motif, pam):
+    """Return whether a motif pattern can sit on the PAM at a window edge.
+
+    A TnpB TAM belongs *outside* a downstream target window, so its motif and
+    PAM patterns disagree.  A window that really embeds the PAM carries the
+    motif as the PAM itself or as a degenerate prefix of it, so every motif
+    position is compatible with the PAM position it covers.
+    """
+
+    motif = str(motif or "").upper().replace("U", "T")
+    pam = str(pam or "").upper().replace("U", "T")
+    if not motif or not pam:
+        return False
+    return all(
+        _IUPAC_BASE_SETS.get(a, frozenset())
+        & _IUPAC_BASE_SETS.get(b, frozenset())
+        for a, b in zip(motif, pam)
+    )
+
+
+def pam_span_in_window(sequence, motif, pam, side="downstream"):
+    """Return ``(span, expected)`` for a PAM anchored inside a window.
+
+    ``basic/extract.py`` anchors every window on the extraction motif and
+    stores it on the plus strand of the search FASTA, so a PAM that belongs
+    to that motif lies *inside* the window instead of beyond it::
+
+        downstream / plus  -> motif + flank       (PAM at the 5-prime edge)
+        downstream / minus -> flank + rc(motif)   (PAM at the 3-prime edge)
+        upstream   / plus  -> flank + motif       (PAM at the 3-prime edge)
+        upstream   / minus -> rc(motif) + flank   (PAM at the 5-prime edge)
+
+    ``span`` is the half-open PAM span in query coordinates and ``expected``
+    is the pattern that span has to match (``pam`` when the window is stored
+    in its biological orientation, ``rc(pam)`` when it is stored reversed).
+    ``None`` means the motif is not on a window edge, so the PAM has to be
+    looked up outside the window instead.
+    """
+    if not sequence or not motif or not pam:
+        return None
+    sequence = sequence.upper().replace("U", "T")
+    motif = motif.upper().replace("U", "T")
+    pam = pam.upper().replace("U", "T")
+    if not motif or len(motif) > len(sequence) or len(pam) > len(sequence):
+        return None
+    if not pam_patterns_may_overlap(motif, pam):
+        return None
+    five_prime = side != "upstream"
+    for pattern, expected, at_five_prime in (
+            (motif, pam, five_prime),
+            (reverse_complement(motif), reverse_complement(pam),
+             not five_prime)):
+        if len(pattern) > len(sequence):
+            continue
+        edge = (sequence[:len(pattern)] if at_five_prime
+                else sequence[len(sequence) - len(pattern):])
+        if not _pam_matches(edge, pattern):
+            continue
+        span = ((0, len(pam)) if at_five_prime
+                else (len(sequence) - len(pam), len(sequence)))
+        return span, expected
+    return None
+
+
+def _pam_ok_window(genome, seqid, target_start, target_end, strand, qstart,
+                   span, expected):
+    """Check a PAM that is embedded in the query window itself.
+
+    ``span`` is the PAM span in query coordinates and ``qstart`` is the
+    1-based query coordinate the alignment starts at, so the span can be
+    located on the genome in the alignment strand orientation.
+    """
+    if genome is None:
+        return False
+    span_start, span_end = span
+    span_len = span_end - span_start
+    if span_len <= 0:
+        return False
+    # Ungapped HSPs map query coordinates onto the genome linearly, so the
+    # span can be resolved even when blastn trimmed it off the alignment.
+    # Only reject when the contig edge truncates the fetched span.
+    offset = span_start - (qstart - 1)
+    if strand == "+":
+        start = target_start + offset
+        end = start + span_len
+        pattern = expected
+    else:
+        end = target_end - offset
+        start = end - span_len
+        pattern = reverse_complement(expected)
+    sequence = fetch_sequence(genome, seqid, start, end)
+    return (bool(sequence) and len(sequence) == span_len
+            and _pam_matches(sequence, pattern))
+
+
 def _pam_ok_blast(genome, seqid, target_start, target_end, strand, pam,
                   pam_side):
     """Check PAM against a BLAST hit in its reported strand orientation."""
@@ -333,7 +435,8 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                require_pam=False, pam_motif="GG", pam_offset=0,
                seed_mismatch_max=None, seed_len=12, genome=None,
                repeat_intervals=None, pam_side="3prime",
-               num_threads=None, perc_identity=None, max_bulge=0):
+               num_threads=None, perc_identity=None, max_bulge=0,
+               window_motif=None, window_side="downstream"):
     """Run blastn and return matches.
 
     Returns rich hit dictionaries including target span, mismatch, bulge type,
@@ -341,6 +444,11 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
     ``max_bulge>0`` enables gapped alignments and filters their actual indels.
     If best_only=True, only the single best match (by bitscore desc) per qid is kept.
     PAM/seed filters need a pyfaidx genome index and are only applied when requested.
+
+    ``window_motif`` names the extraction motif that anchors each query
+    window. When it is given, a PAM that sits at that motif edge is checked
+    against the aligned target site itself instead of the sequence beyond the
+    window, which is what a window that already carries its PAM requires.
     """
     if num_threads is None:
         num_threads = default_blast_threads()
@@ -390,6 +498,12 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
         query_seqs = _query_sequences_from_fasta(query_fasta)
         repeat_intervals = repeat_intervals or {}
         warned_context_filter = False
+        pam_anchors = {}
+        if require_pam and window_motif and pam_motif:
+            for query_seq in query_seqs.values():
+                pam_anchors[query_seq] = pam_span_in_window(
+                    query_seq, window_motif, pam_motif, window_side)
+        dropped_by_pam = 0
         matches = {}
         with open(out_path, "r", encoding="utf-8") as blast_out:
             for line in blast_out:
@@ -426,12 +540,22 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                     continue
                 query_seq = query_seqs.get(qseqid, "")
                 query_len = len(query_seq)
-                if query_len <= 0 or qstart != 1 or qend != query_len:
+                if query_len <= 0:
                     continue
+                # blastn-short trims mismatching ends off an otherwise good
+                # local hit. Count every unaligned query base as a mismatch
+                # instead of demanding a full-length HSP, so substitution
+                # off-targets are reported here exactly like they are by the
+                # exhaustive engines.
+                trimmed = (qstart - 1) + (query_len - qend)
+                if trimmed < 0:
+                    continue
+                effective_mismatch = mismatch + trimmed
                 strand = "+" if sstart <= send else "-"
                 start = min(sstart, send) - 1
                 target_end = max(sstart, send)
-                if max_mismatch is not None and mismatch > max_mismatch:
+                if (max_mismatch is not None
+                        and effective_mismatch > max_mismatch):
                     continue
                 if indel > max_bulge:
                     continue
@@ -448,11 +572,19 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                             warned_context_filter = True
                     else:
                         if require_pam:
-                            if not _pam_ok_blast(
+                            anchor = pam_anchors.get(query_seq)
+                            if anchor is not None:
+                                pam_ok = _pam_ok_window(
+                                    genome, sseqid, start, target_end,
+                                    strand, qstart, anchor[0], anchor[1])
+                            else:
+                                pam_ok = _pam_ok_blast(
                                     genome, sseqid,
                                     start + pam_offset,
                                     target_end + pam_offset,
-                                    strand, pam_motif, pam_side):
+                                    strand, pam_motif, pam_side)
+                            if not pam_ok:
+                                dropped_by_pam += 1
                                 continue
                         if seed_mismatch_max is not None:
                             if parsed_alignment is not None:
@@ -480,7 +612,7 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                     "target_end": target_end,
                     "query_start": qstart - 1,
                     "query_end": qend,
-                    "mismatch": mismatch,
+                    "mismatch": effective_mismatch,
                     "indel": indel,
                     "rna_bulges": rna_bulges,
                     "dna_bulges": dna_bulges,
@@ -522,6 +654,10 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
             matches[qid] = deduped
 
     total = sum(len(v) for v in matches.values())
+    if dropped_by_pam and not total:
+        print("Warning: the required PAM check rejected all %d blastn hits; "
+              "check --pam-motif/--pam-side against the query window layout."
+              % dropped_by_pam)
     print(f"blastn complete, {total} valid matches.")
     return matches
 

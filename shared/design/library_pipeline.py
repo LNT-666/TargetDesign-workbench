@@ -29,7 +29,7 @@ from design.library_utils import (load_regions, extract_region_sequences,
                                   deduplicate_guides, library_summary,
                                   parse_region_description)
 from design.system_presets import (
-    get_preset, normalize_pam_mode, pam_motif_for_mode,
+    get_preset, normalize_pam_mode, pam_motif_for_mode, resolve_run_nuclease,
 )
 from output.output_columns import nonempty_columns
 from scoring.scoring import (
@@ -293,6 +293,10 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
     preset = get_preset(args.preset if args.mode == "preset" else "custom")
+    # ``--preset tnpb`` (etc.) without ``--nuclease`` must not keep the cas9
+    # default in the reported/exported ``nuclease`` column.
+    args.nuclease = resolve_run_nuclease(
+        args.nuclease, args.preset if args.mode == "preset" else "custom")
     spacer_len = args.spacer_len if args.spacer_len is not None else preset.get("spacer_len")
     pam_mode = args.pam_mode
     if pam_mode is None:
@@ -508,8 +512,8 @@ def main():
         params.extra["k"] = planned_k
         if planned_k != suggested_k:
             print(
-                "indexed seed plan: 自动将 index k 从 %d 调整为 %d，"
-                "以支持 max_bulge=%d 和 guide 长度 %s"
+                "indexed seed plan: adjusted index k from %d to %d "
+                "to support max_bulge=%d and guide lengths %s"
                 % (
                     suggested_k,
                     planned_k,
@@ -526,10 +530,10 @@ def main():
         ]
         if invalid:
             print(
-                "Error: indexed搜索无法为 guide 长度 %s 构造可保证的 "
-                "max_bulge=%d seed plan（k=%d）。请使用 --max-bulge 0，"
-                "或为小 guide 指定更小的 --index-k（例如 10），"
-                "或改用 exact。"
+                "Error: indexed search cannot build a guaranteed seed plan for guide lengths %s with "
+                "max_bulge=%d (k=%d). Use --max-bulge 0, "
+                "or a smaller --index-k for short guides (e.g. 10), "
+                "or switch to exact."
                 % (",".join(map(str, invalid)), params.max_bulge, planned_k)
             )
             sys.exit(3)
@@ -668,7 +672,7 @@ def main():
             from scoring.crispai_runtime import (
                 run_crispai_aggregate, make_sgrna, specificity_from_aggregate)
         except Exception as exc:
-            print("crispAI 依赖导入失败: %s" % exc)
+            print("crispAI dependency import failed: %s" % exc)
         else:
             sgrna_rows = {}
             for i, guide in enumerate(scored):
@@ -698,11 +702,11 @@ def main():
                                 guide["off_target_specificity"] = specificity
                                 guide["off_target_model"] = "crispai"
                             filled += 1
-                    print("crispAI 已回填 %d/%d 条 guide（%s）。"
+                    print("crispAI backfilled %d/%d guides (%s)"
                           % (filled, len(scored),
-                             "作为主分" if as_primary else "仅补充列"))
+                             "as primary score" if as_primary else "additional columns only"))
             else:
-                print("没有可用的 20nt Cas9 spacer 供 crispAI 评分。")
+                print("No usable 20 nt Cas9 spacer available for crispAI scoring")
 
     rank_rows(scored)
     fields = ["rank", "qid", "region", "seq_id", "strand", "guide_seq",
@@ -793,8 +797,8 @@ def main():
     }
     if fasta_mode:
         summary["note"] = (
-            "FASTA 输入不映射回基因组坐标，annotation/nearest_tss 为空；"
-            "需要注释列请使用 BED 区域输入。")
+            "FASTA input does not map back to genome coordinates; annotation/nearest_tss are empty. "
+            "Use BED region input if annotation columns are needed")
         print("PREFLIGHT_WARN: %s" % summary["note"])
     summary_path = os.path.join(args.output_dir, "library_summary.json")
     with open(summary_path, "w", encoding="utf-8") as handle:

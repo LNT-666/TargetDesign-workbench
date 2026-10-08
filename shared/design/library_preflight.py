@@ -60,10 +60,10 @@ def _model_ready(key):
     if status == "web_api":
         return True, "web API"
     if status == "size_mismatch":
-        return False, "文件大小与预期不符"
+        return False, "file size does not match expected"
     if status == "not_downloaded":
-        return False, "模型文件未下载"
-    return False, "模型状态: %s" % status
+        return False, "model file not downloaded"
+    return False, "model status: %s" % status
 
 
 def preflight_library(engine, genome=None, index_path=None, blastdb=None,
@@ -94,13 +94,13 @@ def preflight_library(engine, genome=None, index_path=None, blastdb=None,
         errors.append(str(exc))
 
     if genome and not os.path.isfile(genome):
-        errors.append("基因组 FASTA 不存在: %s" % genome)
+        errors.append("genome FASTA does not exist: %s" % genome)
 
     if genome_bytes is not None and genome_bytes > MAX_EXACT_GENOME_BYTES:
         if engine == "exact":
             errors.append(
-                "exact 引擎不适合大型基因组（当前文件 %.1f GB），"
-                "请改用 BLAST、单染色体 exact 或先构建 indexed 索引"
+                "Exact engine is not suitable for large genomes (current file %.1f GB); "
+                "use BLAST, single-chromosome exact, or build an indexed index first"
                 % (genome_bytes / 1024.0 ** 3))
 
     if engine == "indexed":
@@ -113,9 +113,9 @@ def preflight_library(engine, genome=None, index_path=None, blastdb=None,
             meta = base + ".json"
             if not os.path.isfile(ggi) or not os.path.isfile(meta):
                 warnings.append(
-                    "索引不存在，出库时会自动构建（大基因组可能耗时且占用内存）")
+                    "Index does not exist; it will be built automatically on export (large genomes may be slow and memory-heavy)")
         else:
-            warnings.append("未指定索引前缀，出库时会按 FASTA 名在输出目录自动构建索引")
+            warnings.append("No index prefix specified; an index will be built automatically in the output directory from the FASTA name on export")
     elif engine == "blast":
         if blastdb:
             from search.blast_utils import (
@@ -128,27 +128,27 @@ def preflight_library(engine, genome=None, index_path=None, blastdb=None,
             missing = [prefix + ext for ext in (".nin", ".nsq")
                        if not os.path.isfile(prefix + ext)]
             if missing:
-                errors.append("BLAST 数据库不完整，缺少: %s" % ", ".join(missing))
+                errors.append("BLAST database is incomplete, missing: %s" % ", ".join(missing))
             elif genome and os.path.isfile(genome) and \
                     not blastdb_is_current(genome, prefix):
                 warnings.append(
-                    "BLAST 数据库缺少有效 source manifest 或 FASTA 已变化，"
-                    "运行前会自动重建"
+                    "BLAST database lacks a valid source manifest or the FASTA has changed; "
+                    "it will be rebuilt before the run"
                 )
             elif _blastdb_files_exist(prefix) and not genome:
                 warnings.append(
-                    "无法校验 BLAST 数据库来源 manifest：未提供基因组 FASTA"
+                    "Cannot verify the BLAST database source manifest: no genome FASTA provided"
                 )
         elif requested_engine == "auto":
             warnings.append(
-                "auto 在大型基因组下回退到 BLAST，未提供 BLAST db，"
-                "出库时会先构建数据库")
+                "Auto falls back to BLAST for large genomes; no BLAST db provided, "
+                "so the database will be built first on export")
         else:
-            warnings.append("未指定 BLAST db，出库时会先构建数据库")
+            warnings.append("No BLAST db specified; the database will be built first on export")
     elif requested_engine == "auto":
         warnings.append(
-            "auto 将按 auto_engine_candidates 的顺序"
-            "在可用引擎中选择。")
+            "Auto picks among available engines in the "
+            "order of auto_engine_candidates")
 
     if not errors:
         backend = get_backend(engine)
@@ -163,6 +163,6 @@ def preflight_library(engine, genome=None, index_path=None, blastdb=None,
         ready, note = _model_ready(key)
         if not ready:
             warnings.append(
-                "%s 模型未就绪（%s），评分将回退到内置规则" % (model_name, note))
+                "%s model not ready (%s); scoring will fall back to built-in rules" % (model_name, note))
 
     return errors, warnings
