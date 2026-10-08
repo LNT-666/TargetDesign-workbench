@@ -35,7 +35,7 @@
 
 - `scopes[].scope_id` / `patterns[].pattern_id` / `groups[].group_id` / `batch_label` 只允许 `[A-Za-z0-9._-]`，且各自批内唯一；`scope_id` 非空，`pattern_id` 在下述 Web/API 路径可按默认规则省略。
 - 每个 scope **必须有且只有一个** 输入：`search_fasta`（序列，`input_mode=sequence`）或 `regions`（BED，`input_mode=bed`）。
-- mask 是 scope-owned：`scopes[].mask_same_as_target`（默认 `true`，用当前 scope 的有效 search FASTA 作为 mask）与 `scopes[].mask_fasta`（显式覆盖 mask）互斥，必须二选一。sequence scope 的默认 mask 就是 `search_fasta`；bed scope 的默认 mask 是 `PatternRunner` 从 `regions + genome_fasta` 抽出的临时 window FASTA。显式 `mask_fasta` 文件缺失时 `--dry-run` 只警告，正式运行前报错。
+- mask 是 scope-owned：`scopes[].mask_same_as_target`（默认 `true`，用当前 scope 的有效 search FASTA 作为 mask）与 `scopes[].mask_fasta`（显式覆盖 mask）互斥，必须二选一。sequence scope 的默认 mask 就是 `search_fasta`；bed scope 的默认 mask 是 `PatternRunner` 从 `regions + genome_fasta` 抽出的临时 window FASTA。显式 `mask_fasta` 文件缺失时 `--dry-run` 只警告，正式运行前报错；`mask_fasta` 可以是 gzip 压缩文件，读取前自动解压到源文件旁。
 - `shared` 是所有单元共用的表单值（`genome_fasta`、`annotation`、模型、内存、引擎、GC 过滤、索引路径等）；mask 不属于 `shared`。
 - `patterns[].overlay` 是该 pattern 独有的表单值（`motif`/`flank`/`side`/`left_*`/`right_*`/`min_gap`/`max_gap`/`y_sequence` 等），`mode` 决定 kind。
 - 保留键（出现在 `shared` 或任一 `overlay` 即报错）：`search_fasta`、`bed_regions`、`input_mode`、`result_label`、`output_dir`、`mask_fasta`、`mask_same_as_target`。`search_fasta`/`bed_regions`/`input_mode` 与两个 mask 键由 scope 决定，`result_label`/`output_dir` 由批量内核决定。
