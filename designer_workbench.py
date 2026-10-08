@@ -17,7 +17,10 @@ sys.path.insert(0, os.path.join(ROOT, "shared"))
 
 from design.pattern_runner import PatternRunner, RunnerConfig  # noqa: E402
 from design.pattern_spec import PatternKind, PatternSpec, Side  # noqa: E402
-from design.system_presets import rule_summary  # noqa: E402
+from design.system_presets import (  # noqa: E402
+    TNPB_SUBTYPES,
+    rule_summary,
+)
 from design.library_preflight import ENGINE_CHOICES  # noqa: E402
 from design import workbench_form  # noqa: E402
 from design.workbench_form import (  # noqa: E402
@@ -367,8 +370,9 @@ class PatternDesignerWorkbench:
         self._add_file_row(common, 1, "genome_fasta", "Genome FASTA")
         self._add_file_row(common, 2, "mask_fasta", "Mask FASTA")
         self._add_file_row(common, 3, "blastdb", "BLAST DB Prefix")
+        self._add_file_row(common, 4, "annotation", "Annotation GFF3")
         self._add_entry_row(
-            common, 4, "result_label", "Result Label",
+            common, 5, "result_label", "Result Label",
             hint="e.g. Cas12f-TTR; blank = auto system-target",
         )
 
@@ -1318,6 +1322,14 @@ class PatternDesignerWorkbench:
             text="Apply",
             command=lambda s=side: self._apply_side_preset(s),
         ).grid(row=row, column=2, padx=(3, 0), pady=2)
+        ttk.Label(parent, text="TnpB subtype").grid(
+            row=row, column=3, sticky=tk.W, padx=(12, 4)
+        )
+        ttk.Combobox(
+            parent, values=TNPB_SUBTYPES,
+            textvariable=self.tnpb_subtype_var,
+            state="readonly", width=10,
+        ).grid(row=row, column=4, sticky=tk.W, padx=5, pady=2)
 
     def _add_use_for_run(
         self,

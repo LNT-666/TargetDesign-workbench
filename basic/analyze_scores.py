@@ -28,6 +28,7 @@ from scoring.at_score import (
     compute_at_score_from_flank,
     should_output_at_score,
 )
+from design.system_presets import resolve_run_nuclease
 from data.candidate_annotation import (
     build_annotation_index, annotate_interval, nearest_tss,
     find_downstream_atg, format_annotation, format_tss,
@@ -73,13 +74,13 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
     otherwise it only fills the crispAI columns.
     """
     if nuclease not in ("cas9", "custom"):
-        print("crispAI 仅适用于 SpCas9（当前 nucleicase=%s，已忽略）。" % nuclease)
+        print("crispAI applies only to SpCas9 (current nucleicase=%s; ignored)" % nuclease)
         return False
     try:
         from scoring.crispai_runtime import (
             run_crispai_aggregate, make_sgrna, specificity_from_aggregate)
     except Exception as exc:
-        print("crispAI 依赖导入失败: %s" % exc)
+        print("crispAI dependency import failed: %s" % exc)
         return False
     motif_len = len(motif_plus)
     sgrna_rows = {}
@@ -91,7 +92,7 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
         if sgrna:
             sgrna_rows.setdefault(sgrna, []).append(i)
     if not sgrna_rows:
-        print("没有可用的 20nt Cas9 spacer 供 crispAI 评分。")
+        print("No usable 20 nt Cas9 spacer available for crispAI scoring")
         return False
     mapping = run_crispai_aggregate(
         sgrna_rows.keys(), output_dir, n_samples=samples, gpu=gpu)
@@ -113,8 +114,8 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
                 row["off_target_specificity"] = specificity
                 row["off_target_model"] = "crispai"
             filled += 1
-    print("crispAI 已回填 %d/%d 条候选（%s）。"
-          % (filled, len(query_rows), "作为主分" if as_primary else "仅补充列"))
+    print("crispAI backfilled %d/%d candidates (%s)"
+          % (filled, len(query_rows), "as primary score" if as_primary else "additional columns only"))
     return True
 
 
@@ -133,10 +134,10 @@ def match_mismatch(match):
 # ---------- ?????????????----------
 def main():
     parser = argparse.ArgumentParser(description="Score basic motif Off-target search results")
-    parser.add_argument("tsv_file", help="blast.py 输出的 Off-target search 结果 TSV 文件 (.tsv)")
-    parser.add_argument("output_dir", help="输出目录")
+    parser.add_argument("tsv_file", help="Off-target search result TSV file produced by blast.py (.tsv)")
+    parser.add_argument("output_dir", help="output directory")
     parser.add_argument("--flanking_extract", type=int, default=100,
-                        help="为完美匹配提取两侧的 flanking sequence (默认 100)")
+                        help="Extract flanking sequence on both sides of perfect matches (default 100)")
     parser.add_argument("--nuclease", choices=["custom", "cas9", "cas12", "cas12a", "cas12b",
                                                "cas13", "cas14a", "tnpb"],
                         default="cas9", help="Nuclease system used for scoring (default cas9)")
@@ -192,6 +193,11 @@ def main():
     parser.add_argument("--no-require-pam", dest="require_pam", action="store_false",
                         help="Turn off PAM gating for off-targets")
     args = parser.parse_args()
+
+    # ``--mode preset --preset tnpb`` (etc.) without ``--nuclease`` must not
+    # keep the cas9 default in the scored/exported ``nuclease`` column.
+    args.nuclease = resolve_run_nuclease(
+        args.nuclease, args.preset if args.mode == "preset" else "custom")
 
     tsv_file = args.tsv_file
     output_dir = args.output_dir
@@ -257,7 +263,7 @@ def main():
         blast_matches[qid] = json.loads(row['matches'])
 
     # [fixed] print(f"????????????...
-    print("PROGRESS: 读取数据 10", flush=True)
+    print("PROGRESS: reading 10", flush=True)
     # [fixed] print(f"????????????...
     # [fixed] print(f"????????????...
 
@@ -267,6 +273,22 @@ def main():
         for entry in pos_list:
             seq_id, _, _ = split_position(entry)
             all_seq_ids.add(seq_id)
+
+    if annotation_index is not None and annotation_index.seqids:
+        unknown_ids = sorted(
+            seq_id for seq_id in all_seq_ids
+            if seq_id not in annotation_index.seqids
+        )
+        if unknown_ids:
+            sample = ", ".join(unknown_ids[:5])
+            if len(unknown_ids) > 5:
+                sample += ", ..."
+            print(
+                "Warning: the annotation describes none of the %d query "
+                "sequence id(s) (%s); annotation columns stay empty. Use the "
+                "annotation's chromosome names as the search input."
+                % (len(unknown_ids), sample)
+            )
 
     # ===== ????????????????????????????????????????=====
     positions = []
@@ -444,7 +466,7 @@ def main():
         query_rows.append(row)
 
     if args.filter_hard:
-        print(f"硬过滤移除了 {filtered_count} 条候选")
+        print(f"Hard filter removed {filtered_count} candidates")
 
     off_models = [
         model.strip().lower()
@@ -463,7 +485,7 @@ def main():
 
     rank_rows(query_rows)
 
-    print("PROGRESS: 生成结果 95", flush=True)
+    print("PROGRESS: writing 95", flush=True)
     query_header = [
         "rank", "nuclease",
         "off_target_specificity", "legacy_total_score", "pos_id", "seq_id", "strand",
@@ -518,8 +540,8 @@ def main():
         f.write("\t".join(query_header[i] for i in kept_columns) + "\n")
         for vals in query_cell_rows:
             f.write("\t".join(vals[i] for i in kept_columns) + "\n")
-    print(f"\n排序后评分已写入: {out_file}")
-    print("前 5 条最高分结果：")
+    print(f"\nSorted scores written to: {out_file}")
+    print("Top 5 highest-scoring results:")
     for row in query_rows[:5]:
         print(f"  {row['pos_id']}: spec={row['off_target_specificity']:.4f}, "
               f"on={row['on_target_score']:.4f}, query={row['query_seq']}")

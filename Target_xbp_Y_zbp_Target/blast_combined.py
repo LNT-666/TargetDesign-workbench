@@ -152,10 +152,10 @@ def compute_match_score(match_list, exclusion_intervals):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="对 occurrence 候选执行 motif 组合与 Off-target search，输出 per-side 结果")
-    parser.add_argument('--input_dir', required=True, help='occurrence 输入目录')
-    parser.add_argument('--genome', required=True, help='Genome FASTA 文件')
-    parser.add_argument('--blast_db', required=False, help='Genome database 前缀')
+    parser = argparse.ArgumentParser(description="Run motif combination and Off-target search on occurrence candidates, writing per-side results")
+    parser.add_argument('--input_dir', required=True, help='occurrence input directory')
+    parser.add_argument('--genome', required=True, help='genome FASTA file')
+    parser.add_argument('--blast_db', required=False, help='genome database prefix')
     parser.add_argument('--target-fasta', default=None,
                         help='Target FASTA used to display Y/region sequences')
     parser.add_argument('--engine', default='blast',
@@ -165,8 +165,8 @@ def main():
                         help='Local genome index prefix (.ggi/.json)')
     parser.add_argument('--genome-build', default='',
                         help='Genome build name for GGGenome, e.g. hg38')
-    parser.add_argument('--mask', default=None, help='Mask gene FASTA 文件（可选）')
-    parser.add_argument('-o', '--output', default='scores.tsv', help='输出 TSV 文件')
+    parser.add_argument('--mask', default=None, help='mask gene FASTA file (optional)')
+    parser.add_argument('-o', '--output', default='scores.tsv', help='output TSV file')
     parser.add_argument('--evalue', type=float, default=None)
     parser.add_argument('--word_size', type=int, default=None)
     parser.add_argument('--task', default=None)
@@ -280,13 +280,13 @@ def main():
 
     input_dir = args.input_dir
     if not os.path.isdir(input_dir):
-        print(f"错误：输入目录 {input_dir} 不存在")
+        print(f"Error: input directory {input_dir} does not exist")
         sys.exit(1)
 
     # ---- 读取 occurrence_info.tsv ----
     info_path = os.path.join(input_dir, 'occurrence_info.tsv')
     if not os.path.isfile(info_path):
-        print(f"错误：找不到 {info_path}")
+        print(f"Error: cannot find {info_path}")
         sys.exit(2)
     occ_map = {}  # {num: (chrom, y_start, y_end, strand)}
     with open(info_path, 'r', encoding='utf-8') as f:
@@ -296,12 +296,12 @@ def main():
             strand = row.get('strand', '+')
             occ_map[num] = (row['chrom'], int(row['y_start']), int(row['y_end']), strand)
 
-    print(f"读取 occurrence 信息：{len(occ_map)} 个 Y 出现位置")
-    print("PROGRESS: 读取数据 5", flush=True)
+    print(f"Loaded occurrence info: {len(occ_map)} Y occurrence sites")
+    print("PROGRESS: reading 5", flush=True)
 
     # ---- 加载 Genome ----
     if not os.path.isfile(args.genome):
-        print(f"错误：基因组文件 {args.genome} 不存在")
+        print(f"Error: genome file {args.genome} does not exist")
         sys.exit(2)
     genome, _, temp_genome = load_genome_and_prepare_fasta(args.genome)
     target_genome = None
@@ -313,7 +313,7 @@ def main():
         target_genome, _, target_temp = load_genome_and_prepare_fasta(
             args.target_fasta)
         print("Loaded target FASTA: %s records" % len(target_genome.keys()))
-    print(f"加载基因组：{len(genome.keys())} 条染色体/scaffold")
+    print(f"Loaded genome: {len(genome.keys())} chromosomes/scaffolds")
 
     annotation_index = None
     if args.annotation and os.path.isfile(args.annotation):
@@ -326,16 +326,16 @@ def main():
     if args.mask:
         if os.path.isfile(args.mask):
             exclusion_intervals = build_exclusion_intervals(args.mask, genome)
-            print(f"屏蔽区间：{len(exclusion_intervals)} 条记录含排除区域")
+            print(f"Masked regions: {len(exclusion_intervals)} records with excluded regions")
     else:
-        print(f"警告：屏蔽基因文件 {args.mask} 不存在，跳过屏蔽过滤")
+        print(f"Warning: mask gene file {args.mask} does not exist; skipping mask filtering")
 
     repeat_intervals = {}
     if args.repeat_fasta and os.path.isfile(args.repeat_fasta):
         repeat_intervals = build_exclusion_intervals(args.repeat_fasta, genome)
-        print(f"重复序列区间：{sum(len(v) for v in repeat_intervals.values())} 条")
+        print(f"Repeat regions: {sum(len(v) for v in repeat_intervals.values())}")
 
-    print("PROGRESS: 读取数据 10", flush=True)
+    print("PROGRESS: reading 10", flush=True)
 
     # ---- 收集 occurrence 候选 ----
     # per_side[(occurrence, side, qid)] = {sequence, positions}
@@ -370,10 +370,10 @@ def main():
 
     unique_count = len(global_seqs)
     total_entries = len(per_side)
-    print(f"收集到 {total_entries} 条候选（{unique_count} 个唯一序列）")
+    print(f"Collected {total_entries} candidates ({unique_count} unique sequences)")
 
     if not global_seqs:
-        print("没有找到任何候选序列，退出。")
+        print("No candidate sequences found, exiting")
         sys.exit(0)
 
     # ---- 按所选 engine 运行 Off-target search ----
@@ -385,7 +385,7 @@ def main():
         args.word_size = 4 if max_len <= 30 else 11
     if args.evalue is None:
         args.evalue = 1000
-    print(f"自动设置 Off-target search 参数: task={args.task}, word_size={args.word_size}, evalue={args.evalue} (最大查询长度={max_len})")
+    print(f"Auto-configured Off-target search parameters: task={args.task}, word_size={args.word_size}, evalue={args.evalue} (max query length={max_len})")
 
     engine = args.engine or (
         "exact" if args.exact_offtarget else "blast"
@@ -396,7 +396,7 @@ def main():
     if (engine == "exact"
             and os.path.getsize(genome_fasta_for_search)
             > MAX_EXACT_GENOME_BYTES):
-        print("exact 引擎不适合大型基因组，自动回退到 blast")
+        print("Exact engine is not suitable for large genomes; falling back to blast")
         engine = "blast"
 
     def make_search_params(pam, pam_side, require):
@@ -505,7 +505,7 @@ def main():
         os.unlink(temp_genome.name)
 
     total_hits = sum(len(v) for v in matches.values())
-    print(f"Off-target search 完成，{total_hits} 个有效匹配")
+    print(f"Off-target search complete, {total_hits} valid matches")
 
     print("PROGRESS: Analyzing targets 70", flush=True)
 
@@ -712,7 +712,7 @@ def main():
                          ), strand))
 
     if args.filter_hard:
-        print(f"硬过滤移除了 {filtered_count} 条候选")
+        print(f"Hard filter removed {filtered_count} candidates")
 
     selected_off_models = {
         "left": [
@@ -732,7 +732,7 @@ def main():
             from scoring.crispai_runtime import (
                 run_crispai_aggregate, make_sgrna, specificity_from_aggregate)
         except Exception as exc:
-            print("crispAI 依赖导入失败: %s" % exc)
+            print("crispAI dependency import failed: %s" % exc)
         else:
             out_dir = os.path.dirname(os.path.abspath(args.output))
             for side in ("left", "right"):
@@ -776,9 +776,9 @@ def main():
                             row["off_target_specificity"] = f"{specificity:.6f}"
                             row["off_target_model"] = "crispai"
                         filled += 1
-                print("crispAI 已回填 %s 侧 %d/%d 条候选（%s）。"
+                print("crispAI backfilled %s-side %d/%d candidates (%s)"
                       % (side, filled, len(out_rows),
-                         "作为主分" if as_primary else "仅补充列"))
+                         "as primary score" if as_primary else "additional columns only"))
 
     out_fieldnames = nonempty_columns(out_rows, out_fieldnames)
     with open(args.output, 'w', encoding='utf-8', newline='') as f:
@@ -786,8 +786,8 @@ def main():
         writer.writeheader()
         writer.writerows(out_rows)
 
-    print(f"已写入 {len(out_rows)} 行到 {args.output}")
-    print("PROGRESS: 完成 100", flush=True)
+    print(f"Wrote {len(out_rows)} rows to {args.output}")
+    print("PROGRESS: done 100", flush=True)
 
     if args.unique_guides:
         unique_by_seq = {}

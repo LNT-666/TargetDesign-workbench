@@ -29,6 +29,7 @@ from design.system_presets import get_preset, preset_choices, rule_summary  # no
 from scoring.model_registry import get_all_statuses  # noqa: E402
 from design.library_preflight import ENGINE_CHOICES  # noqa: E402
 import gui.gui_common as gui_common  # noqa: E402
+from utils.log_utils import parse_progress_line  # noqa: E402
 
 
 LIBRARY_SCRIPT = os.path.join("shared", "design", "library_pipeline.py")
@@ -110,7 +111,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             .pack(side=tk.LEFT)
         ttk.Label(header, textvariable=self.status_var, foreground="#444") \
             .pack(side=tk.LEFT, padx=12)
-        ttk.Button(header, text="刷新模型", command=self.refresh_models) \
+        ttk.Button(header, text="Refresh models", command=self.refresh_models) \
             .pack(side=tk.RIGHT)
 
         tool_bar = ttk.LabelFrame(outer, text="Designer", padding="5")
@@ -271,6 +272,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             take("genome_fasta", getattr(legacy, "entry_genome", None))
             take("output_dir", getattr(legacy, "entry_output", None))
             take("blastdb", getattr(legacy, "entry_blastdb", None))
+            take("annotation", getattr(legacy, "entry_gtf", None))
             prepared = getattr(legacy, "prepared_params", {}) or {}
             take("search_fasta", prepared.get("target_fasta"))
             take("mask_fasta", prepared.get("mask_fasta"))
@@ -305,59 +307,59 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self._show_designer_workbench()
 
     def _create_input_panel(self, parent):
-        input_frame = ttk.LabelFrame(parent, text="输入", padding="8")
+        input_frame = ttk.LabelFrame(parent, text="Input", padding="8")
         input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=(0, 6))
         input_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(input_frame, text="BED 文件:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(input_frame, text="BED regions file:").grid(row=0, column=0, sticky=tk.W)
         self.entry_bed_path = ttk.Entry(input_frame)
         self.entry_bed_path.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Button(input_frame, text="浏览",
+        ttk.Button(input_frame, text="Browse",
                    command=lambda: self._browse_file(self.entry_bed_path)) \
             .grid(row=0, column=2, padx=3)
 
-        ttk.Label(input_frame, text="或粘贴 BED:").grid(row=1, column=0,
+        ttk.Label(input_frame, text="or paste BED:").grid(row=1, column=0,
                                                        sticky=tk.NW)
         self.bed_text = tk.Text(input_frame, width=40, height=6,
                                 font=("Consolas", 9))
         self.bed_text.grid(row=1, column=1, columnspan=2,
                            sticky=(tk.W, tk.E), padx=5, pady=3)
 
-        ttk.Label(input_frame, text="基因组 FASTA:").grid(row=2, column=0,
+        ttk.Label(input_frame, text="Genome FASTA:").grid(row=2, column=0,
                                                          sticky=tk.W)
         self.entry_genome = ttk.Entry(input_frame)
         self.entry_genome.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Button(input_frame, text="浏览",
+        ttk.Button(input_frame, text="Browse",
                    command=lambda: self._browse_file(self.entry_genome)) \
             .grid(row=2, column=2, padx=3)
 
-        ttk.Label(input_frame, text="输出目录:").grid(row=3, column=0,
+        ttk.Label(input_frame, text="Output Directory:").grid(row=3, column=0,
                                                      sticky=tk.W)
         self.entry_output = ttk.Entry(input_frame)
         self.entry_output.grid(row=3, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Button(input_frame, text="浏览",
+        ttk.Button(input_frame, text="Browse",
                    command=lambda: self._browse_directory(self.entry_output)) \
             .grid(row=3, column=2, padx=3)
 
-        params = ttk.LabelFrame(parent, text="参数", padding="8")
+        params = ttk.LabelFrame(parent, text="Design and search", padding="8")
         params.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N))
         params.columnconfigure(1, weight=1)
         r = 0
 
-        ttk.Label(params, text="系统预设:").grid(row=r, column=0, sticky=tk.W)
+        ttk.Label(params, text="System preset:").grid(row=r, column=0, sticky=tk.W)
         self.combo_preset = ttk.Combobox(
             params, values=PRESETS, state="readonly", width=16)
         self.combo_preset.set("cas9")
         self.combo_preset.grid(row=r, column=1, sticky=tk.W, padx=5)
         self.combo_preset.bind("<<ComboboxSelected>>", self._on_preset_selected)
-        ttk.Button(params, text="应用", command=self._apply_preset) \
+        ttk.Button(params, text="Apply", command=self._apply_preset) \
             .grid(row=r, column=2, padx=3)
         self.preset_note = tk.StringVar(value="")
         ttk.Label(params, textvariable=self.preset_note, foreground="#666") \
             .grid(row=r, column=3, sticky=tk.W, padx=6)
         r += 1
 
-        ttk.Label(params, text="Spacer 长度:").grid(row=r, column=0,
+        ttk.Label(params, text="Spacer length:").grid(row=r, column=0,
                                                    sticky=tk.W)
         self.entry_spacer = ttk.Entry(params, width=8)
         self.entry_spacer.insert(0, "20")
@@ -369,12 +371,12 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.entry_pam.grid(row=r, column=3, sticky=tk.W, padx=2)
         r += 1
 
-        ttk.Label(params, text="PAM 侧:").grid(row=r, column=0, sticky=tk.W)
+        ttk.Label(params, text="PAM side:").grid(row=r, column=0, sticky=tk.W)
         self.combo_pam_side = ttk.Combobox(
             params, values=["3prime", "5prime"], state="readonly", width=8)
         self.combo_pam_side.set("3prime")
         self.combo_pam_side.grid(row=r, column=1, sticky=tk.W, padx=5)
-        ttk.Label(params, text="最大错配:").grid(row=r, column=2, sticky=tk.W,
+        ttk.Label(params, text="Max mismatches:").grid(row=r, column=2, sticky=tk.W,
                                                  padx=(10, 2))
         self.combo_max_mismatch = ttk.Combobox(
             params, values=["0", "1", "2", "3", "4"], state="readonly",
@@ -384,7 +386,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         r += 1
 
         self.require_pam_var = tk.BooleanVar(value=True)
-        ttk.Label(params, text="引擎:").grid(row=r, column=2, sticky=tk.W,
+        ttk.Label(params, text="Search engine:").grid(row=r, column=2, sticky=tk.W,
                                              padx=(10, 2))
         self.combo_engine = ttk.Combobox(
             params, values=ENGINE_CHOICES, state="readonly", width=12)
@@ -392,19 +394,19 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.combo_engine.grid(row=r, column=3, sticky=tk.W, padx=2)
         r += 1
 
-        ttk.Label(params, text="索引前缀:").grid(row=r, column=0, sticky=tk.W)
+        ttk.Label(params, text="Index prefix:").grid(row=r, column=0, sticky=tk.W)
         self.entry_index = ttk.Entry(params)
         self.entry_index.grid(row=r, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Button(params, text="浏览", command=self._browse_index) \
+        ttk.Button(params, text="Browse", command=self._browse_index) \
             .grid(row=r, column=2, padx=3)
-        ttk.Button(params, text="构建索引", command=self._build_index) \
+        ttk.Button(params, text="Build index", command=self._build_index) \
             .grid(row=r, column=3, padx=3)
         r += 1
 
         ttk.Label(params, text="BLAST db:").grid(row=r, column=0, sticky=tk.W)
         self.entry_blastdb = ttk.Entry(params)
         self.entry_blastdb.grid(row=r, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Button(params, text="浏览", command=self._browse_blastdb) \
+        ttk.Button(params, text="Browse", command=self._browse_blastdb) \
             .grid(row=r, column=2, padx=3)
         ttk.Label(params, text="Build:").grid(row=r, column=3, sticky=tk.W)
         self.entry_genome_build = ttk.Entry(params, width=10)
@@ -412,7 +414,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.entry_genome_build.grid(row=r, column=3, sticky=tk.W, padx=3)
         r += 1
 
-        ttk.Label(params, text="On-target 模型:").grid(row=r, column=0,
+        ttk.Label(params, text="On-target model:").grid(row=r, column=0,
                                                        sticky=tk.W)
         self.combo_on_target = ttk.Combobox(
             params,
@@ -424,7 +426,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             width=10)
         self.combo_on_target.set("cropsr")
         self.combo_on_target.grid(row=r, column=1, sticky=tk.W, padx=5)
-        ttk.Label(params, text="Off-target 主模型:").grid(row=r, column=2,
+        ttk.Label(params, text="Off-target model:").grid(row=r, column=2,
                                                           sticky=tk.W,
                                                           padx=(10, 2))
         self.combo_off_target = ttk.Combobox(
@@ -438,24 +440,24 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.combo_off_target.grid(row=r, column=3, sticky=tk.W, padx=2)
         r += 1
 
-        ttk.Label(params, text="过滤:").grid(row=r, column=2, sticky=tk.W,
+        ttk.Label(params, text="Filtering:").grid(row=r, column=2, sticky=tk.W,
                                              padx=(10, 2))
         self.filter_hard_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(params, text="严格过滤",
+        ttk.Checkbutton(params, text="Strict filtering",
                         variable=self.filter_hard_var) \
             .grid(row=r, column=3, sticky=tk.W)
         r += 1
-        ttk.Label(params, text="DR 序列:").grid(row=r, column=0, sticky=tk.W)
+        ttk.Label(params, text="DR sequence:").grid(row=r, column=0, sticky=tk.W)
         self.entry_dr = ttk.Entry(params)
         self.entry_dr.grid(row=r, column=1, columnspan=3,
                            sticky=(tk.W, tk.E), padx=5)
         r += 1
-        ttk.Label(params, text="靶 RNA:").grid(row=r, column=0, sticky=tk.W)
+        ttk.Label(params, text="Target RNA:").grid(row=r, column=0, sticky=tk.W)
         self.entry_target_rna = ttk.Entry(params)
         self.entry_target_rna.grid(row=r, column=1, columnspan=3,
                                    sticky=(tk.W, tk.E), padx=5)
         r += 1
-        ttk.Label(params, text="TSS 距离:").grid(row=r, column=0, sticky=tk.W)
+        ttk.Label(params, text="TSS distance:").grid(row=r, column=0, sticky=tk.W)
         self.entry_tss = ttk.Entry(params, width=10)
         self.entry_tss.grid(row=r, column=1, sticky=tk.W, padx=5)
         r += 1
@@ -464,12 +466,12 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         actions.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=8)
         # 一键出库（library）已停用：按钮保留位置但不可点击。
         self.btn_run = ttk.Button(
-            actions, text="一键出库（已停用）", command=self._run_library,
+            actions, text="One-click library (disabled)", command=self._run_library,
             state=tk.DISABLED)
         self.btn_run.pack(side=tk.LEFT, padx=4)
-        ttk.Button(actions, text="打开输出", command=self._open_output) \
+        ttk.Button(actions, text="Open output", command=self._open_output) \
             .pack(side=tk.LEFT, padx=4)
-        ttk.Button(actions, text="刷新结果", command=self._refresh_output) \
+        ttk.Button(actions, text="Refresh results", command=self._refresh_output) \
             .pack(side=tk.LEFT, padx=4)
     def _create_output_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -483,17 +485,17 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.entry_output = ttk.Entry(dir_frame)
         self.entry_output.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
         ttk.Button(
-            dir_frame, text="浏览",
+            dir_frame, text="Browse",
             command=lambda: self._browse_directory(self.entry_output),
         ).grid(row=0, column=2, padx=3)
-        ttk.Button(dir_frame, text="刷新结果",
+        ttk.Button(dir_frame, text="Refresh results",
                    command=self._refresh_output).grid(
                        row=0, column=3, padx=3)
-        ttk.Button(dir_frame, text="打开输出",
+        ttk.Button(dir_frame, text="Open output",
                    command=self._open_output).grid(
                        row=0, column=4, padx=3)
 
-        summary = ttk.LabelFrame(parent, text="结果摘要", padding="6")
+        summary = ttk.LabelFrame(parent, text="Summary", padding="6")
         summary.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S),
                      pady=(0, 6))
         summary.columnconfigure(0, weight=1)
@@ -501,7 +503,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             summary, width=52, height=10, state="normal", wrap=tk.WORD)
         self.summary_text.grid(row=0, column=0, sticky=(tk.W, tk.E))
 
-        files = ttk.LabelFrame(parent, text="输出文件", padding="6")
+        files = ttk.LabelFrame(parent, text="Output files", padding="6")
         files.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         files.columnconfigure(0, weight=1)
         files.rowconfigure(0, weight=1)
@@ -536,7 +538,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             row=0, column=1, padx=6)
 
     def _create_log(self, parent):
-        frame = ttk.LabelFrame(parent, text="日志", padding="6")
+        frame = ttk.LabelFrame(parent, text="Log", padding="6")
         frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S),
                    pady=(4, 0))
         frame.columnconfigure(0, weight=1)
@@ -544,7 +546,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.log_text = scrolledtext.ScrolledText(
             frame, height=12, state="normal", wrap=tk.WORD)
         self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        ttk.Button(frame, text="清空", command=self._clear_log) \
+        ttk.Button(frame, text="Clear", command=self._clear_log) \
             .grid(row=1, column=0, sticky=tk.W, pady=(3, 0))
         parent.rowconfigure(4, weight=1)
 
@@ -595,7 +597,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.combo_pam_side.set(preset.get("pam_side") or "3prime")
         self.require_pam_var.set(bool(preset.get("pam_required")))
         self.preset_note.set(rule_summary(key))
-        self._log("应用预设: %s" % key)
+        self._log("Applied preset: %s" % key)
 
     def _on_preset_selected(self, _event=None):
         self._apply_preset()
@@ -605,7 +607,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         if pasted:
             output = self.entry_output.get().strip()
             if not output:
-                return None, "请先填写输出目录"
+                return None, "Fill in the output directory first"
             os.makedirs(output, exist_ok=True)
             path = os.path.join(output, "input_regions.bed")
             with open(path, "w", encoding="utf-8", newline="") as handle:
@@ -613,7 +615,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             return path, ""
         path = self.entry_bed_path.get().strip()
         if not path or not os.path.isfile(path):
-            return None, "请提供有效的 BED 文件或粘贴 BED 内容"
+            return None, "Provide a valid BED file or paste BED content"
         return path, ""
 
     def _build_library_command(self, bed_path):
@@ -628,7 +630,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         # Keep ``custom`` as a first-class nuclease so the score dispatcher can
         # route an explicitly chosen on/off-target model to the custom path and
         # mark it reference-only (unverified) instead of silently using Cas9.
-        tnpb_subtype = "isdra2" if nuclease == "tnpb" else "unknown"
+        tnpb_subtype = preset_info.get("tnpb_subtype") or "unknown"
         if preset == "custom":
             cmd += ["--mode", "free"]
         else:
@@ -672,15 +674,15 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
     def _run_library(self):
         bed_path, error = self._bed_input_path()
         if error:
-            messagebox.showerror("输入错误", error)
+            messagebox.showerror("Input error", error)
             return
         genome = self.entry_genome.get().strip()
         output = self.entry_output.get().strip()
         if not genome or not os.path.isfile(genome):
-            messagebox.showerror("输入错误", "请选择有效的基因组 FASTA")
+            messagebox.showerror("Input error", "Select a valid genome FASTA")
             return
         if not output:
-            messagebox.showerror("输入错误", "请填写输出目录")
+            messagebox.showerror("Input error", "Fill in the output directory")
             return
         os.makedirs(output, exist_ok=True)
         from design.library_preflight import preflight_library
@@ -693,22 +695,22 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         )
         if errors:
             messagebox.showerror(
-                "预检未通过",
+                "Preflight failed",
                 "\n".join(errors))
             return
         if warnings:
-            self._log("预检提示:\n" + "\n".join(warnings))
+            self._log("Preflight notice:\n" + "\n".join(warnings))
         cmd = self._build_library_command(bed_path)
-        self._run_async(cmd, "一键出库", after=self._refresh_output)
+        self._run_async(cmd, "One-click library export", after=self._refresh_output)
 
     def _build_index(self):
         genome = self.entry_genome.get().strip()
         output = self.entry_output.get().strip()
         if not genome or not os.path.isfile(genome):
-            messagebox.showerror("输入错误", "请选择有效的基因组 FASTA")
+            messagebox.showerror("Input error", "Select a valid genome FASTA")
             return
         if not output:
-            messagebox.showerror("输入错误", "请填写输出目录")
+            messagebox.showerror("Input error", "Fill in the output directory")
             return
         index_dir = os.path.join(output, "genome_index")
         cmd = [sys.executable, INDEX_SCRIPT, genome,
@@ -716,7 +718,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.entry_index.delete(0, tk.END)
         base = os.path.splitext(os.path.basename(genome))[0]
         self.entry_index.insert(0, os.path.join(index_dir, base))
-        self._run_async(cmd, "构建索引")
+        self._run_async(cmd, "Build index")
 
     def _run_async(self, cmd, description, after=None):
         self.progress_var.set(0)
@@ -737,22 +739,18 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
                 stderr=subprocess.STDOUT, text=True, bufsize=1,
                 encoding="utf-8", errors="replace")
         except Exception as exc:
-            self.run_on_ui(self._log, "启动失败: %s" % exc)
+            self.run_on_ui(self._log, "Startup failed: %s" % exc)
             self.run_on_ui(self._finish_run, -1, None)
             return
         for line in proc.stdout:
             line = line.rstrip("\n")
             self.run_on_ui(self._log, line)
-            if line.startswith("PROGRESS:"):
-                parts = line.split()
-                if len(parts) >= 3:
-                    try:
-                        value = int(parts[-1])
-                        label = "%s %d%%" % (parts[1], value)
-                        self.run_on_ui(
-                            self._set_progress_now, value, label)
-                    except ValueError:
-                        pass
+            parsed = parse_progress_line(line)
+            if parsed is not None:
+                value, label = parsed
+                self.run_on_ui(
+                    self._set_progress_now, value,
+                    "%s %d%%" % (label, value))
         proc.wait()
         code = proc.returncode
         self.run_on_ui(self._finish_run, code, after)
@@ -762,7 +760,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             self.progress_bar.stop()
             self.progress_bar.configure(mode="determinate")
         self.progress_var.set(100 if code == 0 else 0)
-        self.progress_label.set("完成" if code == 0 else "失败")
+        self.progress_label.set("Complete" if code == 0 else "Failed")
         if code == 0 and after:
             after()
 
@@ -780,7 +778,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self.file_list.delete(0, tk.END)
         self.candidate_tree.delete(*self.candidate_tree.get_children())
         if not output or not os.path.isdir(output):
-            self.summary_text.insert(tk.END, "输出目录尚未生成结果")
+            self.summary_text.insert(tk.END, "Output directory has no results yet")
             return
         summary_path = os.path.join(output, "library_summary.json")
         if os.path.isfile(summary_path):
@@ -789,7 +787,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
             self.summary_text.insert(
                 tk.END, json.dumps(summary, indent=2, ensure_ascii=False))
         else:
-            self.summary_text.insert(tk.END, "尚未找到 library_summary.json")
+            self.summary_text.insert(tk.END, "library_summary.json not found yet")
         for name in sorted(os.listdir(output)):
             path = os.path.join(output, name)
             if os.path.isfile(path) and name.endswith(
@@ -820,7 +818,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         if output and os.path.isdir(output):
             os.startfile(output)  # noqa
         else:
-            messagebox.showinfo("输出", "请先填写并运行输出目录")
+            messagebox.showinfo("Output", "Fill in and run the output directory first")
 
     def _open_selected_file(self, _event):
         selection = self.file_list.curselection()
@@ -839,13 +837,13 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         try:
             subprocess.Popen(cmd, cwd=ROOT)
         except Exception as exc:
-            messagebox.showerror("启动失败", str(exc))
+            messagebox.showerror("Startup failed", str(exc))
 
     def refresh_models(self):
         try:
             statuses = get_all_statuses()
         except Exception as exc:
-            self.status_var.set("模型状态读取失败: %s" % exc)
+            self.status_var.set("Failed to read model status: %s" % exc)
             return
         text = " | ".join("%s=%s" % (key, status)
                           for key, status in statuses.items())

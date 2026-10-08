@@ -20,7 +20,9 @@ from design.system_presets import get_preset
 from utils.process_utils import run_subprocess
 from utils import system_memory
 from data.local_extract import get_region_sequence
-from utils.log_utils import LogWriter, install_excepthook, open_log_dir
+from utils.log_utils import (
+    LogWriter, install_excepthook, open_log_dir, parse_progress_line,
+)
 import scoring.model_registry as model_registry
 import scoring.deep_models as deep_models
 import gui.gui_common as gui_common
@@ -246,16 +248,11 @@ class MainApp(gui_common.CommonGUIMixin):
         ]
 
         def progress_callback(line):
-            if line.startswith("PROGRESS:"):
-                parts = line.strip().split()
-                if len(parts) >= 3:
-                    label = parts[1]
-                    try:
-                        percent = int(parts[2])
-                        self.progress_var.set(percent)
-                        self.progress_label.set(f"{label} {percent}%")
-                    except ValueError:
-                        pass
+            parsed = parse_progress_line(line)
+            if parsed is not None:
+                percent, label = parsed
+                self.progress_var.set(percent)
+                self.progress_label.set(f"{label} {percent}%")
 
         def on_finish(returncode):
             self.root.after(0, self._hide_progress)
@@ -984,15 +981,11 @@ class MainApp(gui_common.CommonGUIMixin):
         ]
 
         def progress_callback(line):
-            if line.startswith("PROGRESS:"):
-                parts = line.strip().split()
-                if len(parts) >= 3:
-                    try:
-                        self.progress_var.set(int(parts[2]))
-                        self.progress_label.set(
-                            "%s %s%%" % (parts[1], parts[2]))
-                    except ValueError:
-                        pass
+            parsed = parse_progress_line(line)
+            if parsed is not None:
+                percent, label = parsed
+                self.progress_var.set(percent)
+                self.progress_label.set(f"{label} {percent}%")
 
         def on_finish(returncode):
             self.root.after(0, self._hide_progress)
@@ -1059,14 +1052,11 @@ class MainApp(gui_common.CommonGUIMixin):
         self.progress_label.set("Preparing library...")
 
         def progress_callback(line):
-            if line.startswith("PROGRESS:"):
-                parts = line.strip().split()
-                if len(parts) >= 3:
-                    try:
-                        self.progress_var.set(int(parts[2]))
-                        self.progress_label.set("%s %s%%" % (parts[1], parts[2]))
-                    except ValueError:
-                        pass
+            parsed = parse_progress_line(line)
+            if parsed is not None:
+                percent, label = parsed
+                self.progress_var.set(percent)
+                self.progress_label.set(f"{label} {percent}%")
 
         def on_finish(returncode):
             self.root.after(0, self._hide_progress)

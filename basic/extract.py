@@ -16,8 +16,8 @@ def reverse_complement(seq):
 
 def main():
     if len(sys.argv) != 6:
-        print("用法: python extract.py <输入.fasta> <motif> <Flanking sequence length> <方向> <输出.tsv>")
-        print("  方向: upstream 或 downstream")
+        print("Usage: python extract.py <input.fasta> <motif> <flanking sequence length> <side> <output.tsv>")
+        print("  side: upstream or downstream")
         sys.exit(1)
 
     input_fasta = sys.argv[1]
@@ -25,40 +25,40 @@ def main():
     try:
         flanking_len = int(sys.argv[3])
     except ValueError:
-        print("错误：Flanking sequence length must be an integer")
+        print("Error: Flanking sequence length must be an integer")
         sys.exit(2)
     # 校验 Flanking sequence length 必须为正整数
     if flanking_len <= 0:
-        print("错误：Flanking sequence length must be a positive integer")
+        print("Error: Flanking sequence length must be a positive integer")
         sys.exit(1)
 
     side = sys.argv[4].lower()
     if side not in ("upstream", "downstream"):
-        print("错误：方向必须是 upstream 或 downstream")
+        print("Error: side must be upstream or downstream")
         sys.exit(6)
     out_tsv = sys.argv[5]
 
     motif_minus = reverse_complement(motif_plus)
 
-    print(f"motif (+) 正则: {iupac_to_regex(motif_plus)}")
-    print(f"motif (-) 正则: {iupac_to_regex(motif_minus)}")
+    print(f"motif (+) regex: {iupac_to_regex(motif_plus)}")
+    print(f"motif (-) regex: {iupac_to_regex(motif_minus)}")
 
     # 用于存储去重后的序列及其对应的位置信息
     unique_seq_to_positions = defaultdict(list)
 
     # 逐条读取 FASTA 序列，避免一次性加载全部到内存
     # 先统计记录数，便于输出真实进度
-    print("PROGRESS: 统计序列 0", flush=True)
+    print("PROGRESS: counting 0", flush=True)
     total_records = sum(1 for _ in SeqIO.parse(input_fasta, "fasta"))
     if total_records == 0:
-        print("错误：输入 FASTA 文件中没有序列")
+        print("Error: no sequences in input FASTA file")
         sys.exit(6)
 
     seq_count = 0
     for rec in SeqIO.parse(input_fasta, "fasta"):
         seq_count += 1
         if seq_count % max(1, total_records // 10) == 0 or seq_count == total_records:
-            print(f"PROGRESS: 提取中 {int(seq_count / total_records * 100)}", flush=True)
+            print(f"PROGRESS: extracting {int(seq_count / total_records * 100)}", flush=True)
         seq_str = str(rec.seq).upper()
         seq_id = rec.id
 
@@ -89,9 +89,9 @@ def main():
                     unique_seq_to_positions[full].append(
                         (seq_id, 'minus', pos, pos - flanking_len))
 
-    print(f"输入序列共 {seq_count} 条")
+    print(f"Loaded {seq_count} input sequences")
     if not unique_seq_to_positions:
-        print("警告：未提取到任何序列，输出空 TSV")
+        print("Warning: no sequences extracted; writing an empty TSV")
         with open(out_tsv, 'w') as f:
             f.write("# motif={} flanking_len={} side={}\n".format(motif_plus, flanking_len, side))
             f.write("qid\tsequence\tpositions\n")
@@ -104,8 +104,8 @@ def main():
         qid_to_seq[qid] = seq
         # 注意：seq_to_qid 已删除，不再使用
 
-    print(f"共提取到 {sum(len(v) for v in unique_seq_to_positions.values())} 个位置，合并后为 {len(unique_seqs)} 个唯一序列")
-    print("PROGRESS: 写入结果 90", flush=True)
+    print(f"Extracted {sum(len(v) for v in unique_seq_to_positions.values())} positions merged into {len(unique_seqs)} unique sequences")
+    print("PROGRESS: writing 90", flush=True)
 
     with open(out_tsv, 'w') as f:
         f.write(f"# motif={motif_plus} flanking_len={flanking_len} side={side}\n")
@@ -115,7 +115,7 @@ def main():
             positions_json = json.dumps(pos_list)
             f.write(f"{qid}\t{seq}\t{positions_json}\n")
 
-    print(f"提取结果已保存至 {out_tsv}")
+    print(f"Extraction results saved to {out_tsv}")
 
 if __name__ == "__main__":
     main()

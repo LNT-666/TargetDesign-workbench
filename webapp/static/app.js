@@ -9,6 +9,9 @@
 
 const SIDES = ['target', 'left', 'right'];
 const DONE_STATUSES = ['succeeded', 'failed', 'cancelled', 'interrupted'];
+/* Formats that still make sense for the run's full output table; the others
+   (fasta/bed/unique_guides/library) only reinterpret candidate rows. */
+const TABULAR_EXPORT_FORMATS = ['csv', 'tsv', 'xlsx'];
 
 const state = {
   schema: null,
@@ -35,6 +38,9 @@ const state = {
   detailTimer: null,
   detailLogOffset: 0,
   previewTimer: null,
+  pattern_name: '',
+  results: null,
+  resultsViewPinned: false,
   drawerOpen: false,
   loadedHint: null,
   recentJob: null,
@@ -400,6 +406,7 @@ const OUTPUT_FIELD_MAP = {
   target_fasta: 'search_fasta',
   mask_fasta: 'mask_fasta',
   blastdb: 'blastdb',
+  annotation: 'annotation',
   index_path: 'index_path',
   search_fasta: 'search_fasta',
   bed_regions: 'bed_regions',
@@ -471,7 +478,7 @@ function loadedHintText(info) {
   const drawerFields = Object.keys(info.drawerUpdates || {}).map(function (id) {
     return id.replace(/^dp-/, '');
   });
-  let text = '已带入 / Loaded: ' + fields.join(', ');
+  let text = 'Loaded: ' + fields.join(', ');
   if (drawerFields.length) {
     text += ' (drawer: ' + drawerFields.join(', ') + ')';
   }
@@ -668,7 +675,12 @@ function renderSidePreset(side) {
     state.side_presets[side] = select.value;
     state.side_model_options[side] = state.preset_models[select.value] || state.side_model_options[side];
     renderPattern();
-    schedulePreview();
+    /* Selecting a preset takes effect immediately, like the desktop
+       workbench: the server fills this side's motif/length/position and keeps
+       the run-level nuclease in step, so a TnpB side can never keep an old
+       SpCas9 nuclease until ``Apply`` is pressed.  The ``Use for Run``
+       radio, not a preset change, decides which side the run scores. */
+    applySidePreset(side, {activate: false});
   });
   const apply = el('button', {type: 'button', text: 'Apply'});
   apply.addEventListener('click', function () { applySidePreset(side); });
@@ -676,6 +688,25 @@ function renderSidePreset(side) {
   row.appendChild(apply);
   wrap.appendChild(row);
   wrap.appendChild(el('div', {class: 'hint', text: 'Preset fills this TAM side'}));
+  if (state.side_presets[side] === 'tnpb') {
+    wrap.appendChild(renderTnpbSubtype());
+  }
+  return wrap;
+}
+
+function renderTnpbSubtype() {
+  const wrap = el('div', {class: 'field'});
+  wrap.appendChild(el('label', {text: 'TnpB subtype'}));
+  const select = el('select');
+  ((state.schema && state.schema.tnpb_subtypes) || []).forEach(function (item) {
+    select.appendChild(el('option', {value: item.value, text: item.label}));
+  });
+  select.value = state.tnpb_subtype || 'unknown';
+  select.addEventListener('change', function () {
+    state.tnpb_subtype = select.value;
+    schedulePreview();
+  });
+  wrap.appendChild(select);
   return wrap;
 }
 
@@ -905,12 +936,39 @@ function renderDesigner() {
   renderRun();
 }
 
+/* Which table the Results block shows and exports: the run's deliverable
+   output table ("full") or the historical candidate columns ("concise"). */
+function resultsView() {
+  const select = $('designer-export-columns');
+  return select ? select.value : 'concise';
+}
+
+function setResultsView(view) {
+  const select = $('designer-export-columns');
+  if (select && select.value !== view) {
+    select.value = view;
+  }
+  fillExportFormats(state.schema || {});
+}
+
 function fillExportFormats(schema) {
   const select = $('designer-export-format');
+  if (!select) {
+    return;
+  }
+  const formats = (schema.export_formats || ['csv']).filter(function (fmt) {
+    return resultsView() !== 'full'
+      || TABULAR_EXPORT_FORMATS.indexOf(fmt) >= 0;
+  });
+  const previous = select.value;
   select.innerHTML = '';
-  (schema.export_formats || ['csv']).forEach(function (fmt) {
+  formats.forEach(function (fmt) {
     select.appendChild(el('option', {value: fmt, text: fmt}));
   });
+  /* Keep the user's format when it is still on offer. */
+  if (formats.indexOf(previous) >= 0) {
+    select.value = previous;
+  }
 }
 
 /* --------------------------------------------------------- designer state */
@@ -974,6 +1032,11 @@ async function previewNow() {
   }
   try {
     const result = await api('/api/designer/preview', {method: 'POST', body: payload()});
+    state.pattern_name = result.pattern_name || '';
+    const batchPatternInput = $('batch-pattern-id');
+    if (batchPatternInput && !batchPatternInput.value.trim()) {
+      batchPatternInput.placeholder = state.pattern_name || 'pattern id';
+    }
     $('designer-describe').textContent = result.describe || '(pattern is not valid yet)';
     const badge = $('designer-ready');
     if (result.errors && result.errors.length) {
@@ -993,7 +1056,8 @@ async function previewNow() {
   }
 }
 
-async function applySidePreset(side) {
+async function applySidePreset(side, options) {
+  const activate = !(options && options.activate === false);
   try {
     const result = await api('/api/designer/preset', {
       method: 'POST',
@@ -1002,7 +1066,9 @@ async function applySidePreset(side) {
     state.side_presets[side] = result.preset;
     applyUpdates(result.updates);
     applyModelSelection(side, result);
-    state.active_side = side;
+    if (activate) {
+      state.active_side = side;
+    }
     renderDesigner();
     previewNow();
   } catch (err) {
@@ -1052,7 +1118,6 @@ function fillDataPrepOptions(schema) {
   ['dp-target-id-type', 'dp-mask-id-type'].forEach(function (id) {
     fillSelect($(id), labelled(dp.id_types));
   });
-  $('dp-build-blastdb').checked = !!dp.build_blastdb_default;
   $('dp-skip-mask').checked = !!dp.skip_mask_default;
   $('dp-mask-same').checked = dp.mask_same_as_target_default !== false;
   $('dp-skip-mask').addEventListener('change', syncMaskFields);
@@ -1079,7 +1144,6 @@ function dpPayload(extra) {
     annotation: $('dp-annotation').value.trim(),
     output_dir: $('dp-output').value.trim(),
     blastdb: $('dp-blastdb').value.trim(),
-    build_blastdb: $('dp-build-blastdb').checked,
     target_id: $('dp-target-id').value.trim(),
     target_region: $('dp-target-region').value,
     target_num: $('dp-target-num').value.trim(),
@@ -1374,6 +1438,7 @@ async function startDesignerJob(stage) {
     state.jobId = response.job_id;
     state.logOffset = 0;
     state.candidates = null;
+    state.results = null;
     resetRecentJob(response.job_id, 'designer', title);
     $('designer-export-name').value = '';
     $('designer-log').textContent = '';
@@ -1403,7 +1468,12 @@ async function pollDesignerJob(jobId) {
     setRecentJob(job);
     if (job.status === 'succeeded') {
       showBanner('Job ' + jobId + ' finished: ' + job.message, false);
-      await loadCandidates(jobId);
+      /* A scored run now has a full output table; show it unless the user
+         pinned the concise view by hand. */
+      if (job.outputs && job.outputs.scores && !state.resultsViewPinned) {
+        setResultsView('full');
+      }
+      await refreshResultTable();
     } else {
       showBanner('Job ' + jobId + ' ' + job.status + ': ' + (job.message || ''), true);
     }
@@ -1412,15 +1482,23 @@ async function pollDesignerJob(jobId) {
   }
 }
 
-function renderCandidates(data) {
+function pathBaseName(path) {
+  const text = String(path || '');
+  const cut = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  return cut >= 0 ? text.slice(cut + 1) : text;
+}
+
+function renderCandidates(data, view) {
   const table = $('designer-candidates');
   const head = table.querySelector('thead');
   const body = table.querySelector('tbody');
   head.innerHTML = '';
   body.innerHTML = '';
+  const mode = view || resultsView();
+  const kind = mode === 'full' ? 'output' : 'candidate';
   if (!data || !data.rows || !data.rows.length) {
     $('designer-candidates-info').textContent = data
-      ? 'No candidate rows yet.' : '';
+      ? 'No ' + kind + ' rows yet.' : '';
     return;
   }
   const headRow = el('tr');
@@ -1441,17 +1519,61 @@ function renderCandidates(data) {
     });
     body.appendChild(tr);
   });
-  $('designer-candidates-info').textContent = data.total + ' candidate row(s).';
+  $('designer-candidates-info').textContent = mode === 'full'
+    ? data.total + ' output row(s), same as ' + (pathBaseName(data.file) || 'the run output table') + '.'
+    : data.total + ' candidate row(s).';
 }
 
 async function loadCandidates(jobId) {
   try {
     const data = await api('/api/jobs/' + jobId + '/candidates');
     state.candidates = data;
-    renderCandidates(data);
+    renderCandidates(data, 'concise');
+    return data;
   } catch (err) {
     $('designer-candidates-info').textContent = 'Candidates unavailable: ' + err.message;
+    return null;
   }
+}
+
+async function loadResults(jobId) {
+  try {
+    const data = await api('/api/jobs/' + jobId + '/results');
+    state.results = data;
+    return data;
+  } catch (err) {
+    state.results = null;
+    return null;
+  }
+}
+
+/* Show exactly the table the export will write: the run's deliverable output
+   table in the "full" view, the candidate columns in the "concise" view. */
+async function refreshResultTable() {
+  const jobId = state.jobId;
+  if (!jobId) {
+    renderCandidates(null);
+    return null;
+  }
+  if (resultsView() === 'full') {
+    const data = await loadResults(jobId);
+    if (data && data.available) {
+      renderCandidates(data, 'full');
+      return data;
+    }
+    /* No scored output yet (Find Targets only): fall back to candidates. */
+    setResultsView('concise');
+    const fallback = await loadCandidates(jobId);
+    const info = $('designer-candidates-info');
+    if (info) {
+      info.textContent = 'No output table yet (run Score & Off-target); '
+        + 'showing candidates'
+        + (fallback && fallback.total !== undefined
+          ? ' (' + fallback.total + ' row(s))' : '') + '.';
+    }
+    return fallback;
+  }
+  return await loadCandidates(jobId);
 }
 
 function selectedRowIndexes() {
@@ -1479,7 +1601,7 @@ async function exportCandidates(all) {
   }
   const rows = all ? 'all' : selectedRowIndexes();
   if (!all && !rows.length) {
-    showBanner('Select at least one candidate row, or use Export All.', true);
+    showBanner('Select at least one row, or use Export All.', true);
     return;
   }
   try {
@@ -1487,6 +1609,7 @@ async function exportCandidates(all) {
       method: 'POST',
       body: {
         format: $('designer-export-format').value,
+        columns: resultsView(),
         rows: rows,
         filename: $('designer-export-name').value.trim() || null,
       },
@@ -1515,6 +1638,11 @@ function initDesigner() {
   });
   $('designer-export-all').addEventListener('click', function () {
     exportCandidates(true);
+  });
+  $('designer-export-columns').addEventListener('change', function () {
+    state.resultsViewPinned = true;
+    fillExportFormats(state.schema || {});
+    refreshResultTable();
   });
 }
 
@@ -1830,9 +1958,19 @@ function dirNameOf(path) {
     return text.slice(0, 1);
   }
   if (head.length === 2 && head.charAt(1) === ':') {
-    return head + '\\';
+    /* Keep the separator the path already uses: "C:/x" must not become
+       "C:\x" just because the page happens to run on Windows. */
+    return head + (text.charAt(cut) || '\\');
   }
   return head;
+}
+
+/* The separator a path is written with. Crumbs must never flip it: a POSIX
+   path has to keep "/", and a Windows path typed with forward slashes should
+   keep them too. Backslash-free text (which includes every POSIX path) is
+   treated as forward-slash. */
+function pathSeparator(path) {
+  return path.indexOf('\\') >= 0 ? '\\' : '/';
 }
 
 async function fetchPickerDir(dir) {
@@ -2065,17 +2203,19 @@ function updatePickerNav() {
 
 /* ---- crumbs, places, entry count ----------------------------------- */
 
-/* 'C:\data\programfile' -> [{'C:\', 'C:\'}, {'data', 'C:\data'}, ...] */
+/* 'C:\data\programfile' -> [{'C:\', 'C:\'}, {'data', 'C:\data'}, ...]
+   A POSIX path keeps its own "/" instead of being rewritten with backslashes. */
 function pickerCrumbs(dir) {
   const text = cleanText(dir);
   if (!text) {
     return [];
   }
+  const separator = pathSeparator(text);
   const segments = text.split(/[\\/]+/).filter(function (part) { return !!part; });
   const crumbs = [];
   let prefix = '';
   if (/^[A-Za-z]:/.test(text)) {
-    prefix = segments.shift() + '\\';
+    prefix = segments.shift() + separator;
     crumbs.push({label: prefix, path: prefix});
   } else if (text.charAt(0) === '/') {
     prefix = '/';
@@ -2084,7 +2224,7 @@ function pickerCrumbs(dir) {
   segments.forEach(function (part) {
     const tail = prefix.charAt(prefix.length - 1);
     if (prefix && tail !== '/' && tail !== '\\') {
-      prefix += '\\';
+      prefix += separator;
     }
     prefix += part;
     crumbs.push({label: part, path: prefix});
@@ -2575,11 +2715,79 @@ function initPicker() {
 const batchState = {
   scopes: [],
   patterns: [],
+  newScopeIds: null,
   jobId: null,
+  runId: '',
 };
+
+const BATCH_FASTA_SUFFIXES = ['.fasta.gz', '.fa.gz', '.fna.gz', '.fasta', '.fa', '.fna'];
+const BATCH_BED_SUFFIXES = ['.bed.gz', '.bed'];
 
 function batchPathKind(scope) {
   return (scope.kind || 'sequence') === 'bed' ? 'bed' : 'fasta';
+}
+
+function batchStripSuffix(name, suffixes) {
+  const lower = name.toLowerCase();
+  const ordered = suffixes.slice().sort(function (a, b) { return b.length - a.length; });
+  for (let i = 0; i < ordered.length; i += 1) {
+    if (lower.endsWith(ordered[i])) {
+      return name.slice(0, name.length - ordered[i].length);
+    }
+  }
+  return name;
+}
+
+function batchDeriveScopeId(scope) {
+  const path = String(scope.path || '').trim();
+  const base = path.split(/[\\/]/).pop() || '';
+  const isBed = (scope.kind || 'sequence') === 'bed';
+  const stem = batchStripSuffix(base, isBed ? BATCH_BED_SUFFIXES : BATCH_FASTA_SUFFIXES);
+  return stem || 'scope';
+}
+
+/* Mirror services/batch.py scope_id derivation so checkbox values match the server. */
+function batchEffectiveScopeIds() {
+  const used = {};
+  return batchState.scopes.map(function (scope) {
+    let base = String(scope.scopeId || '').trim() || batchDeriveScopeId(scope);
+    const count = (used[base] || 0) + 1;
+    used[base] = count;
+    if (count > 1) {
+      base = base + '_' + count;
+      if (used[base] === undefined) {
+        used[base] = 0;
+      }
+    }
+    return base;
+  });
+}
+
+function batchScopeCheckbox(scopeId, checked, onToggle) {
+  const checkbox = el('input', {type: 'checkbox', value: scopeId});
+  checkbox.checked = checked;
+  checkbox.addEventListener('change', onToggle);
+  return el('label', {class: 'inline'}, [
+    checkbox,
+    document.createTextNode(scopeId),
+  ]);
+}
+
+function renderBatchNewScopes() {
+  const box = $('batch-pattern-scopes');
+  if (!box) {
+    return;
+  }
+  box.innerHTML = '';
+  batchEffectiveScopeIds().forEach(function (scopeId) {
+    const checked = batchState.newScopeIds === null
+      || batchState.newScopeIds.indexOf(scopeId) >= 0;
+    box.appendChild(batchScopeCheckbox(scopeId, checked, function () {
+      batchState.newScopeIds = Array.prototype.slice.call(box.querySelectorAll('input[type=checkbox]'))
+        .filter(function (node) { return node.checked; })
+        .map(function (node) { return node.value; });
+    }));
+  });
 }
 
 function renderBatchScopes() {
@@ -2593,10 +2801,12 @@ function renderBatchScopes() {
     const idInput = el('input', {type: 'text', value: scope.scopeId || '', placeholder: 'scope id'});
     idInput.addEventListener('input', function () {
       scope.scopeId = idInput.value.trim();
+      renderBatchNewScopes();
     });
     const pathInput = el('input', {type: 'text', value: scope.path || '', placeholder: 'path'});
     pathInput.addEventListener('input', function () {
       scope.path = pathInput.value;
+      renderBatchNewScopes();
     });
     const browse = browseButton(pathInput, batchPathKind(scope));
     const kindSelect = el('select');
@@ -2611,19 +2821,49 @@ function renderBatchScopes() {
       scope.kind = kindSelect.value;
       renderBatchScopes();
     });
+    const maskCheckbox = el('input', {type: 'checkbox'});
+    maskCheckbox.checked = scope.maskSameAsTarget !== false;
+    const maskInput = el('input', {
+      type: 'text',
+      value: scope.maskFasta || '',
+      placeholder: 'mask fasta',
+    });
+    const maskBrowse = browseButton(maskInput, 'fasta');
+    maskInput.disabled = maskCheckbox.checked;
+    maskBrowse.disabled = maskCheckbox.checked;
+    maskCheckbox.addEventListener('change', function () {
+      scope.maskSameAsTarget = maskCheckbox.checked;
+      maskInput.disabled = maskCheckbox.checked;
+      maskBrowse.disabled = maskCheckbox.checked;
+    });
+    maskInput.addEventListener('input', function () {
+      scope.maskFasta = maskInput.value;
+    });
     const remove = el('button', {type: 'button', text: 'Remove'});
     remove.addEventListener('click', function () {
       batchState.scopes.splice(index, 1);
       renderBatchScopes();
     });
     const pathCell = el('td', {}, [el('div', {class: 'row'}, [pathInput, browse])]);
+    const maskCell = el('td', {}, [
+      el('div', {class: 'row'}, [
+        el('label', {class: 'muted'}, [
+          maskCheckbox,
+          document.createTextNode(' Same as scope'),
+        ]),
+        maskInput,
+        maskBrowse,
+      ]),
+    ]);
     tbody.appendChild(el('tr', {}, [
       el('td', {}, [idInput]),
       pathCell,
       el('td', {}, [kindSelect]),
+      maskCell,
       el('td', {}, [remove]),
     ]));
   });
+  renderBatchNewScopes();
   renderBatchPatterns();
 }
 
@@ -2634,20 +2874,17 @@ function renderBatchPatterns() {
     return;
   }
   tbody.innerHTML = '';
+  const scopeIds = batchEffectiveScopeIds();
   batchState.patterns.forEach(function (pattern, index) {
-    const select = el('select', {multiple: 'multiple'});
-    batchState.scopes.forEach(function (scope, scopeIndex) {
-      const scopeId = scope.scopeId || ('scope ' + (scopeIndex + 1));
-      const option = el('option', {value: scopeId, text: scopeId});
-      if (pattern.scopeIds === null || pattern.scopeIds.indexOf(scopeId) >= 0) {
-        option.selected = true;
-      }
-      select.appendChild(option);
-    });
-    select.addEventListener('change', function () {
-      pattern.scopeIds = Array.prototype.slice.call(select.options)
-        .filter(function (option) { return option.selected; })
-        .map(function (option) { return option.value; });
+    const box = el('div', {class: 'scope-checks'});
+    scopeIds.forEach(function (scopeId) {
+      const checked = pattern.scopeIds === null
+        || pattern.scopeIds.indexOf(scopeId) >= 0;
+      box.appendChild(batchScopeCheckbox(scopeId, checked, function () {
+        pattern.scopeIds = Array.prototype.slice.call(box.querySelectorAll('input[type=checkbox]'))
+          .filter(function (node) { return node.checked; })
+          .map(function (node) { return node.value; });
+      }));
     });
     const remove = el('button', {type: 'button', text: 'Remove'});
     remove.addEventListener('click', function () {
@@ -2657,20 +2894,29 @@ function renderBatchPatterns() {
     tbody.appendChild(el('tr', {}, [
       el('td', {text: pattern.pattern_id}),
       el('td', {text: pattern.designer.mode}),
-      el('td', {}, [select]),
+      el('td', {}, [box]),
       el('td', {}, [remove]),
     ]));
   });
 }
 
 function addBatchScope() {
-  batchState.scopes.push({scopeId: '', path: '', kind: 'sequence'});
+  batchState.scopes.push({
+    scopeId: '',
+    path: '',
+    kind: 'sequence',
+    maskSameAsTarget: true,
+    maskFasta: '',
+  });
   renderBatchScopes();
 }
 
 function addBatchPattern() {
   const input = $('batch-pattern-id');
-  const patternId = input ? input.value.trim() : '';
+  let patternId = input ? input.value.trim() : '';
+  if (!patternId) {
+    patternId = String(state.pattern_name || '').trim();
+  }
   if (!patternId) {
     showBanner('Enter a pattern id first.', true);
     return;
@@ -2686,24 +2932,30 @@ function addBatchPattern() {
   batchState.patterns.push({
     pattern_id: patternId,
     designer: JSON.parse(JSON.stringify(payload({}))),
-    scopeIds: null,
+    scopeIds: batchState.newScopeIds === null ? null : batchState.newScopeIds.slice(),
   });
+  batchState.newScopeIds = null;
   if (input) {
     input.value = '';
   }
+  renderBatchNewScopes();
   renderBatchPatterns();
 }
 
 function batchPayload() {
-  const scopes = batchState.scopes.map(function (scope) {
-    const item = {};
-    if (scope.scopeId) {
-      item.scope_id = scope.scopeId;
-    }
+  const scopeIds = batchEffectiveScopeIds();
+  const scopes = batchState.scopes.map(function (scope, index) {
+    const item = {scope_id: scopeIds[index]};
     if ((scope.kind || 'sequence') === 'bed') {
       item.regions = scope.path || '';
     } else {
       item.search_fasta = scope.path || '';
+    }
+    if (scope.maskSameAsTarget === false) {
+      item.mask_fasta = scope.maskFasta || '';
+      item.mask_same_as_target = false;
+    } else {
+      item.mask_same_as_target = true;
     }
     return item;
   });
@@ -2731,19 +2983,42 @@ function batchPayload() {
   return Object.assign(payload({}), body);
 }
 
-function renderBatchUnits(data) {
+/* The units table is shared: preview shows the plan, a lookup shows results. */
+const BATCH_UNIT_COLUMNS = ['unit_id', 'scope_id', 'pattern_id'];
+
+function setBatchUnitHeader(columns) {
   const table = $('batch-units');
-  const tbody = table ? table.querySelector('tbody') : null;
+  if (!table) {
+    return null;
+  }
+  const thead = table.querySelector('thead');
+  if (thead) {
+    thead.innerHTML = '';
+    thead.appendChild(el('tr', {}, columns.map(function (column) {
+      return el('th', {text: column});
+    })));
+  }
+  const tbody = table.querySelector('tbody');
   if (tbody) {
     tbody.innerHTML = '';
-    (data.units || []).forEach(function (unit) {
-      tbody.appendChild(el('tr', {}, [
-        el('td', {text: unit.unit_id}),
-        el('td', {text: unit.scope_id}),
-        el('td', {text: unit.pattern_id}),
-      ]));
-    });
   }
+  return tbody;
+}
+
+function fillBatchUnitRows(tbody, columns, rows) {
+  if (!tbody) {
+    return;
+  }
+  (rows || []).forEach(function (row) {
+    tbody.appendChild(el('tr', {}, columns.map(function (column) {
+      const value = row[column];
+      return el('td', {text: value === undefined || value === null ? '' : String(value)});
+    })));
+  });
+}
+
+function renderBatchUnits(data) {
+  fillBatchUnitRows(setBatchUnitHeader(BATCH_UNIT_COLUMNS), BATCH_UNIT_COLUMNS, data.units);
   const note = $('batch-preview-note');
   if (note) {
     const parts = [];
@@ -2771,36 +3046,60 @@ async function batchPreview() {
   }
 }
 
-function renderBatchArtifacts(job) {
-  const box = $('batch-artifacts');
+/* A run folder offers the same downloads as a finished job, in the same order. */
+const RUN_EXPORT_FILES = [
+  'manifest.tsv',
+  'summary/batch_scores.tsv',
+  'run.log',
+  'run.json',
+  'batch.json',
+];
+
+function renderArtifactButtons(box, entries) {
   if (!box) {
     return;
   }
   box.innerHTML = '';
-  const outputs = (job && job.outputs) || {};
-  const entries = [
-    ['manifest.tsv', outputs.download_manifest, outputs.manifest ? 'export/manifest.tsv' : null],
-    ['batch_scores.tsv', outputs.download_summary, outputs.summary ? 'export/batch_scores.tsv' : null],
-  ];
-  entries.forEach(function (entry) {
-    const value = entry[1] ? String(entry[1]) : '';
-    const relative = value.indexOf('export/') === 0 ? value : entry[2];
-    if (!relative) {
+  (entries || []).forEach(function (entry) {
+    if (!entry || !entry[1]) {
       return;
     }
-    const url = '/api/jobs/' + job.job_id + '/download?file=' + encodeURIComponent(relative);
     const button = el('button', {type: 'button', text: entry[0]});
-    button.addEventListener('click', function () {
-      downloadUrl(url);
-    });
+    button.addEventListener('click', function () { downloadUrl(entry[1]); });
     box.appendChild(button);
   });
+}
+
+function renderBatchArtifacts(job) {
+  const outputs = (job && job.outputs) || {};
+  const base = '/api/jobs/' + ((job && job.job_id) || '') + '/download?file=';
+  renderArtifactButtons($('batch-artifacts'), [
+    ['manifest.tsv', outputs.manifest ? base + encodeURIComponent('export/manifest.tsv') : ''],
+    ['batch_scores.tsv', outputs.summary ? base + encodeURIComponent('export/batch_scores.tsv') : ''],
+    ['run.log', outputs.log ? base + encodeURIComponent('export/run.log') : ''],
+    ['run.json', outputs.download_meta ? base + encodeURIComponent('export/run.json') : ''],
+  ]);
+}
+
+function renderRunArtifacts(data) {
+  const code = data.run_id || '';
+  const present = {};
+  (data.files || []).forEach(function (file) { present[file.name] = true; });
+  const entries = RUN_EXPORT_FILES.filter(function (name) {
+    return present[name];
+  }).map(function (name) {
+    const url = '/api/batch/runs/' + encodeURIComponent(code) +
+      '/download?file=' + encodeURIComponent(name);
+    return [name.split('/').pop(), url];
+  });
+  renderArtifactButtons($('batch-artifacts'), entries);
 }
 
 async function startBatchJob() {
   try {
     const created = await api('/api/batch/jobs', {method: 'POST', body: batchPayload()});
     batchState.jobId = created.job_id;
+    setBatchCode(created.run_id);
     state.batchLogOffset = 0;
     const artifacts = $('batch-artifacts');
     if (artifacts) {
@@ -2810,9 +3109,163 @@ async function startBatchJob() {
     if (box) {
       box.classList.remove('hidden');
     }
-    pollJobInto(created.job_id, 'batch-job-box', 'batchLogOffset', renderBatchArtifacts);
+    pollJobInto(created.job_id, 'batch-job-box', 'batchLogOffset', function (job) {
+      renderBatchArtifacts(job);
+      refreshBatchRun(created.run_id, {silent: true});
+    });
   } catch (err) {
     showBanner('Batch job failed: ' + err.message, true);
+  }
+}
+
+/* One batch = one task code (run id). Show it, copy it and look up any code. */
+function setBatchCode(runId) {
+  batchState.runId = runId ? String(runId) : '';
+  const node = $('batch-current-code');
+  if (node) {
+    node.textContent = batchState.runId || '-';
+  }
+  const input = $('batch-code-input');
+  if (input && batchState.runId) {
+    input.value = batchState.runId;
+  }
+}
+
+function copyBatchCode() {
+  const code = batchState.runId;
+  if (!code) {
+    showBanner('No task code yet; run a batch first.', true);
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(
+      function () { showBanner('Copied task code ' + code, false); },
+      function () { showBanner('Copy failed; select the code manually.', true); });
+  } else {
+    showBanner('Clipboard unavailable; the code is ' + code, true);
+  }
+}
+
+function batchKv(parent, key, value) {
+  const line = el('div', {class: 'kv'});
+  line.appendChild(document.createTextNode(key + ': '));
+  line.appendChild(el('code', {text: value}));
+  parent.appendChild(line);
+}
+
+function renderBatchRunFiles(data) {
+  const box = $('batch-run-files');
+  if (!box) {
+    return;
+  }
+  box.innerHTML = '';
+  const code = data.run_id || '';
+  (data.files || []).forEach(function (file) {
+    const url = '/api/batch/runs/' + encodeURIComponent(code) +
+      '/download?file=' + encodeURIComponent(file.name);
+    const button = el('button', {type: 'button', text: file.name});
+    button.addEventListener('click', function () { downloadUrl(url); });
+    box.appendChild(button);
+  });
+}
+
+function renderBatchRunDetail(data) {
+  const box = $('batch-run-detail');
+  if (!box) {
+    return;
+  }
+  box.classList.remove('hidden');
+  box.innerHTML = '';
+  const units = data.units || {};
+  batchKv(box, 'Task code', data.run_id || '');
+  batchKv(box, 'Batch label', data.batch_label || '-');
+  batchKv(box, 'Created', data.created || '-');
+  batchKv(box, 'Path', data.path || '');
+  batchKv(box, 'Units', 'total ' + (data.unit_count || 0) +
+    ' | ok ' + (units.ok || 0) + ' | failed ' + (units.failed || 0) +
+    ' | skipped ' + (units.skipped || 0) + ' | stopped ' + (units.stopped || 0));
+  renderBatchRunFiles(data);
+  renderBatchRunRows(data);
+  renderRunArtifacts(data);
+}
+
+/* A looked-up run fills the results table and the export row, like a fresh run. */
+function renderBatchRunRows(data) {
+  const columns = data.columns && data.columns.length ? data.columns : BATCH_UNIT_COLUMNS;
+  fillBatchUnitRows(setBatchUnitHeader(columns), columns, data.rows);
+  const note = $('batch-preview-note');
+  if (note) {
+    const units = data.units || {};
+    note.textContent = 'Task ' + (data.run_id || '') +
+      '  |  ok ' + (units.ok || 0) +
+      ' | failed ' + (units.failed || 0) +
+      ' | skipped ' + (units.skipped || 0) +
+      ' | stopped ' + (units.stopped || 0) +
+      '  |  Output: ' + (data.path || '');
+  }
+}
+
+function renderBatchRuns(data) {
+  const table = $('batch-runs-table');
+  const wrap = $('batch-run-list');
+  const tbody = table ? table.querySelector('tbody') : null;
+  if (!tbody || !wrap) {
+    return;
+  }
+  wrap.classList.remove('hidden');
+  tbody.innerHTML = '';
+  (data.runs || []).forEach(function (run) {
+    const units = run.units || {};
+    const open = el('button', {type: 'button', text: run.run_id || ''});
+    open.addEventListener('click', function () { loadBatchRun(run.run_id); });
+    const codeCell = el('td');
+    codeCell.appendChild(open);
+    tbody.appendChild(el('tr', {}, [
+      codeCell,
+      el('td', {text: run.batch_label || '-'}),
+      el('td', {text: 'ok ' + (units.ok || 0) + ' / ' + (run.unit_count || 0)}),
+      el('td', {text: run.created || '-'}),
+    ]));
+  });
+}
+
+async function refreshBatchRun(code, options) {
+  const opts = options || {};
+  try {
+    const data = await api('/api/batch/runs/' + encodeURIComponent(code));
+    setBatchCode(data.run_id);
+    renderBatchRunDetail(data);
+    if (!opts.silent) {
+      showBanner('Task ' + data.run_id + ' loaded.', false);
+    }
+    return data;
+  } catch (err) {
+    if (!opts.silent) {
+      showBanner('Task code lookup failed: ' + err.message, true);
+    }
+    return null;
+  }
+}
+
+async function loadBatchRun(ref) {
+  /* Accept 20261006-0114, 20261006/0114 and the bare 0114. */
+  const code = String(ref || '').trim().replace(/[\/_]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!code) {
+    showBanner('Enter a task code to view.', true);
+    return;
+  }
+  await refreshBatchRun(code);
+}
+
+async function listBatchRuns() {
+  try {
+    const data = await api('/api/batch/runs?limit=20');
+    renderBatchRuns(data);
+    if (!(data.runs || []).length) {
+      showBanner('No batch runs yet.', false);
+    }
+  } catch (err) {
+    showBanner('Run list failed: ' + err.message, true);
   }
 }
 
@@ -2824,6 +3277,28 @@ function initBatch() {
   $('batch-pattern-add').addEventListener('click', addBatchPattern);
   $('batch-preview').addEventListener('click', batchPreview);
   $('batch-run').addEventListener('click', startBatchJob);
+  const copy = $('batch-code-copy');
+  if (copy) {
+    copy.addEventListener('click', copyBatchCode);
+  }
+  const lookup = $('batch-code-load');
+  if (lookup) {
+    lookup.addEventListener('click', function () {
+      loadBatchRun($('batch-code-input') ? $('batch-code-input').value : '');
+    });
+  }
+  const recent = $('batch-code-recent');
+  if (recent) {
+    recent.addEventListener('click', listBatchRuns);
+  }
+  const input = $('batch-code-input');
+  if (input) {
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        loadBatchRun(input.value);
+      }
+    });
+  }
   renderBatchScopes();
 }
 

@@ -9,6 +9,7 @@ wraps, so a web run and a desktop run of the same form values are identical.
 
 from __future__ import annotations
 
+import csv
 import os
 import re
 import sys
@@ -25,7 +26,7 @@ for _path in (WEBAPP, SHARED):
 
 import schema  # noqa: E402
 from design.pattern_runner import PatternRunner, RunnerConfig  # noqa: E402
-from design.pattern_spec import PatternKind  # noqa: E402
+from design.pattern_spec import PatternKind, default_pattern_name  # noqa: E402
 from design.workbench_form import (  # noqa: E402
     WorkbenchFormState,
     active_side_updates,
@@ -71,6 +72,16 @@ _EXPORT_BASE_NAMES = {
     "unique_guides": "unique_guides",
     "library": "library_input",
 }
+
+#: Table the browser shows and exports. ``concise`` is the historical
+#: candidate-column view; ``full`` is the run's deliverable table, the same
+#: file the pipeline lands under ``output_dir`` (``<label>_scores.tsv``).
+RESULT_VIEWS = ("concise", "full")
+#: Formats that make sense for the full deliverable table; ``fasta`` / ``bed``
+#: / ``unique_guides`` / ``library`` only reinterpret candidate rows.
+FULL_EXPORT_FORMATS = ("csv", "tsv", "xlsx")
+RESULTS_MISSING_MESSAGE = "Output table not found. Run Score & Off-target first."
+_FULL_EXPORT_BASE_NAME = "results"
 
 
 def _string_map(raw, defaults):
@@ -127,6 +138,7 @@ def preview(payload: Dict[str, Any]) -> Dict[str, Any]:
         "warnings": [],
         "memory_resolved": None,
         "run_label": "",
+        "pattern_name": "",
     }
     try:
         result["memory_resolved"] = resolved_memory_limit(state)
@@ -136,6 +148,7 @@ def preview(payload: Dict[str, Any]) -> Dict[str, Any]:
         spec = build_pattern_spec(state)
         spec.validate()
         result["describe"] = spec.describe()
+        result["pattern_name"] = default_pattern_name(spec)
         result["run_label"] = (
             state.value("result_label").strip()
             or default_run_label(state, spec)
@@ -239,17 +252,32 @@ def job_body(payload: Dict[str, Any], start: int, end: Optional[int],
             on_prompt=on_prompt,
         )
         if returncode == 0:
-            ctx.set_result({
+            result = {
                 "run_label": runner.config.run_label,
                 "output_dir": runner.config.output_dir,
                 "extract_output": runner.extract_output_path(),
-            })
-            ctx.set_outputs({
+            }
+            outputs = {
                 "search_fasta": runner.config.search_fasta,
                 "bed_regions": runner.config.regions,
                 "output_dir": runner.config.output_dir,
                 "extract_output": runner.extract_output_path(),
-            })
+            }
+            extra_paths: Dict[str, Any] = {}
+            run_dir = str(runner.run_dir() or "").strip()
+            if run_dir:
+                extra_paths["run_dir"] = run_dir
+                extra_paths["params_file"] = os.path.join(run_dir, "params.json")
+            for key, value in runner.deliverable_paths().items():
+                extra_paths[str(key)] = value
+            for key, value in extra_paths.items():
+                path = str(value or "").strip()
+                if not path or not os.path.exists(path):
+                    continue
+                result[key] = path
+                outputs[key] = path
+            ctx.set_result(result)
+            ctx.set_outputs(outputs)
         return returncode
 
     return run
@@ -326,6 +354,42 @@ def candidates(job_id: str, manager) -> Dict[str, Any]:
     return {"columns": columns, "rows": rendered, "total": len(rendered)}
 
 
+def _read_delimited_table(path: str) -> Dict[str, Any]:
+    """Read a TSV deliverable into an ordered ``{columns, rows}`` table."""
+    with open(path, "r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        columns = [str(name) for name in (reader.fieldnames or [])]
+        rows = [
+            {
+                column: "" if raw.get(column) is None else str(raw.get(column))
+                for column in columns
+            }
+            for raw in reader
+        ]
+    return {"columns": columns, "rows": rows, "total": len(rows)}
+
+
+def results(job_id: str, manager) -> Dict[str, Any]:
+    """The run's deliverable table, i.e. the file landed under ``output_dir``.
+
+    ``job.outputs['scores']`` is the path the pipeline actually wrote, so the
+    browser shows the same table as the command line (``<label>_scores.tsv``,
+    or ``<label>_scores.sorted.tsv`` for Y-ZBP runs).
+    """
+    status = manager.get_job(job_id) or {}
+    outputs = status.get("outputs") or {}
+    path = str(outputs.get("scores") or "").strip()
+    if not path or not os.path.isfile(path):
+        return {
+            "columns": [], "rows": [], "total": 0,
+            "available": False, "file": None,
+        }
+    data = _read_delimited_table(path)
+    data["available"] = True
+    data["file"] = path
+    return data
+
+
 def sanitize_label(label: str) -> str:
     """Same file-name rules as designer_workbench._export_selected."""
     label = re.sub(r"[/\\]+", "-", str(label or ""))
@@ -333,21 +397,42 @@ def sanitize_label(label: str) -> str:
     return label or "results"
 
 
-def export_filename(label: str, fmt: str, stamp: Optional[str] = None) -> str:
+def export_filename(label: str, fmt: str, stamp: Optional[str] = None,
+                    base_name: Optional[str] = None) -> str:
     extension = ".tsv" if fmt in ("unique_guides", "library") else ".%s" % fmt
-    base_name = _EXPORT_BASE_NAMES.get(fmt, "export")
+    base_name = base_name or _EXPORT_BASE_NAMES.get(fmt, "export")
     stamp = stamp or time.strftime("%Y%m%d_%H%M%S")
     return "%s_%s_%s%s" % (sanitize_label(label), base_name, stamp, extension)
 
 
 def export_rows(job_id: str, payload: Dict[str, Any], manager) -> Dict[str, Any]:
-    """Write the selected candidates into ``<job_dir>/export/``."""
+    """Write selected candidate rows (concise) or the run output table (full).
+
+    ``full`` reproduces the deliverable table the pipeline wrote under
+    ``output_dir`` -- the same table the web UI shows in the ``full`` view --
+    while ``concise`` keeps the historical candidate-column export.
+    """
     fmt = str(payload.get("format") or "csv").lower()
     if fmt not in EXPORT_FORMATS:
         raise ValueError(
             "Unsupported export format: %s (choose from %s)"
             % (fmt, ", ".join(EXPORT_FORMATS)))
-    data = candidates(job_id, manager)
+    view = str(
+        payload.get("columns") or payload.get("view") or "concise").lower()
+    if view not in RESULT_VIEWS:
+        raise ValueError(
+            "Unsupported table: %s (choose from %s)"
+            % (view, ", ".join(RESULT_VIEWS)))
+    if view == "full":
+        if fmt not in FULL_EXPORT_FORMATS:
+            raise ValueError(
+                "The full output table can only be exported as %s"
+                % ", ".join(FULL_EXPORT_FORMATS))
+        data = results(job_id, manager)
+        if not data.get("available"):
+            raise ValueError(RESULTS_MISSING_MESSAGE)
+    else:
+        data = candidates(job_id, manager)
     selection = payload.get("rows", "all")
     if selection in (None, "all", "All", ""):
         rows = list(data["rows"])
@@ -363,12 +448,13 @@ def export_rows(job_id: str, payload: Dict[str, Any], manager) -> Dict[str, Any]
     else:
         raise ValueError('rows must be "all" or a list of row indexes')
     if not rows:
-        raise ValueError("No candidate rows selected for export")
+        raise ValueError("No rows selected for export")
 
     params = manager.job_params(job_id)
     label = payload.get("label") or params.get("run_label") or "results"
+    base_name = _FULL_EXPORT_BASE_NAME if view == "full" else None
     filename = os.path.basename(str(
-        payload.get("filename") or export_filename(label, fmt)))
+        payload.get("filename") or export_filename(label, fmt, None, base_name)))
     export_dir = os.path.join(manager.job_dir(job_id), "export")
     os.makedirs(export_dir, exist_ok=True)
     path = os.path.join(export_dir, filename)

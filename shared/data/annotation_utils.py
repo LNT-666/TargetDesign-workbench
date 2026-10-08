@@ -184,7 +184,7 @@ def _load_gene_attributes(gff_path, log_func=None):
         return gene_attrs_list
     except Exception as e:
         if log_func:
-            log_func(f"读取注释文件时发生异常: {e}")
+            log_func(f"Exception while reading annotation file: {e}")
         return []
 
 def load_gene_list(gff_path, id_type, combo_list, gene_cache, log_func=None):
@@ -201,13 +201,13 @@ def load_gene_list(gff_path, id_type, combo_list, gene_cache, log_func=None):
     """
     if not os.path.exists(gff_path):
         if log_func:
-            log_func(f"错误：注释文件不存在 - {gff_path}")
+            log_func(f"Error: annotation file not found - {gff_path}")
         return []
 
     # 检查缓存
     if gff_path not in gene_cache:
         if log_func:
-            log_func(f"首次加载基因属性，解析文件: {gff_path}")
+            log_func(f"Loading gene attributes for the first time, parsing file: {gff_path}")
         attrs_list = _load_gene_attributes(gff_path, log_func)
         gene_cache[gff_path] = {'attrs_list': attrs_list}
     else:
@@ -232,5 +232,5 @@ def load_gene_list(gff_path, id_type, combo_list, gene_cache, log_func=None):
             combo_list.set('')
     # 日志记录
     if log_func:
-        log_func(f"已从缓存中提取 '{id_type}' 类型的基因列表，共 {len(values)} 个。")
+        log_func(f"Extracted '{id_type}' gene list from cache, {len(values)} total")
     return values

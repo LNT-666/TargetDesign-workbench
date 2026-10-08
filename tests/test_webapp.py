@@ -269,7 +269,7 @@ class SchemaTests(unittest.TestCase):
             self.assertIn("kind", field, field["key"])
             self.assertIn(field["kind"], schema_module.FS_KINDS, field["key"])
         self.assertEqual(seen, {"search_fasta", "bed_regions", "genome_fasta",
-                                "mask_fasta", "blastdb",
+                                "mask_fasta", "blastdb", "annotation",
                                 "index_path"})
 
 
@@ -303,11 +303,13 @@ class DesignerServiceTests(DesignerFormTestCase):
         self.assertEqual(result["describe"], "")
         self.assertIn("Search FASTA is required", result["errors"])
         self.assertEqual(result["mode"], "single_motif_flank")
+        self.assertEqual(result["pattern_name"], "")
 
     def test_preview_describes_a_valid_pattern(self):
         result = designer.preview(self.payload())
         self.assertEqual(result["errors"], [])
         self.assertTrue(result["describe"])
+        self.assertEqual(result["pattern_name"], "TTAT")
         self.assertTrue(result["run_label"])
 
     def test_preset_and_active_side_updates(self):
@@ -360,10 +362,15 @@ class DesignerServiceTests(DesignerFormTestCase):
 
     def test_submit_score_requires_find_targets_output(self):
         manager = mock.Mock()
-        with self.assertRaises(ValueError) as caught:
-            designer.submit(dict(self.payload(), stage="score"), manager)
+        with mock.patch(
+            "design.workbench_form.default_output_dir",
+            return_value=self.output_dir,
+        ):
+            with self.assertRaises(ValueError) as caught:
+                designer.submit(dict(self.payload(), stage="score"), manager)
         self.assertEqual(str(caught.exception), designer.EXTRACT_MISSING_MESSAGE)
         manager.create_job.assert_not_called()
+
     def test_job_body_wires_the_runner_and_auto_confirms(self):
         runner = mock.Mock()
         runner.config = mock.Mock(run_label="run1", output_dir=self.output_dir,
@@ -371,6 +378,8 @@ class DesignerServiceTests(DesignerFormTestCase):
         runner.run_pipeline.return_value = 0
         runner.extract_output_path.return_value = os.path.join(
             self.output_dir, "x.tsv")
+        runner.run_dir.return_value = self.output_dir
+        runner.deliverable_paths.return_value = {}
         ctx = mock.Mock(out_dir=self.output_dir)
         with mock.patch.object(designer, "build_runner", return_value=runner):
             body = designer.job_body(self.payload(), 0, 1, "yes")
@@ -385,6 +394,67 @@ class DesignerServiceTests(DesignerFormTestCase):
                             for call in ctx.line.call_args_list))
         ctx.set_result.assert_called_once()
         self.assertEqual(ctx.set_result.call_args[0][0]["run_label"], "run1")
+
+    def test_job_body_reports_run_dir_and_deliverables(self):
+        run_label = "Run-A"
+        run_dir = os.path.join(self.output_dir, run_label)
+        params_file = write_file(
+            os.path.join(run_dir, "params.json"), "{}")
+        scores = write_file(
+            os.path.join(self.output_dir, run_label + "_scores.tsv"), "x\n")
+        missing = os.path.join(self.output_dir, run_label + "_offtargets.tsv")
+        runner = mock.Mock()
+        runner.config = mock.Mock(run_label=run_label, output_dir=self.output_dir,
+                                  max_memory_mode="unlimited", max_memory_mb=0)
+        runner.run_pipeline.return_value = 0
+        runner.extract_output_path.return_value = os.path.join(
+            run_dir, "extracted_seqs.tsv")
+        runner.run_dir.return_value = run_dir
+        runner.deliverable_paths.return_value = {
+            "scores": scores,
+            "guides": None,
+            "offtargets": missing,
+            "blast_results": None,
+        }
+        ctx = mock.Mock(out_dir=self.output_dir)
+        with mock.patch.object(designer, "build_runner", return_value=runner):
+            body = designer.job_body(self.payload(), 0, None, "yes")
+            self.assertEqual(body(ctx), 0)
+        result = ctx.set_result.call_args[0][0]
+        outputs = ctx.set_outputs.call_args[0][0]
+        self.assertEqual(result["run_dir"], run_dir)
+        self.assertEqual(result["params_file"], params_file)
+        self.assertEqual(result["scores"], scores)
+        self.assertEqual(outputs["run_dir"], run_dir)
+        self.assertEqual(outputs["params_file"], params_file)
+        self.assertEqual(outputs["scores"], scores)
+        for key in ("guides", "offtargets", "blast_results"):
+            self.assertNotIn(key, result)
+            self.assertNotIn(key, outputs)
+
+    def test_job_body_omits_params_and_deliverables_without_a_label(self):
+        runner = mock.Mock()
+        runner.config = mock.Mock(run_label="", output_dir=self.output_dir,
+                                  max_memory_mode="unlimited", max_memory_mb=0)
+        runner.run_pipeline.return_value = 0
+        runner.extract_output_path.return_value = os.path.join(
+            self.output_dir, "occurrence")
+        runner.run_dir.return_value = self.output_dir
+        runner.deliverable_paths.return_value = {
+            "scores": None,
+            "guides": None,
+            "offtargets": None,
+            "blast_results": None,
+        }
+        ctx = mock.Mock(out_dir=self.output_dir)
+        with mock.patch.object(designer, "build_runner", return_value=runner):
+            body = designer.job_body(self.payload(), 0, None, "yes")
+            self.assertEqual(body(ctx), 0)
+        result = ctx.set_result.call_args[0][0]
+        self.assertEqual(result["run_dir"], self.output_dir)
+        for key in ("params_file", "scores", "guides", "offtargets",
+                    "blast_results"):
+            self.assertNotIn(key, result)
 
     def test_job_body_honours_the_no_confirm_policy(self):
         runner = mock.Mock()
@@ -416,6 +486,79 @@ class DesignerServiceTests(DesignerFormTestCase):
         self.assertEqual(data["total"], 1)
         self.assertEqual(data["rows"][0]["guide"], "GGG")
         self.assertNotIn("query_seq", data["rows"][0])
+
+    def test_results_reads_the_deliverable_table(self):
+        scores = write_file(
+            os.path.join(self.output_dir, "run1_scores.tsv"),
+            "rank\tseq_id\tqid\tquery_seq\ttotal_matches\n"
+            "1\tchr1\tuniq_0\tACGT\t0\n"
+            "2\tchr1\tuniq_1\tTTTT\t3\n")
+        manager = mock.Mock()
+        manager.get_job.return_value = {
+            "job_id": "abcdefabcdef",
+            "outputs": {"scores": scores, "guides": None},
+        }
+        data = designer.results("abcdefabcdef", manager)
+        self.assertTrue(data["available"])
+        self.assertEqual(data["file"], scores)
+        self.assertEqual(
+            data["columns"],
+            ["rank", "seq_id", "qid", "query_seq", "total_matches"])
+        self.assertEqual(data["total"], 2)
+        self.assertEqual(data["rows"][1]["qid"], "uniq_1")
+        self.assertEqual(data["rows"][0]["total_matches"], "0")
+
+    def test_results_is_unavailable_without_a_scores_file(self):
+        manager = mock.Mock()
+        manager.get_job.return_value = {"outputs": {}}
+        data = designer.results("abcdefabcdef", manager)
+        self.assertFalse(data["available"])
+        self.assertEqual(data["columns"], [])
+        self.assertEqual(data["total"], 0)
+        self.assertIsNone(data["file"])
+
+    def test_export_rows_full_reproduces_the_output_table(self):
+        scores = write_file(
+            os.path.join(self.output_dir, "run1_scores.tsv"),
+            "rank\tseq_id\tqid\ttotal_matches\n"
+            "1\tchr1\tuniq_0\t0\n"
+            "2\tchr1\tuniq_1\t3\n")
+        manager = mock.Mock()
+        manager.job_dir.return_value = self.output_dir
+        manager.job_params.return_value = {"run_label": "run1"}
+        manager.get_job.return_value = {"outputs": {"scores": scores}}
+        result = designer.export_rows(
+            "abcdefabcdef",
+            {"format": "csv", "columns": "full", "rows": [1]}, manager)
+        self.assertTrue(result["file"].startswith("export/run1_results_"))
+        self.assertTrue(result["file"].endswith(".csv"))
+        path = os.path.join(self.output_dir, "export",
+                            os.path.basename(result["file"]))
+        with open(path, "r", encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        self.assertEqual(text.splitlines()[0], "rank,seq_id,qid,total_matches")
+        self.assertIn("uniq_1", text)
+        self.assertNotIn("uniq_0", text)
+        self.assertEqual(result["written"], 1)
+
+    def test_export_rows_full_validates_format_and_view(self):
+        manager = mock.Mock()
+        manager.job_dir.return_value = self.output_dir
+        manager.job_params.return_value = {"run_label": "run1"}
+        manager.get_job.return_value = {"outputs": {}}
+        with self.assertRaises(ValueError) as missing:
+            designer.export_rows(
+                "abcdefabcdef", {"format": "csv", "columns": "full"}, manager)
+        self.assertIn("Run Score & Off-target first", str(missing.exception))
+        with self.assertRaises(ValueError) as fmt:
+            designer.export_rows(
+                "abcdefabcdef", {"format": "fasta", "columns": "full"},
+                manager)
+        self.assertIn("csv", str(fmt.exception))
+        with self.assertRaises(ValueError) as view:
+            designer.export_rows(
+                "abcdefabcdef", {"format": "csv", "columns": "wide"}, manager)
+        self.assertIn("Unsupported table", str(view.exception))
 
     def test_export_rows_writes_into_the_job_export_dir(self):
         manager = mock.Mock()
@@ -849,9 +992,24 @@ class HandlerRouteTests(JobManagerTestCase):
         with mock.patch.object(designer, "export_rows",
                                return_value={"file": "export/x.csv"}) as export:
             calls = self.call("/api/jobs/%s/export" % job_id, method="POST",
-                              body={"format": "csv"})
+                              body={"format": "csv", "columns": "full"})
         self.assertEqual(calls[0][2], {"file": "export/x.csv"})
         self.assertEqual(export.call_args[0][0], job_id)
+        self.assertEqual(export.call_args[0][1]["columns"], "full")
+
+    def test_get_job_results_route(self):
+        job_id, _ = self.start(lambda ctx: 0)
+        fake = {"columns": ["rank"], "rows": [{"rank": "1"}], "total": 1,
+                "available": True, "file": "/tmp/run1_scores.tsv"}
+        with mock.patch.object(designer, "results",
+                               return_value=fake) as results:
+            calls = self.call("/api/jobs/%s/results" % job_id)
+        self.assertEqual(calls[0][1], 200)
+        self.assertEqual(calls[0][2]["columns"], ["rank"])
+        self.assertTrue(calls[0][2]["available"])
+        self.assertEqual(results.call_args[0][0], job_id)
+        self.assertEqual(
+            self.call("/api/jobs/aaaaaaaaaaaa/results")[0][1], 404)
 
     def test_post_models_routes(self):
         manager = mock.Mock()

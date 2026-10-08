@@ -95,7 +95,7 @@ def main():
         total_records = len(original_records)
         for rec_idx, rec in enumerate(original_records):
             if rec_idx % max(1, total_records // 10) == 0 or rec_idx == total_records - 1:
-                print(f"PROGRESS: 提取中 {int(rec_idx / total_records * 100)}", flush=True)
+                print(f"PROGRESS: extracting {int(rec_idx / total_records * 100)}", flush=True)
             seq_str = str(rec.seq).upper()
             seq_id = rec.id
             seen_pairs = set()
@@ -166,7 +166,7 @@ def main():
     with open(query_sidecar, 'w') as f:
         f.writelines(sidecar_lines)
     print(f"Extracted {total_combo} compound combinations. TSV written to {out_tsv}")
-    print("PROGRESS: 完成 100", flush=True)
+    print("PROGRESS: done 100", flush=True)
 
 if __name__ == "__main__":
     main()

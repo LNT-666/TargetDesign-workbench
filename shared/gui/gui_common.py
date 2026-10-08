@@ -16,6 +16,8 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
+from utils.log_utils import parse_progress_line
+
 
 WORKSPACE_FILENAME = "workspace.json"
 
@@ -281,16 +283,12 @@ class CommonGUIMixin:
                     self.run_on_ui(self.log, line)
                 except Exception:
                     pass
-            if line.startswith("PROGRESS:"):
-                parts = line.split()
-                if len(parts) >= 3 and root is not None:
-                    try:
-                        value = int(parts[-1])
-                        label = "%s %d%%" % (parts[1], value)
-                        self.run_on_ui(
-                            self._set_progress_now, value, label)
-                    except ValueError:
-                        pass
+            parsed = parse_progress_line(line)
+            if parsed is not None and root is not None:
+                value, label = parsed
+                self.run_on_ui(
+                    self._set_progress_now, value,
+                    "%s %d%%" % (label, value))
         proc.wait()
         code = proc.returncode
         if root is not None:

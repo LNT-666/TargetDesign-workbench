@@ -55,7 +55,7 @@ from scoring.pair_ranking_adapter import (
 from scoring.at_score import (
     compute_at_score_from_flank, should_output_at_score,
 )
-from design.system_presets import get_preset
+from design.system_presets import get_preset, resolve_run_nuclease
 from data.candidate_annotation import (
     build_annotation_index, annotate_interval, nearest_tss,
     find_downstream_atg, format_annotation, format_tss,
@@ -256,7 +256,10 @@ def main():
     mask_fasta = args.mask_fasta
     genome_file = args.genome_file
     output_dir = args.output_dir
-    nuclease = args.nuclease
+    # ``--mode preset --preset tnpb`` (etc.) without ``--nuclease`` must not
+    # keep the cas9 default in the reported ``nuclease`` column.
+    nuclease = resolve_run_nuclease(
+        args.nuclease, args.preset if args.mode == "preset" else "custom")
     tnpb_subtype = args.tnpb_subtype
     left_nuclease = args.left_nuclease or nuclease
     right_nuclease = args.right_nuclease or nuclease
@@ -384,7 +387,7 @@ def main():
     print(f"Loaded {len(rows)} compound positions, "
           f"{len(qid_to_seq)} unique flank sequences.")
 
-    print("PROGRESS: 读取完成 5", flush=True)
+    print("PROGRESS: reading 5", flush=True)
 
 
 
@@ -418,7 +421,7 @@ def main():
     if (engine == "exact"
             and os.path.getsize(genome_fasta_for_blast)
             > MAX_EXACT_GENOME_BYTES):
-        print("exact 引擎不适合大型基因组，自动回退到 blast")
+        print("Exact engine is not suitable for large genomes; falling back to blast")
         engine = "blast"
 
     def make_search_params(pam, pam_side, require):
@@ -1012,7 +1015,7 @@ def main():
             from scoring.crispai_runtime import (
                 run_crispai_aggregate, make_sgrna, specificity_from_aggregate)
         except Exception as exc:
-            print("crispAI 依赖导入失败: %s" % exc)
+            print("crispAI dependency import failed: %s" % exc)
         else:
             for side in ("left", "right"):
                 side_nuc = left_nuclease if side == "left" else right_nuclease
@@ -1054,9 +1057,9 @@ def main():
                             item["%s_off_target_specificity" % side] = specificity
                             item["%s_off_target_model" % side] = "crispai"
                         filled += 1
-                print("crispAI 已回填 %s 侧 %d/%d 条候选（%s）。"
+                print("crispAI backfilled %s-side %d/%d candidates (%s)"
                       % (side, filled, len(scored_rows),
-                         "作为主分" if as_primary else "仅补充列"))
+                         "as primary score" if as_primary else "additional columns only"))
     pair_inputs = []
     for item in scored_rows:
         compatibility = build_pair_compatibility(
@@ -1371,7 +1374,7 @@ def main():
 
     flank_extract = 100
 
-    print("PROGRESS: 生成 flanking sequence 85", flush=True)
+    print("PROGRESS: generating 85", flush=True)
 
     for qid, flank_seq in qid_to_seq.items():
         if qid not in blast_matches:

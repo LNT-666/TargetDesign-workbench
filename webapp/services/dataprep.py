@@ -347,7 +347,7 @@ def download_body(payload: Dict[str, Any]):
 
 
 def prepare_body(payload: Dict[str, Any]):
-    """Genome + annotation preparation, extractions and optional BLAST DB."""
+    """Genome + annotation preparation and Target/Mask extractions."""
 
     def run(ctx) -> int:
         output_dir = require_output_dir(payload)
@@ -360,10 +360,6 @@ def prepare_body(payload: Dict[str, Any]):
         mask_fasta = extract_mask_fasta(
             payload, genome, annotation, output_dir, ctx, target_fasta)
         blastdb = _clean(payload.get("blastdb"))
-        if not blastdb and payload.get("build_blastdb"):
-            blastdb = ensure_blastdb(genome, output_dir=output_dir,
-                                     log=ctx.line)
-            ctx.line("Genome database ready: %s" % blastdb)
         ctx.set_result({
             "output_dir": output_dir,
             "genome": genome,

@@ -20,7 +20,13 @@ if SHARED not in sys.path:
     sys.path.insert(0, SHARED)
 
 from design.library_preflight import ENGINE_CHOICES  # noqa: E402
-from design.system_presets import PAM_MODES, get_preset, preset_choices  # noqa: E402
+from design.system_presets import (  # noqa: E402
+    PAM_MODES,
+    TNPB_SUBTYPE_LABELS,
+    TNPB_SUBTYPES,
+    get_preset,
+    preset_choices,
+)
 from design.workbench_form import (  # noqa: E402
     MODE_LABELS,
     PAIR_RANK_POLICY_FIELDS,
@@ -72,6 +78,9 @@ COMMON_FIELDS = [
            hint="optional"),
     _field("blastdb", "BLAST DB Prefix", type="file", kind="db",
            hint="optional"),
+    _field("annotation", "Annotation GFF3", type="file", kind="annotation",
+           hint="optional - adds Annotation / Nearest-TSS / Isoforms / "
+                "Downstream-ATG to the score table"),
     _field("result_label", "Result Label",
            hint="blank = auto system-target"),
 ]
@@ -346,12 +355,13 @@ def build_schema():
             "pam_required": bool(preset.get("pam_required")),
         })
     nucleases = []
-    tnpb_subtypes = []
     for item in presets:
         if item["nuclease"] not in nucleases:
             nucleases.append(item["nuclease"])
-        if item["tnpb_subtype"] not in tnpb_subtypes:
-            tnpb_subtypes.append(item["tnpb_subtype"])
+    tnpb_subtypes = [
+        {"value": value, "label": TNPB_SUBTYPE_LABELS.get(value, value)}
+        for value in TNPB_SUBTYPES
+    ]
     side_keys = ["target", "left", "right"]
     cas9_models = side_model_options("cas9")
     preset_models = {key: side_model_options(key) for key in PRESET_KEYS}
@@ -405,6 +415,5 @@ def build_schema():
             "id_types": list(ID_TYPES),
             "skip_mask_default": False,
             "mask_same_as_target_default": True,
-            "build_blastdb_default": False,
         },
     }

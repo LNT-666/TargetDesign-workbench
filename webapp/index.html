@@ -95,7 +95,6 @@
             <input id="dp-index-prefix" type="text" placeholder="optional">
           </div>
         </div>
-        <label class="inline"><input type="checkbox" id="dp-build-blastdb"> Build Genome database automatically (from Genome FASTA)</label>
       </div>
 
       <div class="group">
@@ -153,7 +152,7 @@
       <div class="group">
         <h4>Prepare</h4>
         <div class="actions">
-          <button id="dp-prepare" class="primary" type="button">Prepare data (genome + annotation + Target + Mask + BLAST)</button>
+          <button id="dp-prepare" class="primary" type="button">Prepare data (genome + annotation + Target + Mask)</button>
           <button id="dp-build-blastdb-button" type="button">Build BLAST DB</button>
           <button id="dp-build-index" type="button">Build genome index</button>
         </div>
@@ -174,7 +173,7 @@
     </section>
     <div class="drawer-resizer" id="drawer-resizer" role="separator"
          aria-orientation="vertical" aria-label="Resize the Data prep panel"
-         tabindex="0" title="拖动调整宽度 / drag to resize (double-click resets)"></div>
+         tabindex="0" title="drag to resize (double-click resets)"></div>
   </aside>
   <div id="drawer-scrim" class="scrim hidden"></div>
 
@@ -237,6 +236,28 @@
 
     <details id="batch-wrap" class="lower-block">
       <summary>Batch</summary>
+      <div class="group" id="batch-code-group">
+        <h4>Task code (Run id)</h4>
+        <div class="actions">
+          <span class="muted">Current</span>
+          <code id="batch-current-code" class="run-code">-</code>
+          <button id="batch-code-copy" type="button">Copy</button>
+        </div>
+        <div class="actions">
+          <label for="batch-code-input">Look up</label>
+          <input id="batch-code-input" type="text" placeholder="20261006-0114 or 0114">
+          <button id="batch-code-load" type="button">View</button>
+          <button id="batch-code-recent" type="button">Recent runs</button>
+        </div>
+        <div id="batch-run-list" class="table-wrap hidden">
+          <table id="batch-runs-table">
+            <thead><tr><th>Task code</th><th>Batch</th><th>Units</th><th>Created</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="batch-run-detail" class="batch-run-detail hidden"></div>
+        <div id="batch-run-files" class="actions"></div>
+      </div>
       <div class="group">
         <div class="actions">
           <label for="batch-label">Batch label</label>
@@ -251,7 +272,7 @@
         </div>
         <div class="table-wrap">
           <table id="batch-scope-table">
-            <thead><tr><th>Scope</th><th>Path</th><th>Input</th><th></th></tr></thead>
+            <thead><tr><th>Scope</th><th>Path</th><th>Input</th><th>Mask</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -260,11 +281,13 @@
         <h4>Patterns</h4>
         <div class="actions">
           <input id="batch-pattern-id" type="text" placeholder="pattern id">
+          <span class="muted">Applies to</span>
+          <div id="batch-pattern-scopes" class="scope-checks"></div>
           <button id="batch-pattern-add" type="button">Add current Designer pattern</button>
         </div>
         <div class="table-wrap">
           <table id="batch-pattern-table">
-            <thead><tr><th>Pattern</th><th>Mode</th><th>Scopes</th><th></th></tr></thead>
+            <thead><tr><th>Pattern</th><th>Mode</th><th>Applies to</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -291,10 +314,15 @@
 
     <section class="lower-block" id="candidates-block">
       <div class="block-head">
-        <h3>Extracted Candidates</h3>
+        <h3>Results Table</h3>
         <span id="designer-candidates-info" class="muted"></span>
       </div>
       <div class="actions">
+        <label for="designer-export-columns">Table</label>
+        <select id="designer-export-columns">
+          <option value="full">Full (output table)</option>
+          <option value="concise">Concise (candidates)</option>
+        </select>
         <label for="designer-export-format">Format</label>
         <select id="designer-export-format"></select>
         <input id="designer-export-name" type="text" placeholder="optional file name">
