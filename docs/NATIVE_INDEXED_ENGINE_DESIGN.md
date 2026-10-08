@@ -763,9 +763,9 @@ This isolates the search semantics before adding index construction.
   - peak memory is bounded
   - rollback remains available
 
-## 17. Required Handoff Artifacts
+## 17. Deliverables of the native engine
 
-The implementation session must leave:
+This repository provides:
 
 - native source and CMake build
 - Linux and Windows build instructions
@@ -775,13 +775,13 @@ The implementation session must leave:
 - updated `docs/OFFTARGET_ENGINES.md`
 - a clear statement of remaining limitations, especially final-hit memory
 
-## 18. Final Recommendation
+## 18. Scope and limitations
 
-Implement the native engine as a C++20 standalone CLI for the persistent
-`indexed` backend. Reuse `.ggi` version 1, match Python semantics exactly, and
-integrate through `IndexedBackend` only after differential tests pass.
+The native engine is a C++20 standalone CLI for the persistent `indexed`
+backend. It keeps `.ggi` version 1, matches Python semantics exactly, and is
+integrated through `IndexedBackend` once the differential tests pass.
 
-Do not port `exact`. On GRCh38, exhaustive short-guide search with four
-mismatches remains computationally expensive even after removing Python
-overhead. BLAST remains the recommended default for one-off large-genome
-searches.
+The `exact` backend is out of scope for the native port. On GRCh38, exhaustive
+short-guide search with four mismatches remains computationally expensive even
+after removing Python overhead. BLAST remains the recommended default for
+one-off large-genome searches.

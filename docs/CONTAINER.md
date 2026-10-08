@@ -49,11 +49,15 @@ docker compose up --build
 The native engine is compiled during the build and its unit tests are executed by `ctest`,
 so a successful build already reports the engine version and passes the engine test suite.
 
-Verification status: the engine build and its `ctest` suite were checked on a Linux host
-with GCC 13.3 and CMake 3.28 (1/1 test passed, `offtarget-engine 0.1.0 index-format=1`), and the
-web workbench was started on the same host and answered HTTP 200 on `/`, `/static/styles.css`
-and `/static/app.js`. The image itself has not been built yet, because neither this
-workstation nor the lab server has Docker or Podman installed.
+Verification status: the `core` image is built, smoke-tested and published by
+`.github/workflows/container.yml` on a GitHub runner, as
+`ghcr.io/lnt-666/targetdesign-workbench:0.1.0` and `:latest` (currently private; the packages
+become publicly pullable once the repository is switched to public). The engine build and its
+`ctest` suite were also checked on a Linux host with GCC 13.3 and CMake 3.28 (1/1 test passed,
+`offtarget-engine 0.1.0 index-format=1`), and the web workbench answered HTTP 200 on `/`,
+`/static/styles.css` and `/static/app.js`. The `full` target is built by the same workflow; see
+`.github/workflows/container.yml`. Neither this workstation nor the lab server has Docker or
+Podman, so the image was not rebuilt locally.
 
 ## Data
 

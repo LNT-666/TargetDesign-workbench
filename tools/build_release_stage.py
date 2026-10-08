@@ -93,6 +93,10 @@ LEAK_PATTERNS = [
     ("agent role", re.compile(r"(?i)\bservant\b|AGENTS\.md")),
     ("skill audit name", re.compile(r"SKILLS_APPLICABILITY")),
     ("env var path", re.compile(r"%(TEMP|USERPROFILE)%")),
+    ("session directive", re.compile(r"(?i)implementation session|must leave|this session")),
+    ("handoff artifact", re.compile(r"(?i)handoff artifact")),
+    ("agent directive", re.compile(r"(?i)\bthe agent\b")),
+    ("imperative sentence", re.compile(r"(?m)^\s*(?:Implement\s+the|Do not port)\b")),
 ]
 BINARY_NEEDLES = [
     ("internal host", b"smb.tnlab"),
@@ -295,7 +299,9 @@ def main() -> int:
         " the development copy is unchanged.",
         "", "## Leak scan (pre-upload gate)", "",
         "- patterns (text): drive letter, UNC path, Windows user directory, POSIX home, internal host,"
-        " agent branding, agent role, skill-audit name, environment-variable path",
+        " agent branding, agent role, skill-audit name, environment-variable path,"
+        " session-addressed phrasing, handoff-artifact wording, agent-addressed phrasing,"
+        " imperative sentence",
         "- patterns (binaries only): internal host, Windows user directory, internal repo path, POSIX home, agent branding",
         f"- result: **{len(hits)} hit(s)**", "",
     ]
