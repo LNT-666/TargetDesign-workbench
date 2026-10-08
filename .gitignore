@@ -34,6 +34,8 @@ backup/
 server_bundle.zip
 workspace.json
 basic/out/
+# pyfaidx / native engine indexes generated next to the sample FASTA
+sample_data/*.fai
 shared/logs/
 # shared/output/ must NOT be ignored: it is a source package
 # (candidate_export, output_columns, xlsx_utils) imported by webapp/schema.py,
