@@ -737,6 +737,11 @@ def max_inverted_repeat_len(seq, min_len=3):
 
 def build_exclusion_intervals(mask_fasta, genome):
     """Build exact-match exclusion intervals from mask FASTA sequences."""
+    if is_gzip_file(mask_fasta):
+        prepared = ensure_plain_fasta(mask_fasta)
+        if not prepared:
+            raise ValueError(f"Could not decompress mask FASTA: {mask_fasta}")
+        mask_fasta = prepared
     mask_seqs = [str(rec.seq).upper() for rec in SeqIO.parse(mask_fasta, "fasta")]
     if not mask_seqs:
         print("Warning: No sequences in masked gene file; no regions excluded.")

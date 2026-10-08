@@ -20,7 +20,7 @@ MINI_FNA_GZ = os.path.join(ASSETS, "mini.fna.gz")
 MINI_GFF = os.path.join(ASSETS, "mini.gff")
 
 from data.annotation_utils import ensure_plain_fasta  # noqa: E402
-from search.blast_utils import load_genome_and_prepare_fasta  # noqa: E402
+from search.blast_utils import build_exclusion_intervals, load_genome_and_prepare_fasta  # noqa: E402
 
 
 class FakeEntry:
@@ -225,6 +225,11 @@ class FakeWorkbench:
     def _log_line(self, line):
         self.logs.append(line)
 
+    def _form_state(self):
+        from design.workbench_form import WorkbenchFormState
+
+        return WorkbenchFormState(values=dict(self.values), log=self._log_line)
+
 
 class EngineGenomeGzTests(unittest.TestCase):
     """Engine / workbench genome entry points must accept .fna.gz too."""
@@ -262,6 +267,87 @@ class EngineGenomeGzTests(unittest.TestCase):
 
             self.assertEqual(
                 PatternDesignerWorkbench._prepare_genome_fasta(FakeWorkbench({})), "")
+
+
+def _fake_genome(sequences):
+    """Return a pyfaidx-like genome object for build_exclusion_intervals."""
+
+    class _Record:
+        def __init__(self, sequence):
+            self._sequence = sequence
+
+        def __len__(self):
+            return len(self._sequence)
+
+        def __getitem__(self, item):
+            return self._sequence[item]
+
+    class _Genome:
+        def __init__(self, records):
+            self._records = records
+
+        def keys(self):
+            return list(self._records.keys())
+
+        def __getitem__(self, key):
+            return _Record(self._records[key])
+
+    return _Genome(dict(sequences))
+
+
+class ExclusionMaskGzTests(unittest.TestCase):
+    """Exclusion masks may be gzip-compressed; results must match the plain run."""
+
+    GENOME = {"chr1": "TTTTGATTACACCCCGATTACAGGGG"}
+    MASK = b">mask_a\nGATTACA\n>mask_b\nGATTAC\n"
+    EXPECTED = {"chr1": [(4, 11), (15, 22)]}
+
+    @staticmethod
+    def _intervals(mask_path):
+        genome = _fake_genome(ExclusionMaskGzTests.GENOME)
+        return build_exclusion_intervals(mask_path, genome)
+
+    def _write(self, tmp):
+        plain = os.path.join(tmp, "mask_plain.fna")
+        gz = os.path.join(tmp, "mask_gz.fna.gz")
+        with open(plain, "wb") as handle:
+            handle.write(self.MASK)
+        with open(gz, "wb") as raw:
+            with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as handle:
+                handle.write(self.MASK)
+        return plain, gz
+
+    # 10. a plain mask is read in place and nothing is written next to it
+    def test_plain_mask_matches_expected_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            plain, _gz = self._write(tmp)
+            before = sorted(os.listdir(tmp))
+
+            self.assertEqual(self._intervals(plain), self.EXPECTED)
+            self.assertEqual(sorted(os.listdir(tmp)), before)
+
+    # 11. a gz mask is decompressed first and yields the same intervals
+    def test_gz_mask_is_decompressed_and_matches_plain(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            plain, gz = self._write(tmp)
+
+            self.assertEqual(self._intervals(gz), self.EXPECTED)
+            self.assertEqual(self._intervals(gz), self._intervals(plain))
+            sibling = os.path.join(tmp, "mask_gz.fna")
+            self.assertTrue(os.path.isfile(sibling))
+            self.assertEqual(read_bytes(sibling), self.MASK)
+            self.assertFalse(os.path.exists(sibling + ".part"))
+
+    # 12. an unreadable gz mask fails loudly instead of raising UnicodeDecodeError
+    def test_corrupt_gz_mask_raises_clear_error(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            broken = os.path.join(tmp, "mask_broken.fna.gz")
+            with open(broken, "wb") as handle:
+                handle.write(b"\x1f\x8b" + b"not deflate data")
+
+            with self.assertRaises(ValueError) as caught:
+                self._intervals(broken)
+            self.assertIn("Could not decompress mask FASTA", str(caught.exception))
 
 
 if __name__ == "__main__":

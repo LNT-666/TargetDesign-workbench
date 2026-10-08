@@ -1050,5 +1050,74 @@ class HandlerRouteTests(JobManagerTestCase):
         self.assertEqual(app.model_action_route("/api/models/crispr_m"), (None, None))
 
 
+class SampleAndHelpRouteTests(JobManagerTestCase):
+    """Routes for the sample-data button and the NAR-required help pages."""
+
+    def setUp(self):
+        super().setUp()
+        app.set_manager(self.manager)
+        self.addCleanup(app.set_manager, None)
+
+    # reuse the HTTP plumbing of HandlerRouteTests without inheriting its tests
+    call = HandlerRouteTests.call
+
+    def test_sample_route_serves_the_bundled_files(self):
+        kind, status, payload = self.call("/api/sample")[0]
+        self.assertEqual((kind, status), ("json", 200))
+        self.assertEqual(payload["genome_fasta"], app.SAMPLE_GENOME)
+        self.assertEqual(payload["target_fasta"], app.SAMPLE_TARGET)
+        self.assertEqual(payload["batch_spec"], app.SAMPLE_BATCH)
+        for name in app.SAMPLE_FILES:
+            self.assertTrue(os.path.isfile(os.path.join(app.ROOT, name)), name)
+
+    def test_sample_route_masks_the_target_like_the_batch_spec(self):
+        # The Designer form has no "mask same as target" switch, so the payload
+        # must pass the mask explicitly; without it the on-target loci are
+        # counted as off-targets and the run stops matching sample_output/.
+        spec_path = os.path.join(app.ROOT, app.SAMPLE_BATCH)
+        with open(spec_path, "r", encoding="utf-8") as handle:
+            scope = json.load(handle)["scopes"][0]
+        self.assertTrue(scope["mask_same_as_target"])
+
+        fields = self.call("/api/sample")[0][2]["fields"]
+        self.assertEqual(fields["search_fasta"], scope["search_fasta"])
+        self.assertEqual(fields["mask_fasta"], scope["search_fasta"])
+
+    def test_sample_route_reports_missing_files_as_404(self):
+        absent = app.SAMPLE_FILES + ("sample_data/absent.fa",)
+        with mock.patch.object(app, "SAMPLE_FILES", absent):
+            kind, status, payload = self.call("/api/sample")[0]
+        self.assertEqual((kind, status), ("json", 404))
+        self.assertIn("absent.fa", payload["error"])
+
+    def test_help_pages_are_served_as_html(self):
+        for path in ("/help", "/help/", "/help/tutorial", "/help/tutorial/"):
+            calls = self.call(path)
+            self.assertEqual(calls[0][0], "bytes", path)
+            self.assertEqual(calls[0][1], 200, path)
+            self.assertIn("text/html", calls[0][3], path)
+        html = self.call("/help")[0][2].decode("utf-8")
+        self.assertIn('href="/help/tutorial"', html)
+        self.assertIn('href="/help/sample_output/README.md"', html)
+        self.assertIn("<h1", self.call("/help/tutorial")[0][2].decode("utf-8"))
+
+    def test_every_sample_output_file_is_reachable_as_text(self):
+        names = sorted(os.listdir(app.HELP_SAMPLE_DIR))
+        self.assertTrue(names)
+        for name in names:
+            calls = self.call("/help/sample_output/" + name)
+            self.assertEqual(calls[0][0], "bytes", name)
+            self.assertEqual(calls[0][1], 200, name)
+            self.assertIn("text/plain", calls[0][3], name)
+            self.assertTrue(calls[0][2], name)
+
+    def test_help_sample_output_rejects_traversal_and_missing(self):
+        for bad in ("", "nope.tsv", "../README.md", "..%2FREADME.md",
+                    "%2E%2E/README.md", "./../README.md"):
+            calls = self.call("/help/sample_output/" + bad)
+            self.assertEqual(calls[0][0], "json", bad)
+            self.assertEqual(calls[0][1], 404, bad)
+
+
 if __name__ == "__main__":
     unittest.main()
