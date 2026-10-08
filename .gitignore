@@ -25,6 +25,9 @@ __pycache__/
 .Rhistory
 .Rproj.user/
 
+# ---- Local-only helper files (never published) --------------------------
+tools/release_scan_denylist.local.txt
+
 # ---- Local run artifacts and logs ---------------------------------------
 logs/
 out/

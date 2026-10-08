@@ -88,36 +88,17 @@ LEAK_PATTERNS = [
     ("UNC path", re.compile(r"\\\\[A-Za-z0-9._-]+\\")),
     ("windows user dir", re.compile(r"(?i)C:\\Users")),
     ("linux home", re.compile(r"/home/[a-z]")),
-    ("internal host", re.compile(r"(?i)\b(ms01|apool|smb\.tnlab|tnlab)\b")),
-    ("agent branding", re.compile(r"(?i)codex")),
-    ("agent role", re.compile(r"(?i)\bservant\b|AGENTS\.md")),
-    ("skill audit name", re.compile(r"SKILLS_APPLICABILITY")),
     ("env var path", re.compile(r"%(TEMP|USERPROFILE)%")),
-    ("session directive", re.compile(r"(?i)implementation session|must leave|this session")),
-    ("handoff artifact", re.compile(r"(?i)handoff artifact")),
-    ("agent directive", re.compile(r"(?i)\bthe agent\b")),
-    ("imperative sentence", re.compile(r"(?m)^\s*(?:Implement\s+the|Do not port)\b")),
 ]
 BINARY_NEEDLES = [
-    ("internal host", b"smb.tnlab"),
-    ("internal host", b"apool"),
-    ("internal host", b"ms01"),
     ("windows user dir", b"C:\\Users"),
-    ("internal path", b"R:\\songji"),
     ("linux home", b"/home/"),
-    ("agent branding", b"codex"),
-    ("agent branding", b"Codex"),
 ]
+# The site-specific half of the gate (host names, account names, workflow-role
+# wording) lives in an untracked local file, so this script and every staged
+# copy stay free of it.  See tools/release_scan_denylist.local.txt.
+DENYLIST = REPO / "tools" / "release_scan_denylist.local.txt"
 BINARY_EXT = {".exe", ".dll", ".so", ".bin", ""}
-# The staged .gitignore is the one that would be published: drop the two local
-# tooling entries by name (they exist only in this working tree) and reword the
-# section comment.  The development copy keeps the original file.
-GITIGNORE_TRANSFORM = [
-    ("# ---- Agent and editor working directories --------------------------------",
-     "# ---- Local editor working directories ------------------------------------"),
-    (".codex/\n", ""),
-    (".codex_tmp/\n", ""),
-]
 TEXT_EXT = {".md", ".txt", ".json", ".tsv", ".py", ".cff", ".yml", ".yaml", ".cfg", ".toml", ""}
 TEXT_NAMES = {".gitignore"}
 
@@ -130,19 +111,14 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def copy_file(src: Path, dest: Path, rows: list, transform=None) -> None:
+def copy_file(src: Path, dest: Path, rows: list, edit=None) -> None:
     if not src.is_file():
         raise SystemExit(f"missing source file: {src}")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if transform is None:
+    if edit is None:
         shutil.copyfile(src, dest)
     else:
-        text = src.read_text(encoding="utf-8")
-        for old, new in transform:
-            if old not in text:
-                raise SystemExit(f"transform anchor missing in {src}: {old[:40]!r}")
-            text = text.replace(old, new)
-        dest.write_text(text, encoding="utf-8", newline="")
+        dest.write_text(edit(src.read_text(encoding="utf-8")), encoding="utf-8", newline="")
     rows.append((src.relative_to(REPO).as_posix(), dest, dest.stat().st_size, sha256(dest)))
 
 
@@ -198,8 +174,39 @@ def json_strings(path: Path) -> str:
     return "\n".join(out)
 
 
-def scan(root: Path) -> list:
+def denylist() -> tuple:
+    """Untracked local half of the gate: (text patterns, binary needles)."""
+    if not DENYLIST.is_file():
+        raise SystemExit(f"missing local denylist: {DENYLIST} (untracked; one label<TAB>pattern per line)")
+    text_patterns: list = []
+    binary_needles: list = []
+    for lineno, raw in enumerate(DENYLIST.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = [field.strip() for field in raw.split("\t") if field.strip()]
+        if fields[0] == "binary":
+            if len(fields) != 3:
+                raise SystemExit(f"{DENYLIST}:{lineno}: expected binary<TAB>label<TAB>literal")
+            binary_needles.append((fields[1], fields[2].encode("utf-8")))
+        else:
+            if len(fields) != 2:
+                raise SystemExit(f"{DENYLIST}:{lineno}: expected label<TAB>pattern")
+            text_patterns.append((fields[0], re.compile(fields[1])))
+    if not text_patterns and not binary_needles:
+        raise SystemExit(f"local denylist holds no entry: {DENYLIST}")
+    return text_patterns, binary_needles
+
+
+def staged_gitignore(text: str, text_patterns: list) -> str:
+    """Drop the .gitignore lines naming local-only tooling before it is published."""
+    return "".join(line for line in text.splitlines(True)
+                   if not any(pattern.search(line) for _label, pattern in text_patterns))
+
+
+def scan(root: Path, local: tuple) -> list:
     hits = []
+    local_text, local_binary = local
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
         rel = path.relative_to(root).as_posix()
         suffix = path.suffix.lower()
@@ -214,14 +221,14 @@ def scan(root: Path) -> list:
             except Exception:
                 text = None
         if text is not None:
-            for label, pattern in LEAK_PATTERNS:
+            for label, pattern in LEAK_PATTERNS + local_text:
                 found = pattern.findall(text)
                 if found:
                     sample = sorted({f if isinstance(f, str) else f[0] for f in found})[:3]
                     hits.append((rel, label, len(found), sample))
         if suffix in BINARY_EXT:
             data = path.read_bytes()
-            for label, needle in BINARY_NEEDLES:
+            for label, needle in BINARY_NEEDLES + local_binary:
                 count = data.count(needle)
                 if count:
                     hits.append((rel, f"binary {label}", count, [needle.decode("latin-1")]))
@@ -236,12 +243,13 @@ def main() -> int:
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--no-clean", action="store_true")
     args = ap.parse_args()
+    local = denylist()
     stage = Path(args.out).expanduser().resolve()
     if stage == REPO or REPO in stage.parents:
         raise SystemExit(f"refusing a stage inside the repository (keeps the working tree untouched): {stage}")
 
     if args.check_only:
-        hits = scan(stage)
+        hits = scan(stage, local)
         print(f"scanned: {stage}")
         for path, label, count, sample in hits:
             print(f"  ! {path}: {label} x{count} {sample}")
@@ -269,8 +277,8 @@ def main() -> int:
     zip_path = stage / "supplementary-data" / ZIP_NAME
     zip_bytes = build_zip(stage / "supplementary-data", zip_path)
     for rel in RELEASE_SET:
-        transform = GITIGNORE_TRANSFORM if rel == ".gitignore" else None
-        copy_file(REPO / rel, stage / "repo" / rel, rows, transform)
+        edit = (lambda text: staged_gitignore(text, local[0])) if rel == ".gitignore" else None
+        copy_file(REPO / rel, stage / "repo" / rel, rows, edit)
 
     tracked = git_tracked()
     list_lines = ["# Files that the public repository would contain", "",
@@ -282,7 +290,7 @@ def main() -> int:
     main_md = (REPO / f"docs/submission/SUBMISSION_MAIN_{args.version}.md").read_text(encoding="utf-8")
     placeholders = len(re.findall(r"\[TO FILL", main_md))
     placeholder_lines = sum(1 for line in main_md.splitlines() if "[TO FILL" in line)
-    hits = scan(stage)
+    hits = scan(stage, local)
 
     manifest = [
         "# Upload staging tree", "",
@@ -295,14 +303,13 @@ def main() -> int:
         f"- `SUPPLEMENTARY_v1.md` must still be exported to PDF (NAR: supplementary data preferably PDF).",
         f"- `[TO FILL]` placeholders still present in the manuscript: {placeholders} occurrence(s) on {placeholder_lines} line(s).",
         "- `submission/figures/` carries PDF (print) and PNG (preview); check the journal's figure format list before uploading.",
-        "- `repo/.gitignore` is the working copy minus two local tooling entries (they exist only in this working tree);"
+        "- `repo/.gitignore` is the working copy with the lines naming local-only tooling removed;"
         " the development copy is unchanged.",
         "", "## Leak scan (pre-upload gate)", "",
-        "- patterns (text): drive letter, UNC path, Windows user directory, POSIX home, internal host,"
-        " agent branding, agent role, skill-audit name, environment-variable path,"
-        " session-addressed phrasing, handoff-artifact wording, agent-addressed phrasing,"
-        " imperative sentence",
-        "- patterns (binaries only): internal host, Windows user directory, internal repo path, POSIX home, agent branding",
+        "- generic text patterns: drive letter, UNC path, Windows user directory, POSIX home,"
+        " environment-variable path",
+        "- generic binary needles: Windows user directory, POSIX home",
+        "- site-specific entries come from the untracked local denylist, matched in text and in binaries",
         f"- result: **{len(hits)} hit(s)**", "",
     ]
     for path, label, count, sample in hits:

@@ -61,6 +61,7 @@ docs/figures/
 docs/handoff/
 docs/qa/
 docs/submission/
+tools/release_scan_denylist.local.txt
 *.log
 workspace.json
 server_bundle.zip
