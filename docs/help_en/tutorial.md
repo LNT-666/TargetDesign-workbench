@@ -6,14 +6,16 @@ twice: first in the web workbench, then from the command line. Every step lists
 what you should see, and the numbers quoted here come from the reference run
 copied into `sample_output/`, so you can check each of them against a real file.
 
-The whole run takes a few minutes on a multi-core Linux host and considerably
-longer on a laptop; the files it produces are listed in Section 5.
+The run takes seconds to a few minutes, depending on how fast the disk is (the
+off-target search re-reads the genome once per candidate); the files it
+produces are listed in Section 5.
 
 ## 0. What the run will do
 
-Design guides over a 5 Mb synthetic genome with the SpCas9 pattern: an `NGG`
-PAM with a 20 nt target on the downstream side, at most 3 mismatches, GC
-between 40% and 70%. The batch specification is
+Design guides inside a 200 kb target region cut from a 5 Mb synthetic genome,
+with the SpCas9 pattern: an `NGG` PAM with a 20 nt target on the downstream
+side, at most 3 mismatches, GC between 40% and 70%. The off-target search then
+runs over the whole genome. The batch specification is
 `sample_data/demo_batch.json`:
 
 ```json
@@ -31,7 +33,7 @@ between 40% and 70%. The batch specification is
     "gc_max": 70
   },
   "scopes": [
-    {"scope_id": "demo", "search_fasta": "sample_data/demo_genome.fa", "mask_same_as_target": true}
+    {"scope_id": "demo", "search_fasta": "sample_data/demo_target.fa", "mask_same_as_target": true}
   ],
   "patterns": [
     {"pattern_id": "NGG", "mode": "single_motif_flank",
@@ -46,7 +48,8 @@ between 40% and 70%. The batch specification is
 | File | What it is |
 | --- | --- |
 | `sample_data/demo_genome.fa` | 5,000,000 bp in four contigs (`chr1`-`chr4`), uniform random A/C/G/T with no repeats, so any reported hit can be checked by hand. |
-| `sample_data/demo_batch.json` | The one-unit batch specification above. |
+| `sample_data/demo_target.fa` | The first 200,000 bp of `chr1`; the scope guides are designed from. |
+| `sample_data/demo_batch.json` | The one-unit batch specification above: scope `demo` (the 200 kb target region) with pattern `NGG`. |
 | `sample_data/demo_guides.tsv` | 24 guides with a known exact and one-mismatch target, used by the engine benchmark. |
 
 The data are synthetic and carry the repository's MIT licence. Nothing has to
@@ -140,19 +143,21 @@ In **Common Inputs**:
 | Field | Value |
 | --- | --- |
 | Genome FASTA | `sample_data/demo_genome.fa` |
-| Search FASTA | `sample_data/demo_genome.fa` |
-| Mask FASTA | `sample_data/demo_genome.fa` |
+| Search FASTA | `sample_data/demo_target.fa` |
+| Mask FASTA | `sample_data/demo_target.fa` |
 | Annotation GFF3 | leave empty |
 | Result Label | `sample-batch` (optional; a blank label is derived for you) |
 
-> **Why is the mask the genome itself?** To reproduce `demo_batch.json`
-> exactly, whose scope sets `mask_same_as_target: true` with the whole genome as
-> the scope. The mask excludes those regions from off-target counting, so this
-> run counts **no** off-target hits: that is deliberate for a smoke test on
-> synthetic data, and it is why the off-target table comes out empty and the
-> warnings of Section 5 appear. To see genuine off-target counts, clear
-> **Mask FASTA** (off-target sites inside the genome will then be counted) or
-> use a scope that covers only the region you are designing against.
+> **Why are there two different FASTA files?** **Search FASTA** is the region
+> guides are designed from; the off-target search itself runs over
+> **Genome FASTA**. Setting **Mask FASTA** to the same 200 kb file reproduces
+> `demo_batch.json`, whose scope sets `mask_same_as_target: true`: hits inside
+> the target region are excluded from off-target counting (which is why
+> `valid_matches` is `0` for the candidates that sit in it), while hits
+> elsewhere in the genome are counted and land in `top_offtargets.tsv`.
+> Masking the *whole* genome instead leaves that table with nothing but its
+> header, and clearing **Mask FASTA** additionally counts the on-target loci as
+> off-targets.
 
 ### Step 4 - run settings
 
@@ -177,21 +182,21 @@ result table fills with candidates:
 ```text
 motif (+) regex: [ACGT]GG
 motif (-) regex: CC[ACGT]
-Loaded 4 input sequences
-Extracted 623743 positions merged into 604375 unique sequences
+Loaded 1 input sequences
+Extracted 25024 positions merged into 24211 unique sequences
 ```
 
-So the pattern finds **604,375 distinct candidate sequences** covering
-**623,743 motif positions** across the four contigs.
+So the pattern finds **24,211 distinct candidate sequences** covering
+**25,024 motif positions** in the target region.
 
 ### Step 6 - score and search off-targets
 
 Click **Score & Off-target**. **Expected:** the progress bar advances through
 the search and then the scoring, the Run Log ends with the scoring summary and
-the warnings of Section 5, and the Results Table is ranked. On the reference
-256-core Linux host the whole run (find, search and score) takes **3 minutes
-49 seconds**; on a laptop expect several times longer, because the search cost
-scales with the number of candidates.
+the warning of Section 5, and the Results Table is ranked. The reference run
+copied into `sample_output/` (find, search and score) takes **16 seconds** on a
+local disk; from a network share expect much longer, because the search
+re-reads the genome once per candidate.
 
 ### Step 7 - read the table
 
@@ -251,13 +256,15 @@ python tools/batch_run.py --spec sample_data/demo_batch.json
 the single unit `demo__NGG` to completion:
 
 ```text
-RUN_ID: 20261007-0514
-RUN_DIR: <repo>/output/20261007-0514
+RUN_ID: 20261008-0114
+RUN_DIR: <repo>/output/20261008-0114
 ...
-RUN_LOG: <repo>/output/20261007-0514/run.log
+RUN_LOG: <repo>/output/20261008-0114/run.log
 ```
 
-The exit code is `0`. The search and scoring are the same code the web
+The `<id>` is assigned when the run starts, so your directory name will differ
+from the one above; `sample_output/` records the reference run used on this
+page. The exit code is `0`. The search and scoring are the same code the web
 interface uses, so `query_scores_sorted.tsv` is identical to what the interface
 showed in Step 7.
 
@@ -267,28 +274,29 @@ re-enter an existing run folder.
 
 ## 5. What the run produces
 
-Reference numbers for exactly this command on a Linux host (256 cores), one
-unit, no resume:
+Reference numbers for exactly this command (`output/20261008-0114/`, one unit,
+no resume):
 
 | Quantity | Value |
 | --- | --- |
-| Extracted candidates (`extracted_seqs.tsv`) | 604,375 unique sequences covering 623,743 positions |
-| Scored rows (`query_scores_sorted.tsv`) | 623,743 |
-| Wall clock | 3 min 49 s |
+| Extracted candidates (`extracted_seqs.tsv`) | 24,211 unique sequences covering 25,024 positions |
+| Scored rows (`query_scores_sorted.tsv`) | 25,024 |
+| Wall clock | 16 s on a local disk |
 | Manifest status | `ok`, return code 0 |
-| Output size | about 134 MB |
-| Warnings | 4, one per contig: `Warning: no mm=0 flanking sequence found for chrN; skipped` |
+| Output size | about 54 MB |
+| Warnings | 1: `Warning: no mm=0 flanking sequence found for chr1; skipped` |
 
-**The four warnings are expected here.** They come from the mask of Step 3:
-because the mask covers the whole genome, no zero-mismatch hit survives for any
-contig, so no off-target flank file is written for `chr1`-`chr4`. With the mask
-cleared the warnings disappear. The same reason explains why
-`top_offtargets.tsv` contains only its header in this run.
+**The single warning is expected here.** The scope covers only `chr1`, and the
+mask of Step 3 removes the zero-mismatch hits inside it, so no off-target flank
+file is written for that contig. With the mask cleared the warning disappears.
+`top_offtargets.tsv` is *not* affected: this run reports **180** ranked
+off-target rows (10 at two mismatches and 170 at three) spread over all four
+contigs, which is what makes the sample output usable as a worked example.
 
 The batch writes:
 
 ```text
-output/20261007-0514/
+output/20261008-0114/
   manifest.tsv                  one row per unit: status, return code, timings
   run.json                      run identity and source specification
   run.log                       full streamed log
@@ -303,8 +311,9 @@ output/20261007-0514/
     genome_index/               the built .ggi index and its metadata
 ```
 
-To make a demo run finish faster, restrict the scope with a BED region file
-instead of the whole genome, or tighten **GC Min** / **GC Max**.
+The scope is already restricted to a 200 kb region; to go faster still, narrow
+it with a BED region file, lower **Max Mismatch**, or tighten **GC Min** /
+**GC Max**.
 
 ## 6. The sample output files
 
@@ -316,7 +325,7 @@ numbers without running anything:
 | `query_scores_sorted.head20.tsv` | Header plus the first 20 rows of the deliverable table. |
 | `extracted_seqs.head20.tsv` | Header plus the first 20 extracted candidates. |
 | `summary.batch_scores.head20.tsv` | Header plus the first 20 rows of the combined batch table. |
-| `top_offtargets.tsv` | The off-target table in full (header only for this run). |
+| `top_offtargets.tsv` | The off-target table in full: all 180 ranked rows. |
 | `manifest.tsv` | The batch manifest in full. |
 | `run.json` | The run identity file in full. |
 
@@ -330,7 +339,7 @@ come from.
 | --- | --- |
 | `Extracted 0 positions` and an empty result table | The motif does not occur in the scope, or **Search FASTA** is not the file you think. Check the `motif (+)/(-) regex:` lines in the Run Log. |
 | A very large `MM0` | Repeats or low-complexity sequence, `Require PAM` turned off, or a search result file left over from an earlier run. |
-| `top_offtargets.tsv` empty | No hit survived masking. A mask that covers the whole scope excludes everything; see the note in Step 3. |
-| `no mm=0 flanking sequence found for chrN; skipped` | Normal for a fully masked run (Section 5). |
+| `top_offtargets.tsv` empty | No hit survived masking. A mask that covers the whole search scope excludes everything; see the note in Step 3. |
+| `no mm=0 flanking sequence found for chrN; skipped` | Normal when the mask removes every zero-mismatch hit of a contig; see Section 5. |
 | The search is very slow | The cost scales with the number of candidates and the mismatch budget; narrow the scope, lower **Max Mismatch**, or run on a multi-core host. |
 | `engine not available` or a fallback message | The requested engine is not usable here (for example `blast` without BLAST+ installed, or a missing native engine). `auto` selects a working engine; see the engine documentation under `docs/`. |

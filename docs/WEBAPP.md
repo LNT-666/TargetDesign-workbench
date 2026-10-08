@@ -87,6 +87,9 @@ python webapp\app.py --port 8765
 - 顶部固定条不随滚动消失：模式下拉（三个 `MODE_LABELS`）、`Find Targets`、
   `Score & Off-target`、就绪状态、进度条，以及进度条右侧的
   “最近一次作业”摘要（`<kind> · <status> · <耗时>`，点击跳到下部 Run Log）。
+- 顶部条另有两个入口（NAR `:138` / `:139`）：`Load sample data` 调 `GET /api/sample`，
+  把 `sample_data/` 的示例基因组、示例目标 FASTA 与 `NGG` / 20 / downstream 等表单值
+  填进 Designer（只填值、不自动运行，重复点击幂等）；`Help` 链接指向 `/help`。
 - 主区三列：左 = 公共输入（可折叠，默认展开）+ Left TAM；中 = Middle + Structure
   Preview；右 = Right TAM。
 - 下部常驻：Run Settings、Run Log、结果表与导出控件、`Results / Output`
@@ -224,6 +227,8 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | --- | --- | --- |
 | `GET` | `/` | 单页外壳（`webapp/index.html`） |
 | `GET` | `/static/<app.js\|styles.css>` | 白名单静态资源 |
+| `GET` | `/help`、`/help/tutorial` | 把 `docs/help_en/index.md` / `tutorial.md` 渲染成 HTML（标准库最小 Markdown，不引外部依赖）；文件缺失返回 404 |
+| `GET` | `/help/sample_output/<file>` | 以 `text/plain` 返回 `docs/help_en/sample_output/` 下已存在的文件（只放行该目录） |
 | `GET` | `/api/schema` | 表单选项：pattern、预设、引擎、模型分组、模型显示名 `model_labels`、Data prep 选项等（全部来自 `shared/`） |
 | `GET` | `/api/jobs` | 作业列表（新的在前，含 `outputs`） |
 | `GET` | `/api/jobs/<id>` | 作业状态、进度、`log_tail`、`result`、`outputs` |
@@ -234,6 +239,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `GET` | `/api/models` | 模型分组、状态、路径、`description`、`url` |
 | `GET` | `/api/outputs?dir=<绝对路径>` | 列出目录内允许扩展名的文件 |
 | `GET` | `/api/fs/list?dir=<绝对路径>&kind=<kind>&hidden=1` | 只读列目录（kind 过滤、strip 剥离表、roots 根模式；`hidden=1` 才列隐藏项） |
+| `GET` | `/api/sample` | 示例数据入口：仓库相对路径（`sample_data/demo_genome.fa`、`sample_data/demo_target.fa`、`sample_data/demo_batch.json`）加该样本的 Designer 表单值（mode、motif/flank/side、nuclease、run 值）；文件缺失返回 404，不 500 |
 | `POST` | `/api/designer/preview` | 描述当前 pattern、返回 `errors` / `warnings` / `pattern_name`（不可用时为空串） |
 | `POST` | `/api/designer/preset` | 单个 TAM 侧的系统预设：返回字段更新（含运行级 `nuclease`）和模型候选；页面选中预设即调用（不改变 `Use for Run` 生效侧），`Apply` 按钮用于重复应用并切到该侧 |
 | `POST` | `/api/designer/active-side` | `Use for Run`：切换生效侧并返回规则更新 |

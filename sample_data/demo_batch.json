@@ -14,7 +14,7 @@
   "scopes": [
     {
       "scope_id": "demo",
-      "search_fasta": "sample_data/demo_genome.fa",
+      "search_fasta": "sample_data/demo_target.fa",
       "mask_same_as_target": true
     }
   ],

@@ -27,14 +27,15 @@ The tutorial uses the data set committed under [`sample_data/`](../../sample_dat
 | File | What it is |
 | --- | --- |
 | `sample_data/demo_genome.fa` | 5,000,000 bp synthetic genome in four contigs. |
+| `sample_data/demo_target.fa` | The first 200,000 bp of `chr1`; the scope the demo designs from. |
 | `sample_data/demo_batch.json` | A one-unit batch specification (one scope, one pattern). |
 | `sample_data/demo_guides.tsv` | The 24 guides used by the engine benchmark. |
 
 `sample_data/README.md` describes the data set and its provenance in full. The
 sample data are plain files in the repository, so they can be inspected and
 re-used without a download. In the web workbench the same run is reproduced by
-loading `sample_data/demo_genome.fa` in the **Data prep** panel and entering the
-pattern values of `demo_batch.json` in the Designer.
+clicking **Load sample data** in the top bar, which fills the genome, the target
+region, the mask and the pattern values of `demo_batch.json` in one step.
 
 ## Licence
 
@@ -58,7 +59,7 @@ tutorial command:
 python tools/batch_run.py --spec sample_data/demo_batch.json
 ```
 
-The reference copies come from run `output/20261007-0514` (batch label
+The reference copies come from run `output/20261008-0114` (batch label
 `sample-batch`, unit `demo__NGG`, manifest status `ok`, return code 0). Only
 the file sizes were reduced: rows were cut down to a head, nothing was
 recalculated or hand-edited. `sample_output/README.md` lists the exact

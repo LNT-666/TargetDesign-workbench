@@ -10,6 +10,7 @@ from Bio.Seq import Seq
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared"))
 from search.iupac import find_all_iupac_matches, iupac_to_regex
+from data.annotation_utils import ensure_plain_fasta
 
 def reverse_complement(seq):
     return str(Seq(seq).reverse_complement())
@@ -21,6 +22,14 @@ def main():
         sys.exit(1)
 
     input_fasta = sys.argv[1]
+    # Reuse the shared helper so a .fa.gz / .fna.gz input is decompressed once
+    # and read as plain text, instead of failing in text-mode SeqIO.parse.
+    prepared_fasta = ensure_plain_fasta(
+        input_fasta, log_func=lambda message: print(message, flush=True))
+    if not prepared_fasta:
+        print(f"Error: cannot prepare input FASTA for reading: {input_fasta}")
+        sys.exit(6)
+    input_fasta = prepared_fasta
     motif_plus = sys.argv[2].upper()
     try:
         flanking_len = int(sys.argv[3])

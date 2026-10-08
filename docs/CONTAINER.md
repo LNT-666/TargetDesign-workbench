@@ -61,6 +61,14 @@ Genomes, annotation files, built indexes and exported runs are read from and wri
 volume mounted at `/data` (the `TARGETDESIGN_DATA` environment variable). Keeping them
 outside the image means a rebuilt image never discards a genome index.
 
+## Trying it without a genome
+
+The image also ships the small synthetic data set under `sample_data/`
+(`sample_data/README.md` documents it). The web top bar has a **Load sample data** button
+(`GET /api/sample`) that fills the Designer with a small target over the bundled 5 Mb genome,
+and a **Help** link to the bundled English help pages rendered at `/help` and `/help/tutorial`.
+Neither needs a download or any host installation.
+
 ## Image targets
 
 | Target | Contents | Command |

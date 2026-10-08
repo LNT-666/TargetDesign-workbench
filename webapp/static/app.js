@@ -1056,6 +1056,44 @@ async function previewNow() {
   }
 }
 
+/* "Load sample data" (NAR :138): fill the Designer from the bundled example
+   so a reviewer can try the workbench without typing any path. Clicking twice
+   writes the same values again (idempotent) and never starts a run. */
+async function loadSampleData() {
+  try {
+    const sample = await api('/api/sample');
+    if (sample.mode) {
+      state.mode = sample.mode;
+      const modeSelect = $('designer-mode');
+      if (modeSelect) {
+        modeSelect.value = sample.mode;
+      }
+    }
+    if (sample.input_mode) {
+      state.input_mode = sample.input_mode;
+    }
+    if (sample.nuclease) {
+      state.nuclease = String(sample.nuclease);
+    }
+    [sample.fields || {}, sample.run || {}].forEach(function (group) {
+      Object.keys(group).forEach(function (key) {
+        state.values[key] = String(group[key]);
+      });
+    });
+    const genome = (sample.fields || {}).genome_fasta || sample.genome_fasta;
+    const drawerGenome = $('dp-genome');
+    if (drawerGenome && genome) {
+      drawerGenome.value = genome;
+    }
+    renderDesigner();
+    schedulePreview();
+    showBanner('Loaded sample data from ' + (sample.batch_spec || 'sample_data')
+      + ' - press Find Targets to run it.', false);
+  } catch (err) {
+    showBanner('Could not load sample data: ' + err.message, true);
+  }
+}
+
 async function applySidePreset(side, options) {
   const activate = !(options && options.activate === false);
   try {
@@ -1630,6 +1668,7 @@ function initDesigner() {
   $('designer-find').addEventListener('click', function () {
     startDesignerJob('find');
   });
+  $('designer-sample').addEventListener('click', loadSampleData);
   $('designer-score').addEventListener('click', function () {
     startDesignerJob('score');
   });

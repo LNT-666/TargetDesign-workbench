@@ -291,6 +291,17 @@ button.primary:hover { background: #1a5fcc; }
 .ready-badge.ready { background: #e6f6ee; color: var(--ok); border-color: #a8ddc2; }
 .ready-badge.missing { background: #fdecea; color: var(--bad); border-color: #f5b5ae; }
 
+/* Top-bar link to the bundled help pages (GET /help). */
+.help-link {
+  color: #c3cbd6;
+  font-size: 13px;
+  text-decoration: none;
+  border-bottom: 1px solid #6b7688;
+  padding-bottom: 1px;
+}
+
+.help-link:hover { color: #ffffff; border-bottom-color: #ffffff; }
+
 /* -------------------------------------------------- 3-column designer area */
 
 .designer-columns {
