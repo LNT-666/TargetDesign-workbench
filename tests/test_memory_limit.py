@@ -63,8 +63,27 @@ class SystemMemoryTests(unittest.TestCase):
             system_memory.resolve_auto_limit_mb(1024, 256), 192)
         self.assertEqual(
             system_memory.resolve_auto_limit_mb(64000, 42000), 31500)
+        # Free memory can be unmeasurable (macOS); the total share stands in
+        # instead of refusing to resolve Auto.
+        self.assertEqual(system_memory.resolve_auto_limit_mb(1024, 0), 512)
+        self.assertEqual(system_memory.resolve_auto_limit_mb(0, 1024), 0)
         self.assertEqual(system_memory.format_memory_mb(32256), "31.5 GiB")
         self.assertEqual(system_memory.format_memory_mb(512), "512 MiB")
+
+    def test_darwin_detector_reads_hw_memsize(self):
+        completed = SimpleNamespace(
+            returncode=0, stdout="17179869184\n", stderr="")
+        with mock.patch(
+                "utils.system_memory.sys.platform", "darwin"), mock.patch(
+                "utils.system_memory.subprocess.run",
+                return_value=completed) as run:
+            snapshot = system_memory._darwin_memory()
+        self.assertEqual(snapshot, {"total_mb": 16384, "available_mb": 0})
+        self.assertEqual(run.call_args[0][0], ["sysctl", "-n", "hw.memsize"])
+
+    def test_darwin_detector_is_inert_elsewhere(self):
+        with mock.patch("utils.system_memory.sys.platform", "linux"):
+            self.assertIsNone(system_memory._darwin_memory())
 
     def test_remote_memory_query_does_not_require_remote_pythonpath(self):
         completed = SimpleNamespace(

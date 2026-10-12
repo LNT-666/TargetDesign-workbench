@@ -8,6 +8,7 @@ import ctypes
 import json
 import os
 import subprocess
+import sys
 from typing import Dict, Optional
 
 
@@ -70,12 +71,15 @@ def _sysconf_memory() -> Optional[Dict[str, int]]:
     try:
         page_size = int(os.sysconf("SC_PAGE_SIZE"))
         total_pages = int(os.sysconf("SC_PHYS_PAGES"))
-        available_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
     except (AttributeError, OSError, TypeError, ValueError):
         return None
     if page_size <= 0 or total_pages <= 0:
         return None
     total_mb = page_size * total_pages // MIB
+    try:
+        available_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+    except (AttributeError, OSError, TypeError, ValueError):
+        available_pages = 0
     available_mb = (
         page_size * available_pages // MIB
         if available_pages > 0 else 0
@@ -83,9 +87,35 @@ def _sysconf_memory() -> Optional[Dict[str, int]]:
     return {"total_mb": total_mb, "available_mb": available_mb}
 
 
+def _darwin_memory() -> Optional[Dict[str, int]]:
+    """macOS: total RAM from ``hw.memsize``; free memory stays unknown.
+
+    ``os.sysconf`` does not answer ``SC_AVPHYS_PAGES`` on Darwin, so without
+    this detector the chain reports nothing and Auto cannot resolve at all.
+    """
+    if sys.platform != "darwin":
+        return None
+    try:
+        result = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        total_bytes = int(result.stdout.strip())
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return None
+    if total_bytes <= 0:
+        return None
+    return {"total_mb": total_bytes // MIB, "available_mb": 0}
+
+
 def memory_snapshot() -> Dict[str, int]:
     """Return total/available physical memory in MiB for this host."""
-    for detector in (_windows_memory_status, _proc_meminfo, _sysconf_memory):
+    for detector in (_windows_memory_status, _proc_meminfo, _darwin_memory,
+                     _sysconf_memory):
         snapshot = detector()
         if snapshot is not None:
             return snapshot
@@ -103,15 +133,21 @@ def available_memory_mb() -> int:
 
 
 def resolve_auto_limit_mb(total_mb, available_mb) -> int:
-    """Resolve Auto as min(50% total, 75% currently available)."""
+    """Resolve Auto as min(50% total, 75% currently available).
+
+    A host that cannot report free memory (macOS) still resolves, to the
+    total-based share, rather than forcing an explicit custom limit.
+    """
     try:
         total = max(0, int(total_mb or 0))
         available = max(0, int(available_mb or 0))
     except (TypeError, ValueError):
         return 0
-    if total == 0 or available == 0:
+    if total == 0:
         return 0
     total_share = int(total * AUTO_TOTAL_FRACTION)
+    if available == 0:
+        return total_share
     available_share = int(available * AUTO_AVAILABLE_FRACTION)
     return max(0, min(total_share, available_share))
 

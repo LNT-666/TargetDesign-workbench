@@ -148,7 +148,10 @@ def _current_rss_mb():
             return 0.0
     try:
         import resource
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        # ru_maxrss is KiB on Linux and bytes on macOS.
+        divisor = 1048576.0 if sys.platform == "darwin" else 1024.0
+        return usage.ru_maxrss / divisor
     except Exception:
         return 0.0
 
