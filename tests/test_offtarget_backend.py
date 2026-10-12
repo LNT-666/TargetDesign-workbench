@@ -400,7 +400,12 @@ class BackendTests(unittest.TestCase):
             max_bulge_explicit=False)
         apply_engine_defaults("auto", auto_params)
         self.assertEqual(auto_params.max_bulge, 0)
-        self.assertEqual(resolve_engine("auto", auto_params), "blast")
+        # An existing database keeps auto on BLAST; the BLAST+ executables are
+        # not installed on every machine that runs this suite, so the
+        # availability probe is pinned instead of skipped.
+        with mock.patch.object(
+                BlastBackend, "available", return_value=(True, "")):
+            self.assertEqual(resolve_engine("auto", auto_params), "blast")
 
         small_auto_params = SearchParams(max_bulge=1)
         apply_engine_defaults(
