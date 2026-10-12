@@ -49,7 +49,10 @@ from output.output_columns import (
 )
 from output.xlsx_utils import tsv_to_xlsx
 
-csv.field_size_limit(sys.maxsize)
+try:
+    csv.field_size_limit(sys.maxsize)
+except OverflowError:  # Windows: a C long is 32 bits wide
+    csv.field_size_limit(2 ** 31 - 1)
 
 
 def parse_occurrence_tsv(filepath):
