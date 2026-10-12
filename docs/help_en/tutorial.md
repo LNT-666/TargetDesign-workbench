@@ -60,8 +60,8 @@ be downloaded. `sample_data/README.md` documents them in more detail.
 ### 2.1 Container
 
 ```bash
-docker build -t targetdesign-workbench:0.2.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.2.0
+docker build -t targetdesign-workbench:0.3.0 .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.3.0
 ```
 
 **Expected:** the build finishes and the run prints the web address. Open

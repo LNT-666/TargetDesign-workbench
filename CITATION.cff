@@ -21,7 +21,7 @@ contact:
 license: MIT
 repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
-version: "0.2.0"
+version: "0.3.0"
 # date-released: ""          # set to the GitHub release date (YYYY-MM-DD) when the release is created
 # doi: "10.5281/zenodo.0"    # set to the Zenodo version DOI after Zenodo archives the release
 # Concept DOI covering every version of this software: 10.5281/zenodo.23231712
