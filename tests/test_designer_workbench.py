@@ -140,6 +140,9 @@ class DesignerWorkbenchTests(unittest.TestCase):
         # TnpB offers omegaRNA (offline default) and TEEP (online reference).
         self.app.side_preset_vars["target"].set("tnpb")
         self.app._apply_side_preset("target")
+        # The generic TnpB preset carries no TAM, so type the ISDra2 one: the
+        # pattern spec needs a motif before a config can be built.
+        self.app.vars["motif"].set("TTAT")
         self.assertEqual(widgets["on_combo"].cget("values"), ("omega", "teep"))
         self.assertEqual(
             self.app.side_on_target_model_vars["target"].get(), "omega")
@@ -160,6 +163,7 @@ class DesignerWorkbenchTests(unittest.TestCase):
         self.app.side_preset_vars["target"].set("tnpb")
         self.app._apply_side_preset("target")
         self.app.side_on_target_model_vars["target"].set("omega,teep")
+        self.app.vars["motif"].set("TTAT")
         config = self.app._current_config()
         self.assertEqual(config.on_target_model, "omega,teep")
         self.assertEqual(config.reference_only_model, "teep")
@@ -245,6 +249,7 @@ class DesignerWorkbenchTests(unittest.TestCase):
         self.app._apply_side_preset("left")
         self.app.side_preset_vars["right"].set("tnpb")
         self.app._apply_side_preset("right")
+        self.app.vars["right_motif"].set("TTAT")
         self.app.side_off_target_model_vars["left"].set("crispr_m")
         self.app.side_off_target_model_vars["right"].set("identity")
         config = self.app._current_config()
