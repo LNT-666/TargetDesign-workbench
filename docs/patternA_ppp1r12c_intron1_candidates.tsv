@@ -1,0 +1,113 @@
+# Pattern A (Target-xbp-Target) run on the PPP1R12C intron-1 interval (AAVS1,
+# the canonical AAVS1 safe-harbour site). Run AAVS1-intron1, TnpB preset with
+# the IUPAC motif TTR on both anchors (TTA/TTG on the plus strand, CAA/TAA on
+# the minus strand), 20 nt flanking target per anchor and a single gap interval
+# [10, 30] bp; both anchors are matched on both strands, so all four strand
+# combinations are enumerated.
+# Interval length: 4427 bp (PPP1R12C-intron1.fa). 95 pairs were returned and
+# every returned pair is transcribed here.
+# Columns: rank / left_pos / right_pos (0-based, within the interval) /
+# gap (right_pos - left_pos - 3) / left_strand / right_strand.
+# Transcribed cell by cell from scy-test/AAVS1-intron1/
+# TnpB_PPP1R12C-intron1_scores.tsv. That directory is case-study working data
+# and is not part of the release tree, so the numbers are recorded here.
+# That run predates the prediction_only PairRank contract: its source table
+# still carries the older left_rank / right_rank / combined_score columns. Only
+# the six columns above are transcribed, because they are the ones Figure 6C and
+# the caption read.
+rank	left_pos	right_pos	gap	left_strand	right_strand
+1	2810	2834	21	plus	minus
+2	1000	1031	28	plus	plus
+3	1031	1051	17	plus	plus
+4	2803	2834	28	minus	minus
+5	2429	2446	14	plus	minus
+6	2446	2464	15	minus	plus
+7	1381	1400	16	plus	minus
+8	1872	1900	25	plus	plus
+9	1602	1625	20	plus	plus
+10	1602	1621	16	plus	plus
+11	3707	3722	12	minus	minus
+12	3698	3722	21	plus	minus
+13	497	529	29	plus	plus
+14	3979	4000	18	plus	minus
+15	4274	4298	21	minus	plus
+16	1853	1872	16	plus	plus
+17	1602	1615	10	plus	minus
+18	1867	1900	30	minus	plus
+19	2446	2468	19	minus	minus
+20	1853	1867	11	plus	minus
+21	1900	1926	23	plus	plus
+22	3698	3713	12	plus	plus
+23	3972	4000	25	plus	minus
+24	252	285	30	plus	plus
+25	1872	1896	21	plus	minus
+26	1867	1896	26	minus	minus
+27	1896	1926	27	minus	plus
+28	1905	1938	30	plus	minus
+29	1872	1905	30	plus	plus
+30	1905	1926	18	plus	plus
+31	2810	2830	17	plus	plus
+32	2803	2830	24	minus	plus
+33	199	214	12	minus	plus
+34	1530	1559	26	minus	plus
+35	1089	1112	20	minus	plus
+36	1112	1132	17	plus	plus
+37	2150	2176	23	minus	plus
+38	2621	2641	17	plus	plus
+39	1051	1083	29	plus	minus
+40	1083	1112	26	minus	plus
+41	529	556	24	plus	minus
+42	3361	3388	24	plus	plus
+43	1470	1493	20	plus	plus
+44	1493	1523	27	plus	plus
+45	4259	4274	12	minus	minus
+46	4273	4298	22	plus	plus
+47	4259	4273	11	minus	plus
+48	2680	2704	21	plus	plus
+49	1381	1399	15	plus	plus
+50	3563	3596	30	plus	plus
+51	3575	3596	18	plus	plus
+52	794	809	12	plus	plus
+53	794	817	20	plus	minus
+54	297	312	12	minus	plus
+55	285	312	24	plus	plus
+56	296	312	13	plus	plus
+57	312	344	29	plus	plus
+58	1813	1838	22	minus	minus
+59	1838	1853	12	minus	plus
+60	1838	1867	26	minus	minus
+61	3413	3427	11	minus	minus
+62	3388	3413	22	plus	minus
+63	1112	1141	26	plus	plus
+64	2612	2641	26	plus	plus
+65	2773	2803	27	minus	minus
+66	3546	3563	14	plus	plus
+67	3546	3575	26	plus	plus
+68	3571	3596	22	minus	plus
+69	3546	3571	22	plus	minus
+70	2881	2901	17	plus	plus
+71	2560	2581	18	minus	plus
+72	2551	2581	27	plus	plus
+73	2581	2612	28	plus	plus
+74	1530	1546	13	minus	plus
+75	1523	1546	20	plus	plus
+76	1546	1559	10	plus	plus
+77	2886	2901	12	plus	plus
+78	1400	1426	23	minus	plus
+79	1399	1426	24	plus	plus
+80	2810	2841	28	plus	plus
+81	1195	1217	19	plus	plus
+82	187	214	24	plus	plus
+83	154	187	30	plus	plus
+84	379	406	24	plus	plus
+85	2878	2901	20	minus	plus
+86	1849	1872	20	minus	plus
+87	1849	1867	15	minus	minus
+88	3361	3379	15	plus	plus
+89	3979	3999	17	plus	plus
+90	3972	3999	24	plus	plus
+91	3270	3285	12	plus	plus
+92	1813	1829	13	minus	plus
+93	1829	1853	21	plus	plus
+94	1803	1829	23	plus	plus
+95	1829	1849	17	plus	minus

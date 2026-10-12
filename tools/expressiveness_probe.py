@@ -217,33 +217,33 @@ ANCHORS = {
         "Target_xbp_Y_zbp_Target/extract_motifs.py",
         '"R", type=int, help="Maximum right distance from Y (bp)"',
     ),
-    "workbench.pam_tam": (
-        "designer_workbench.py",
+    "webapp.pam_tam": (
+        "webapp/schema.py",
         '"PAM/TAM Motif",',
     ),
-    "workbench.target_length": (
-        "designer_workbench.py",
+    "webapp.target_length": (
+        "webapp/schema.py",
         '"Target Length",',
     ),
-    "workbench.target_position": (
-        "designer_workbench.py",
+    "webapp.target_position": (
+        "webapp/schema.py",
         '"Target Position",',
     ),
-    "workbench.left_distance": (
-        "designer_workbench.py",
+    "webapp.left_distance": (
+        "webapp/schema.py",
         '"left_min_distance", "Minimum Distance",',
     ),
-    "workbench.right_distance": (
-        "designer_workbench.py",
+    "webapp.right_distance": (
+        "webapp/schema.py",
         '"right_max_distance", "Maximum Distance",',
     ),
-    "workbench.middle_motif": (
-        "designer_workbench.py",
+    "webapp.middle_motif": (
+        "webapp/schema.py",
         '"Middle Motif",',
     ),
-    "gui.bed_regions": (
-        "unified_gui.py",
-        '"input_regions.bed"',
+    "webapp.bed_regions": (
+        "webapp/schema.py",
+        '_field("bed_regions", "BED Regions", type="file", kind="bed",',
     ),
     "search_indexed.pam_side": (
         "tools/search_indexed.py",
@@ -736,7 +736,7 @@ def run_checks():
 
     # (a) IUPAC PAM/TAM -----------------------------------------------------
     sequence_hits = production_guides(SEQ_VNG, 20, "VNG", "3prime", True)
-    coordinate_anchors = [report.anchor_lines.get("gui.bed_regions"),
+    coordinate_anchors = [report.anchor_lines.get("webapp.bed_regions"),
                           report.anchor_lines.get("search_indexed.pam_side")]
     report.check(
         "input_model", "sequence_and_coordinate_input",

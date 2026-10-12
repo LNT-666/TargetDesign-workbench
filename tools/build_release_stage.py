@@ -78,7 +78,7 @@ SUBMISSION_FIGURES_SHORT = [
     *(f"docs/figures/{name}.{ext}"
       for name in ("fig1_architecture_v1", "fig2_layouts_v1", "fig3_interface_v1",
                    "fig4_output_table_v1", "fig5_capability_matrix_v1",
-                   "fig6_thread_scaling_v1")
+                   "fig6_usecase_v1", "fig7_thread_scaling_v1")
       for ext in ("pdf", "png")),
     "docs/figures/graphical_abstract.pdf",
     "docs/figures/graphical_abstract.png",

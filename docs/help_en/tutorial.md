@@ -127,11 +127,11 @@ builds the same index on demand if you skip this step.
 ### Step 2 - describe the pattern
 
 In the Designer, set **Design Pattern** to **Single target design** and fill the
-**Target TAM** column:
+**Target selection** column:
 
 | Field | Value |
 | --- | --- |
-| System Preset | `SpCas9` |
+| Preset or custom | `SpCas9` |
 | PAM/TAM Motif | `NGG` |
 | Target Length | `20` |
 | Target Position | `downstream` |

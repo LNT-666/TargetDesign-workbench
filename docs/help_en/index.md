@@ -170,7 +170,7 @@ For each target side the form offers:
 
 | Field | Meaning |
 | --- | --- |
-| **System Preset** | The effector whose recommended values fill the side (Section 5.3). |
+| **Preset or custom** | The effector whose recommended values fill the side, or custom input (Section 5.3). |
 | **PAM/TAM Motif** | The motif to anchor on, in IUPAC notation (Section 5.4). |
 | **Target Length** | The length of the target sequence taken from the window (Section 5.5). |
 | **Target Position** | Which side of the motif the target lies on (Section 5.6). |
@@ -184,7 +184,7 @@ between the two motifs, measured to the left PAM/TAM), and Pattern B has a
 the PairRank policy fields under Run Settings; a paired run stops instead of
 quietly falling back to a different ranking when a threshold is missing.
 
-### 5.3 System Preset (nuclease)
+### 5.3 Preset or custom (nuclease)
 
 The preset fills recommended values for one effector. It never locks the
 fields: you can edit any value afterwards.

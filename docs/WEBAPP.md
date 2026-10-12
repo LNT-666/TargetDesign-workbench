@@ -52,6 +52,18 @@ bash tools/serve_webapp.sh stop
 旧进程占着、新代码会静默不生效。`--host` / `--port` 覆盖默认值，
 `PYTHON=/path/to/python` 指定解释器，`WEBAPP_WAIT_SECONDS` 调整启动等待上限。
 
+路由表在进程启动时就固定了：新增或修改 `/api/...` 路由**必须**执行
+`bash tools/serve_webapp.sh restart` 才生效。反过来，`index.html` 与 `static/*`
+是每次请求现读磁盘的，所以**只有前端会「看起来已经更新」**——页面已经显示新按钮、
+新文案，新路由却仍返回 `404 {"error": "not found"}`，就是旧进程还在跑。改完路由
+先确认一次：
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5000/api/<新路由>
+```
+
+新路由若已生效，会按契约返回 `200` / `400`，不会是 `404`。
+
 页面静态资源来自 `webapp/index.html` + `webapp/static/app.js` +
 `webapp/static/styles.css`（LF、无 BOM、无外链）；只有 `app.js` 与`styles.css` 这两个文件名在服务端白名单内。
 
@@ -163,8 +175,16 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   Target/Mask 抽取、BLAST 库落点由服务端固定为 `<program_root>/output`，索引落点
   固定为 `<program_root>/resource`（面板内以只读说明 `#dp-fixed-dirs-hint` 显示）；
   `Download output directory` 仍可填写，默认 `<program_root>/resource`。
+- Search scope 与 Mask gene 的标识符输入框带**候选下拉**（`<datalist>`）：候选来自注释文件，按各自的 `Identifier type` 与当前输入即时过滤（前缀优先、大小写不敏感的子串匹配，规则与桌面端 `main.py` 的 `filter_combobox_by_input` 一致）；首次对某个注释文件取候选要现场解析一次（大 GTF 可能数十秒，仅影响该次请求），之后按文件的 mtime/大小缓存复用。
 - 面板里的作业与主区共用同一个作业队列（同一时刻最多 1 个重作业），日志与进度
-  显示在面板内的作业框中；面板收起也不影响作业继续运行。
+  显示在面板内的作业框中；面板收起也不影响作业继续运行。作业框（`#dp-job`）刻意
+  放在 Search scope 与 Mask gene 两组动作行的**正下方**（`Prepare` 组之前），
+  让 Extract Target / Extract Mask 的反馈紧挨着触发它的按钮，而不是沉在面板最底部。
+  面板高于视口，所以提交作业后**会自动把作业框滚入视野**（作业结束时再滚一次），
+  否则点 Extract / Prepare 会像「没有反应」。
+- 面板打开时会盖住页头，因此全局横幅（`#global-banner`）用 `position: fixed` +
+  `z-index: 60` 浮在面板之上，「queued as job N」/「finished」/「failed」在面板
+  打开时同样可见——与 `#designer-loaded-hint` 双处提示是同一个动机。
 - 回填后的「已带入」提示同时出现在**两处**：主区的 `#designer-loaded-hint` 与面板内的
   `#dp-loaded-hint`（面板打开时主区那行被盖住）。两处文案与 tooltip 完全一致，由
   `webapp/static/app.js` 的同一段拼串生成，不存在第二份规则。
@@ -278,12 +298,16 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `POST` | `/api/dataprep/extract-mask` | 抽取 Mask FASTA |
 | `POST` | `/api/dataprep/build-blastdb` | 构建 BLAST 库 |
 | `POST` | `/api/dataprep/build-index` | 构建基因组索引 |
+| `GET` | `/api/dataprep/genes?annotation=&id_type=&q=&limit=` | 只读候选：返回该注释在 `id_type` 下去重后的标识符（`total`/`matched`/`truncated`/`genes`，`genes` 已排序，默认最多 50 条）；缺 `annotation` 或路径不存在返回 400，其余一律 200 |
 | `POST` | `/api/models/<key>/download` | 下载模型权重 |
 | `POST` | `/api/models/<key>/delete` | 删除模型本地文件 |
 | `POST` | `/api/jobs/<id>/cancel` | 取消作业 |
 | `POST` | `/api/jobs/<id>/export` | 导出选中行（`format`、`rows`、`filename`、`columns`）；`columns=concise` 为候选列（历史行为），`columns=full` 写出 `results` 交付表，仅支持 `csv` / `tsv` / `xlsx` |
 
-表单校验失败返回 `400` + `{"error": "..."}`，路径或文件不存在返回 `404`。
+分发器把异常直接映射成状态码：`ValueError` → `400` + `{"error": "..."}`（表单校验
+失败、缺参数、**路径/目录/注释文件不存在**都走这一支，例如 `GET /api/fs/list`
+和 `GET /api/dataprep/genes`），`FileNotFoundError` → `404`（下载类接口找不到输出
+文件），未匹配的路由 → `404 {"error": "not found"}`，其余异常 → `500`。
 
 ## 路径浏览选取器
 

@@ -60,6 +60,23 @@ also checked on a Linux host with GCC 13.3 and CMake 3.28 (1/1 test passed,
 workflow, `.github/workflows/container.yml`. Neither this workstation nor the lab server has Docker or
 Podman, so the image was not rebuilt locally.
 
+## Operating-system coverage
+
+`.github/workflows/portability.yml` builds the same tree on `ubuntu-latest`, `macos-latest`
+and `windows-latest`, and records per platform that the native engine configures and passes
+its `ctest` suite with that operating system's own toolchain (GCC, Clang, MSVC), that every
+shipped module compiles with every hard import declared, that `run_tests.py` passes, that the
+batch CLI reads `sample_data/`, and that the local web workbench answers HTTP 200 - the same
+assertion the container workflow makes on Linux. macOS is additionally cross-built for
+x86_64, so Apple Silicon and Intel are both covered. The workflow needs no machine of any of
+the three kinds: run it from Actions -> portability, or push a `v*` tag to attach the record
+to a release.
+
+The desktop GUI is the one surface a runner cannot exercise, because it has no display: the
+Tk windows and the "open output directory" / "open log" buttons need a desktop session. The
+platform mapping those buttons use is covered on every runner instead, by
+`tests/test_open_path.py`.
+
 ## Data
 
 Genomes, annotation files, built indexes and exported runs are read from and written to the

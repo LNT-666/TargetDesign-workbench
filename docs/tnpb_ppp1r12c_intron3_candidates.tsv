@@ -1,0 +1,58 @@
+# TAM-anchored screen of the PPP1R12C intron-3 interval (AAVS1).
+# Run TnpB_PPP1R12C-intron3, written 2026-10-06, GRCh38 (GCF_000001405.40):
+# four-nucleotide TAM TTAT with a 20 nt protospacer on the downstream side,
+# custom motif, max_mismatch 4, seed_len 12, native indexed engine (auto).
+# Columns: pos_id / strand / start / end (0-based half-open, within the
+# interval) / perfect_matches (genome-wide hits at zero mismatches) /
+# matches_within_4mm (genome-wide hits within four mismatches).
+# Transcribed from the run deliverables output/TnpB_PPP1R12C-intron3_scores.tsv
+# and output/TnpB_PPP1R12C-intron3/query_scores.bed; that directory is not part
+# of the release tree, so the numbers are recorded here (engine:
+# docs/NATIVE_INDEXED_BENCHMARK.md; registration: FILL_REGISTER P6).
+pos_id	strand	start	end	perfect_matches	matches_within_4mm
+PPP1R12C-intron3_plus_0	plus	1022	1046	1	5
+PPP1R12C-intron3_plus_1	plus	1225	1249	1	1
+PPP1R12C-intron3_minus_26	minus	1381	1405	1	19
+PPP1R12C-intron3_minus_27	minus	1484	1508	1	2
+PPP1R12C-intron3_minus_28	minus	2397	2421	1	9
+PPP1R12C-intron3_minus_29	minus	3186	3210	1	914
+PPP1R12C-intron3_minus_30	minus	3338	3362	1	1971
+PPP1R12C-intron3_plus_2	plus	3362	3386	1	51
+PPP1R12C-intron3_plus_3	plus	3803	3827	1	16
+PPP1R12C-intron3_minus_31	minus	3825	3849	1	8
+PPP1R12C-intron3_minus_32	minus	3892	3916	1	85
+PPP1R12C-intron3_plus_4	plus	3990	4014	5	12388
+PPP1R12C-intron3_minus_33	minus	4357	4381	1	11263
+PPP1R12C-intron3_plus_5	plus	4542	4566	3	71
+PPP1R12C-intron3_plus_6	plus	4593	4617	268	13441
+PPP1R12C-intron3_plus_7	plus	4599	4623	85	27327
+PPP1R12C-intron3_plus_8	plus	4605	4629	7	3460
+PPP1R12C-intron3_plus_9	plus	4612	4636	1	1914
+PPP1R12C-intron3_plus_10	plus	4625	4649	82	29045
+PPP1R12C-intron3_plus_11	plus	4941	4965	24569	58005
+PPP1R12C-intron3_plus_12	plus	5367	5391	1	2
+PPP1R12C-intron3_plus_13	plus	6076	6100	1	1
+PPP1R12C-intron3_plus_14	plus	6412	6436	1	4
+PPP1R12C-intron3_minus_34	minus	6571	6595	1	55402
+PPP1R12C-intron3_plus_15	plus	6676	6700	2	4183
+PPP1R12C-intron3_minus_35	minus	6880	6904	19	948
+PPP1R12C-intron3_plus_16	plus	6945	6969	1	21
+PPP1R12C-intron3_plus_17	plus	6954	6978	2	19
+PPP1R12C-intron3_minus_36	minus	6983	7007	1	16
+PPP1R12C-intron3_minus_37	minus	7150	7174	1	1
+PPP1R12C-intron3_minus_38	minus	7203	7227	1	1
+PPP1R12C-intron3_minus_39	minus	7332	7356	1	2857
+PPP1R12C-intron3_minus_40	minus	7750	7774	1	2
+PPP1R12C-intron3_minus_41	minus	7891	7915	4	90754
+PPP1R12C-intron3_minus_42	minus	8051	8075	1	1
+PPP1R12C-intron3_plus_18	plus	8080	8104	1	4
+PPP1R12C-intron3_plus_19	plus	8143	8167	1	120
+PPP1R12C-intron3_plus_20	plus	8175	8199	1	59
+PPP1R12C-intron3_plus_21	plus	8203	8227	26	21699
+PPP1R12C-intron3_plus_22	plus	8214	8238	1	2504
+PPP1R12C-intron3_minus_43	minus	8222	8246	5	20716
+PPP1R12C-intron3_plus_23	plus	8233	8257	1	233
+PPP1R12C-intron3_plus_24	plus	8239	8263	1	1995
+PPP1R12C-intron3_plus_25	plus	8604	8628	1	425
+PPP1R12C-intron3_minus_44	minus	8615	8639	1	21
+PPP1R12C-intron3_minus_45	minus	8618	8642	1	38
