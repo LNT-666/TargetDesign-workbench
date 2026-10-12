@@ -11,3 +11,7 @@
 *.h5 binary
 *.pth binary
 *.pt binary
+
+# Test fixtures are compared byte for byte, so keep them out of the
+# line-ending conversion that ``* text=auto`` turns on.
+tests/data/** -text
