@@ -135,7 +135,7 @@ FS_STRIP = {
 
 
 def _side_preset(side):
-    return {"type": "side_preset", "side": side, "label": "System Preset"}
+    return {"type": "side_preset", "side": side, "label": "Preset or custom"}
 
 
 def _use_for_run(side):
@@ -149,7 +149,7 @@ def _side_models(side):
 PATTERN_FORMS = {
     "single_motif_flank": {
         "left": {
-            "title": "Target TAM",
+            "title": "Target selection",
             "fields": [
                 _side_preset("target"),
                 _field("motif", "PAM/TAM Motif", hint="PAM/TAM motif"),

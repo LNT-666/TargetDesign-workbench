@@ -30,6 +30,7 @@ from scoring.model_registry import get_all_statuses  # noqa: E402
 from design.library_preflight import ENGINE_CHOICES  # noqa: E402
 import gui.gui_common as gui_common  # noqa: E402
 from utils.log_utils import parse_progress_line  # noqa: E402
+from utils.open_path import open_path  # noqa: E402
 
 
 LIBRARY_SCRIPT = os.path.join("shared", "design", "library_pipeline.py")
@@ -816,7 +817,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
     def _open_output(self):
         output = self.entry_output.get().strip()
         if output and os.path.isdir(output):
-            os.startfile(output)  # noqa
+            open_path(output)
         else:
             messagebox.showinfo("Output", "Fill in and run the output directory first")
 
@@ -827,7 +828,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         output = self.entry_output.get().strip()
         path = os.path.join(output, self.file_list.get(selection[0]))
         if os.path.isfile(path):
-            os.startfile(path)  # noqa
+            open_path(path)
 
     # ---------- 工具与模型 ----------
     def _launch_tool(self, script, extra=None):

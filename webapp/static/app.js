@@ -44,6 +44,8 @@ const state = {
   drawerOpen: false,
   loadedHint: null,
   recentJob: null,
+  dpGeneTimers: {target: null, mask: null},
+  dpAnnotationGeneTimer: null,
 };
 
 function $(id) {
@@ -662,7 +664,7 @@ function renderField(field) {
 
 function renderSidePreset(side) {
   const wrap = el('div', {class: 'field'});
-  wrap.appendChild(el('label', {text: 'System Preset'}));
+  wrap.appendChild(el('label', {text: 'Preset or custom'}));
   const row = el('div', {class: 'row'});
   const select = el('select');
   (state.schema.presets || []).forEach(function (preset) {
@@ -1139,6 +1141,85 @@ function fillSelect(select, options) {
   });
 }
 
+const GENE_OPTION_LIMIT = 50;
+
+function geneSuggestControls(kind) {
+  if (kind === 'mask') {
+    return {
+      input: 'dp-mask-id', idType: 'dp-mask-id-type', list: 'dp-mask-genes',
+      button: 'dp-mask-load', status: 'dp-mask-load-status',
+    };
+  }
+  return {
+    input: 'dp-target-id', idType: 'dp-target-id-type', list: 'dp-target-genes',
+    button: 'dp-target-load', status: 'dp-target-load-status',
+  };
+}
+
+function setGeneStatus(kind, text) {
+  const status = $(geneSuggestControls(kind).status);
+  if (status) {
+    status.textContent = text;
+  }
+}
+
+function scheduleGeneOptions(kind, delay) {
+  if (state.dpGeneTimers[kind]) {
+    clearTimeout(state.dpGeneTimers[kind]);
+  }
+  state.dpGeneTimers[kind] = setTimeout(function () {
+    loadGeneOptions(kind);
+  }, delay);
+}
+
+async function loadGeneOptions(kind) {
+  const ids = geneSuggestControls(kind);
+  const input = $(ids.input);
+  const list = $(ids.list);
+  const annotation = $('dp-annotation');
+  const button = $(ids.button);
+  if (!input || !list || !annotation) {
+    return;
+  }
+  const path = annotation.value.trim();
+  if (!path) {
+    setGeneStatus(kind, 'no annotation path set');
+    return;
+  }
+  setGeneStatus(kind, 'loading...');
+  if (button) {
+    button.disabled = true;
+  }
+  let result = null;
+  try {
+    const query = 'annotation=' + encodeURIComponent(path)
+      + '&id_type=' + encodeURIComponent($(ids.idType).value)
+      + '&q=' + encodeURIComponent(input.value.trim());
+    result = await api('/api/dataprep/genes?' + query);
+  } catch (err) {
+    /* Enhancement only: keep whatever the user typed; report on the status line. */
+    setGeneStatus(kind, 'failed: ' + err.message);
+    return;
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+  if (!result || !Array.isArray(result.genes)) {
+    setGeneStatus(kind, 'failed: unexpected response');
+    return;
+  }
+  list.innerHTML = '';
+  result.genes.slice(0, GENE_OPTION_LIMIT).forEach(function (gene) {
+    list.appendChild(el('option', {value: gene}));
+  });
+  input.title = 'Identifier candidates: ' + result.matched + ' matched / '
+    + result.total + ' total'
+    + (result.truncated ? ' (showing ' + result.genes.length + ')' : '');
+  setGeneStatus(kind, result.matched + ' / ' + result.total + ' loaded'
+    + (result.truncated ? ' (showing ' + result.genes.length + ')' : ''));
+}
+
 function labelled(values) {
   return (values || []).map(function (value) {
     return {value: value, label: value};
@@ -1239,6 +1320,43 @@ function renderJobBox(box, job, logText) {
   return box;
 }
 
+/* Bring a job box into view.
+
+   The Data prep panel is taller than the viewport and its job box sits at the
+   bottom of the panel, so a box that is merely unhidden stays off-screen:
+   clicking Extract / Prepare then looks like nothing happened. */
+function revealJobBox(boxId) {
+  const box = $(boxId);
+  if (!box) {
+    return;
+  }
+  box.classList.remove('hidden');
+  if (box.scrollIntoView) {
+    box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  }
+}
+
+/* Poll one job into a box and bring the box back into view when the job ends.
+
+   The host of a job box is often taller than the viewport (the Data prep /
+   Models panel, the Batch details block) and the box sits at its bottom, so a
+   long job started near the top would finish off-screen. Callers reveal the box
+   themselves right after submitting, which is what makes the click feel
+   immediate; this adds the reveal at the end, where the result block appears.
+   ``onDone`` still receives every poll, exactly as in ``pollJobInto``. */
+function watchJobInto(jobId, boxId, offsetKey, onDone) {
+  let announced = false;
+  return pollJobInto(jobId, boxId, offsetKey, function (job, logText) {
+    if (!announced && DONE_STATUSES.indexOf(job.status) >= 0) {
+      announced = true;
+      revealJobBox(boxId);
+    }
+    if (onDone) {
+      onDone(job, logText);
+    }
+  });
+}
+
 /* Poll one job into a box; ``offsetKey`` tracks the log cursor in ``state``. */
 async function pollJobInto(jobId, boxId, offsetKey, onDone) {
   try {
@@ -1283,8 +1401,9 @@ async function startDataPrepJob(url, body, title, boxId) {
     state.dpJobId = response.job_id;
     state.dpLogOffset = 0;
     $(boxId).textContent = 'Queued...';
+    revealJobBox(boxId);
     resetRecentJob(response.job_id, 'dataprep', title);
-    pollJobInto(response.job_id, boxId, 'dpLogOffset');
+    watchJobInto(response.job_id, boxId, 'dpLogOffset');
   } catch (err) {
     showBanner(title + ' failed: ' + err.message, true);
   }
@@ -1296,6 +1415,10 @@ function applyDataPrepResult(result) {
   }
   if (result.annotation) {
     $('dp-annotation').value = result.annotation;
+    /* A programmatic assignment fires no event, so the identifier candidates
+       would stay stale until the user typed again; reload them the same way the
+       in-page path picker does (see initDataPrep). */
+    $('dp-annotation').dispatchEvent(new Event('input', {bubbles: true}));
   }
   if (result.download_output) {
     $('dp-download-output').value = result.download_output;
@@ -1331,6 +1454,53 @@ function initDataPrep() {
   $('dp-build-index').addEventListener('click', function () {
     startDataPrepJob('/api/dataprep/build-index', dpPayload(), 'Build genome index', 'dp-job');
   });
+  [['dp-target-id', 'target'], ['dp-mask-id', 'mask']].forEach(function (pair) {
+    const input = $(pair[0]);
+    if (input) {
+      input.addEventListener('input', function () {
+        scheduleGeneOptions(pair[1], 250);
+      });
+    }
+    setGeneStatus(pair[1], 'not loaded');
+  });
+  [['dp-target-id-type', 'target'], ['dp-mask-id-type', 'mask']].forEach(function (pair) {
+    const select = $(pair[0]);
+    if (select) {
+      select.addEventListener('change', function () {
+        loadGeneOptions(pair[1]);
+      });
+    }
+  });
+  [['dp-target-load', 'target'], ['dp-mask-load', 'mask']].forEach(function (pair) {
+    const button = $(pair[0]);
+    if (button) {
+      button.addEventListener('click', function () {
+        loadGeneOptions(pair[1]).then(function () {
+          const input = $(geneSuggestControls(pair[1]).input);
+          if (input) {
+            input.focus();
+          }
+        });
+      });
+    }
+  });
+  const annotationInput = $('dp-annotation');
+  if (annotationInput) {
+    const reloadGenes = function () {
+      if (state.dpAnnotationGeneTimer) {
+        clearTimeout(state.dpAnnotationGeneTimer);
+      }
+      state.dpAnnotationGeneTimer = setTimeout(function () {
+        loadGeneOptions('target');
+        loadGeneOptions('mask');
+      }, 600);
+    };
+    /* Listen to 'input' as well as 'change': the in-page path picker writes the
+       value back and fires only 'input' (see browseButton), so a Browse-picked
+       server path must reload the candidates too. */
+    annotationInput.addEventListener('change', reloadGenes);
+    annotationInput.addEventListener('input', reloadGenes);
+  }
 }
 
 /* ---------------------------------------------------------------- models */
@@ -1433,8 +1603,9 @@ async function startModelAction(key, action) {
     showBanner('Model ' + key + ': job ' + response.job_id + ' queued.', false);
     state.modelLogOffset = 0;
     $('models-job').textContent = 'Queued...';
+    revealJobBox('models-job');
     resetRecentJob(response.job_id, 'models', 'Model ' + key + ' ' + action);
-    pollJobInto(response.job_id, 'models-job', 'modelLogOffset', function (job) {
+    watchJobInto(response.job_id, 'models-job', 'modelLogOffset', function (job) {
       if (DONE_STATUSES.indexOf(job.status) >= 0) {
         loadModels();
       }
@@ -3139,11 +3310,8 @@ async function startBatchJob() {
     if (artifacts) {
       artifacts.innerHTML = '';
     }
-    const box = $('batch-job-box');
-    if (box) {
-      box.classList.remove('hidden');
-    }
-    pollJobInto(created.job_id, 'batch-job-box', 'batchLogOffset', function (job) {
+    revealJobBox('batch-job-box');
+    watchJobInto(created.job_id, 'batch-job-box', 'batchLogOffset', function (job) {
       renderBatchArtifacts(job);
       refreshBatchRun(created.run_id, {silent: true});
     });

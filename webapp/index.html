@@ -9,11 +9,6 @@
 <body>
 <header class="app-header">
   <h1>TargetDesign-workbench</h1>
-  <p class="subtitle">
-    Local web UI (0.0.0.0:5000 by default) for the shared design pipeline.
-    Results match the desktop workbench and the command line because both use
-    the same <code>shared/</code> modules.
-  </p>
   <div id="global-banner" class="banner hidden"></div>
 </header>
 
@@ -97,7 +92,7 @@
         <div class="grid">
           <div class="field">
             <label>Search scope (Gene Symbol / ENSEMBL ID / coordinates)</label>
-            <input id="dp-target-id" type="text">
+            <input id="dp-target-id" type="text" list="dp-target-genes">
           </div>
           <div class="field">
             <label>Identifier type</label>
@@ -112,7 +107,10 @@
             <input id="dp-target-num" type="text">
           </div>
         </div>
+        <datalist id="dp-target-genes"></datalist>
         <div class="actions">
+          <button id="dp-target-load" type="button">Load candidates</button>
+          <span class="muted" id="dp-target-load-status"></span>
           <button id="dp-extract-target" type="button">Extract Target FASTA</button>
         </div>
       </div>
@@ -124,7 +122,7 @@
         <div class="grid">
           <div class="field">
             <label>Mask gene identifier (optional, blank = skip)</label>
-            <input id="dp-mask-id" type="text">
+            <input id="dp-mask-id" type="text" list="dp-mask-genes">
           </div>
           <div class="field">
             <label>Identifier type</label>
@@ -139,10 +137,15 @@
             <input id="dp-mask-num" type="text">
           </div>
         </div>
+        <datalist id="dp-mask-genes"></datalist>
         <div class="actions">
+          <button id="dp-mask-load" type="button">Load candidates</button>
+          <span class="muted" id="dp-mask-load-status"></span>
           <button id="dp-extract-mask" type="button">Extract Mask FASTA</button>
         </div>
       </div>
+
+      <div id="dp-job" class="job-box hidden"></div>
 
       <div class="group">
         <h4>Prepare</h4>
@@ -154,7 +157,6 @@
       </div>
 
       <div id="dp-loaded-hint" class="loaded-hint hidden"></div>
-      <div id="dp-job" class="job-box hidden"></div>
     </section>
 
     <section class="drawer-block" id="drawer-models">

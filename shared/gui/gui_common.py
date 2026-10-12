@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from utils.log_utils import parse_progress_line
+from utils.open_path import open_path
 
 
 WORKSPACE_FILENAME = "workspace.json"
@@ -250,7 +251,7 @@ class CommonGUIMixin:
     def open_log(self):
         path = getattr(self, "log_path", None)
         if path and os.path.isfile(path):
-            os.startfile(path)  # noqa
+            open_path(path)
 
     def run_command(self, cmd, description, on_finish=None):
         """Run a command in a background thread and stream output to the log."""
@@ -329,7 +330,7 @@ class CommonGUIMixin:
             return
         path = output.get().strip()
         if path and os.path.isdir(path):
-            os.startfile(path)  # noqa
+            open_path(path)
         else:
             messagebox.showinfo("Output", "Output directory is not ready")
 

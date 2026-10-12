@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from email.message import Message
 from unittest import mock
 
@@ -24,12 +25,14 @@ for _path in (ROOT, WEBAPP, SHARED):
         sys.path.insert(0, _path)
 
 import app  # noqa: E402
+import data.annotation_utils as annotation_utils  # noqa: E402
 import design.workbench_form as workbench_form  # noqa: E402
 import jobs as job_module  # noqa: E402
 import schema as schema_module  # noqa: E402
 import scoring.model_registry as model_registry  # noqa: E402
 import services.dataprep as dataprep  # noqa: E402
 import services.designer as designer  # noqa: E402
+import services.gene_suggest as gene_suggest  # noqa: E402
 import services.models as models_service  # noqa: E402
 from design.pattern_spec import PatternKind  # noqa: E402
 from utils.paths import default_output_dir, default_resource_dir  # noqa: E402
@@ -694,6 +697,72 @@ class DataPrepServiceTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(ctx.out_dir, "target.fa")))
         self.assertEqual(dataprep.publish_file("", ctx), "")
 
+    def test_extract_target_reports_progress_and_confirms_the_extraction(self):
+        """The extraction job moves the bar and states what it extracted."""
+        manager = job_module.JobManager(
+            jobs_root=os.path.join(self.tmp.name, "jobs"))
+        parts = [(">TRAC-intron1", "ACGT" * 10)]
+        checkpoints = []
+        real_phase = dataprep._phase
+
+        def spy(ctx, percent, message):
+            real_phase(ctx, percent, message)
+            checkpoints.append(
+                (percent, message, manager.get_job(ctx.job_id)["progress"]))
+
+        def runner(ctx):
+            return dataprep.extract_target_body({
+                "genome": self.genome,
+                "annotation": self.annotation,
+                "target_id": "TRAC",
+                "target_region": "Specific intron",
+                "target_num": "1",
+            })(ctx)
+
+        with mock.patch.object(dataprep, "resolve_prep_dir",
+                               return_value=self.output_dir), \
+                mock.patch.object(dataprep, "prepare_genome",
+                                  return_value=self.genome), \
+                mock.patch.object(dataprep, "prepare_annotation",
+                                  return_value=self.annotation), \
+                mock.patch.object(dataprep, "extract_sequences",
+                                  return_value=parts), \
+                mock.patch.object(dataprep, "_phase", spy):
+            job_id = manager.create_job(
+                "dataprep", "Extract Target FASTA", runner, {})
+            status = manager.wait(job_id, timeout=30.0)
+
+        self.assertIsNotNone(status, "extract job did not finish")
+        self.assertEqual(status["status"], "succeeded")
+        self.assertEqual(status["progress"], 100)
+        self.assertEqual(
+            [(percent, message) for percent, message, _live in checkpoints],
+            [(dataprep.PHASE_GENOME, "Preparing genome FASTA"),
+             (dataprep.PHASE_ANNOTATION, "Preparing annotation"),
+             (dataprep.PHASE_EXTRACT, "Extracting Target sequence"),
+             (dataprep.PHASE_WRITE, "Publishing result")])
+        # every checkpoint reached the live job record, not just the log
+        self.assertEqual([live for _p, _m, live in checkpoints],
+                         [dataprep.PHASE_GENOME, dataprep.PHASE_ANNOTATION,
+                          dataprep.PHASE_EXTRACT, dataprep.PHASE_WRITE])
+
+        job = manager.get_job(job_id)
+        log = job["log_tail"]
+        self.assertIn("Target extracted: 1 sequence(s), 40 bp: TRAC-intron1", log)
+        self.assertIn("FASTA written to:", log)
+        written = job["result"]["target_fasta"]
+        self.assertEqual(os.path.basename(written), "TRAC-intron1.fa")
+        with open(written, encoding="utf-8") as handle:
+            self.assertTrue(handle.read().startswith(">TRAC-intron1\n"))
+
+    def test_describe_parts_summarises_count_length_and_headers(self):
+        self.assertEqual(
+            dataprep._describe_parts([(">GENE1-intron1", "ACGT\nACGT")]),
+            "1 sequence(s), 8 bp: GENE1-intron1")
+        self.assertEqual(
+            dataprep._describe_parts([(">A-exon1", "AC"), (">B-exon2", "TTT")]),
+            "2 sequence(s), 5 bp: A-exon1, B-exon2")
+
 
 class ModelServiceTests(unittest.TestCase):
     def test_check_key_rejects_unknown_and_external_models(self):
@@ -1124,6 +1193,160 @@ class SampleAndHelpRouteTests(JobManagerTestCase):
             calls = self.call("/help/sample_output/" + bad)
             self.assertEqual(calls[0][0], "json", bad)
             self.assertEqual(calls[0][1], 404, bad)
+
+
+GENE_FIXTURE = (
+    "##gff-version 3\n"
+    "chr1\ttest\tgene\t1\t100\t.\t+\t.\tID=gene001;gene_name=TRAC\n"
+    "chr1\ttest\tgene\t200\t300\t.\t+\t.\tID=gene002;gene_name=TRAV1-1\n"
+    "chr1\ttest\tgene\t400\t500\t.\t-\t.\tID=gene003;gene_name=B2M\n"
+)
+
+
+class GeneSuggestServiceTests(unittest.TestCase):
+    """Unit tests for the pure filter/sort helper of the gene suggester."""
+
+    def test_empty_query_keeps_alphabetical_order(self):
+        result = gene_suggest.filter_genes(["TRAC", "B2M", "TRAV1-1"], "", 50)
+        self.assertEqual(result["genes"], ["B2M", "TRAC", "TRAV1-1"])
+        self.assertEqual(result["matched"], 3)
+        self.assertFalse(result["truncated"])
+
+    def test_prefix_matches_sort_before_substring_matches(self):
+        values = ["B2M", "TRAC", "TRAV1-1", "RAB7A"]
+        result = gene_suggest.filter_genes(values, "ra", 50)
+        self.assertEqual(result["genes"], ["RAB7A", "TRAC", "TRAV1-1"])
+
+    def test_match_is_case_insensitive(self):
+        result = gene_suggest.filter_genes(["TRAC", "B2M"], "tra", 50)
+        self.assertEqual(result["genes"], ["TRAC"])
+
+    def test_limit_truncates_and_flags(self):
+        result = gene_suggest.filter_genes(["A", "B", "C"], "", 1)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result["genes"], ["A"])
+        self.assertEqual(result["matched"], 3)
+
+    def test_bad_limit_falls_back_to_default(self):
+        result = gene_suggest.filter_genes(["A"] * 60, "", "oops")
+        self.assertEqual(len(result["genes"]), gene_suggest.DEFAULT_LIMIT)
+        self.assertTrue(result["truncated"])
+
+    def test_whitespace_query_is_ignored(self):
+        result = gene_suggest.filter_genes(["B", "A"], "   ", 50)
+        self.assertEqual(result["genes"], ["A", "B"])
+
+
+class GeneSuggestRouteTests(JobManagerTestCase):
+    """GET /api/dataprep/genes: read-only identifier candidates."""
+
+    def setUp(self):
+        super().setUp()
+        app.set_manager(self.manager)
+        self.addCleanup(app.set_manager, None)
+        self.gff = write_file(
+            os.path.join(self.tmp.name, "genes.gff"), GENE_FIXTURE)
+
+    # reuse the HTTP plumbing of HandlerRouteTests without inheriting its tests
+    call = HandlerRouteTests.call
+
+    def query_string(self, annotation, **params):
+        pairs = {"annotation": annotation}
+        pairs.update(params)
+        return urllib.parse.urlencode(pairs)
+
+    def genes(self, query):
+        calls = self.call("/api/dataprep/genes?" + query)
+        # exactly one response: the route must not send a second (None) payload
+        self.assertEqual(len(calls), 1)
+        kind, status, payload = calls[0]
+        self.assertEqual(kind, "json")
+        return status, payload
+
+    def test_missing_annotation_is_400(self):
+        status, payload = self.genes("")
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"], "Annotation file is required")
+
+    def test_missing_file_is_400(self):
+        absent = os.path.join(self.tmp.name, "nope.gff")
+        status, payload = self.genes(self.query_string(absent))
+        self.assertEqual(status, 400)
+        self.assertIn("Annotation file not found", payload["error"])
+        self.assertIn(absent, payload["error"])
+
+    def test_returns_sorted_genes_and_total(self):
+        status, payload = self.genes(self.query_string(self.gff))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["annotation"], os.path.abspath(self.gff))
+        self.assertEqual(payload["id_type"], "gene_name")
+        self.assertEqual(payload["total"], 3)
+        self.assertEqual(payload["matched"], 3)
+        self.assertFalse(payload["truncated"])
+        self.assertEqual(payload["genes"], ["B2M", "TRAC", "TRAV1-1"])
+
+    def test_prefix_matches_come_first(self):
+        status, payload = self.genes(self.query_string(self.gff, q="TR"))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["genes"], ["TRAC", "TRAV1-1"])
+
+    def test_substring_match_is_case_insensitive(self):
+        status, payload = self.genes(self.query_string(self.gff, q="ra"))
+        self.assertEqual(status, 200)
+        self.assertIn("TRAV1-1", payload["genes"])
+        self.assertTrue(all("ra" in gene.lower() for gene in payload["genes"]))
+        self.assertTrue(
+            all(not gene.lower().startswith("ra") for gene in payload["genes"]))
+
+    def test_limit_truncates(self):
+        status, payload = self.genes(self.query_string(self.gff, limit="1"))
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["truncated"])
+        self.assertEqual(len(payload["genes"]), 1)
+        self.assertEqual(payload["matched"], 3)
+
+    def test_no_match_is_empty_200(self):
+        status, payload = self.genes(self.query_string(self.gff, q="zzz"))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["matched"], 0)
+        self.assertEqual(payload["genes"], [])
+
+    def test_unknown_id_type_falls_back_to_gene_name(self):
+        status, payload = self.genes(
+            self.query_string(self.gff, id_type="not-a-type"))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["id_type"], "gene_name")
+
+    def test_empty_annotation_file_is_empty_200(self):
+        empty = write_file(
+            os.path.join(self.tmp.name, "empty.gff"), "##gff-version 3\n")
+        status, payload = self.genes(self.query_string(empty))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["total"], 0)
+        self.assertEqual(payload["matched"], 0)
+        self.assertEqual(payload["genes"], [])
+
+    def test_cache_parses_once_and_is_reused_across_id_types(self):
+        with mock.patch.object(
+                annotation_utils, "_load_gene_attributes",
+                wraps=annotation_utils._load_gene_attributes) as spy:
+            first = self.genes(self.query_string(self.gff))[1]
+            second = self.genes(self.query_string(self.gff, id_type="ID"))[1]
+        self.assertEqual(spy.call_count, 1)
+        self.assertEqual(first["id_type"], "gene_name")
+        self.assertEqual(second["id_type"], "ID")
+        self.assertEqual(second["total"], 3)
+        self.assertEqual(second["genes"], ["gene001", "gene002", "gene003"])
+
+
+    def test_cache_invalidates_when_file_changes(self):
+        first = self.genes(self.query_string(self.gff))[1]
+        self.assertEqual(first["total"], 3)
+        write_file(self.gff, GENE_FIXTURE + (
+            "chr1\ttest\tgene\t600\t700\t.\t+\t.\tID=gene004;gene_name=CD3E\n"))
+        second = self.genes(self.query_string(self.gff))[1]
+        self.assertEqual(second["total"], 4)
+        self.assertIn("CD3E", second["genes"])
 
 
 if __name__ == "__main__":

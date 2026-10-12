@@ -279,6 +279,21 @@ button.primary:hover { background: #1a5fcc; }
 .banner.info { background: #e8f1ff; border-color: #b6d0ff; color: #14417d; }
 .banner.error { background: #fdecea; border-color: #f5b5ae; color: var(--bad); }
 
+/* The banner lives in the page header, but the Data prep panel (fixed,
+   z-index 40) covers the header while it is open. Float the banner above the
+   panel so "queued as job N" / "finished" / "failed" stay readable in both
+   states. `.hidden` still wins (display: none !important). */
+#global-banner {
+  position: fixed;
+  top: 8px;
+  margin: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: min(760px, calc(100% - 32px));
+  box-shadow: 0 6px 18px rgba(16, 24, 40, .20);
+}
+
 .ready-badge {
   padding: 3px 10px;
   border-radius: 999px;

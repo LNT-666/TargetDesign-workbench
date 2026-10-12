@@ -4,11 +4,12 @@
 """Shared file logging helper for the GUI tools."""
 
 import os
-import subprocess
 import sys
 import threading
 import traceback
 from datetime import datetime
+
+from utils.open_path import open_path
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -58,12 +59,8 @@ class LogWriter:
 
 def open_log_dir():
     try:
-        if sys.platform == "win32":
-            os.startfile(LOG_DIR)  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", LOG_DIR])
-        else:
-            subprocess.Popen(["xdg-open", LOG_DIR])
+        if not open_path(LOG_DIR):
+            print("Could not open log directory: no desktop handler available")
     except Exception as e:
         print(f"Could not open log directory: {e}")
 

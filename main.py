@@ -23,6 +23,7 @@ from data.local_extract import get_region_sequence
 from utils.log_utils import (
     LogWriter, install_excepthook, open_log_dir, parse_progress_line,
 )
+from utils.open_path import open_path
 import scoring.model_registry as model_registry
 import scoring.deep_models as deep_models
 import gui.gui_common as gui_common
@@ -1392,10 +1393,7 @@ class MainApp(gui_common.CommonGUIMixin):
 
     def open_models_dir(self):
         os.makedirs(model_registry.models_dir(), exist_ok=True)
-        if sys.platform == "win32":
-            os.startfile(model_registry.models_dir())
-        else:
-            subprocess.Popen(["xdg-open", model_registry.models_dir()])
+        open_path(model_registry.models_dir())
 
     # ---------- 界面构建 ----------
     def create_widgets(self):

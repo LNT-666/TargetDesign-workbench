@@ -5,7 +5,9 @@
 Genome/annotation preparation, Search-scope (Target) and Mask extraction, BLAST
 database build and genome index build. Heavy steps run as children of the job
 executor, so their stdout (including ``PROGRESS:`` lines) streams into the job
-log exactly like the desktop progress bar.
+log exactly like the desktop progress bar. Steps that run in-process (genome and
+annotation preparation, sequence extraction) report coarse ``PROGRESS:``
+checkpoints of their own, so the bar never sits idle while they work.
 """
 
 from __future__ import annotations
@@ -49,6 +51,19 @@ INDEX_SCRIPT = os.path.join("tools", "build_genome_index.py")
 
 UTR_TYPES = ("five_prime_UTR", "three_prime_UTR", "5'UTR", "3'UTR")
 REGION_NUMBER_TYPES = ("Specific exon", "Specific intron")
+
+#: Coarse progress checkpoints for the data-prep jobs. Preparing a whole-genome
+#: FASTA or an annotation can run for minutes without producing any other
+#: output, and the browser bar only moves when a job reports a value.
+PHASE_GENOME = 5
+PHASE_ANNOTATION = 25
+PHASE_EXTRACT = 60
+PHASE_WRITE = 90
+
+
+def _phase(ctx, percent: int, message: str) -> None:
+    """Move the job progress bar and its label to one coarse checkpoint."""
+    ctx.progress(int(percent), message)
 
 
 def _clean(value) -> str:
@@ -266,7 +281,9 @@ def extract_target_fasta(payload: Dict[str, Any], genome: str,
     else:
         filename = "target_sequences.fa"
     content = "\n".join("%s\n%s" % (header, seq) for header, seq in parts)
-    return _write_fasta(output_dir, filename, content, ctx)
+    written = _write_fasta(output_dir, filename, content, ctx)
+    ctx.line("Target extracted: %s" % _describe_parts(parts))
+    return written
 
 
 def extract_mask_fasta(payload: Dict[str, Any], genome: str, annotation: str,
@@ -305,11 +322,22 @@ def extract_mask_fasta(payload: Dict[str, Any], genome: str, annotation: str,
     else:
         filename = "mask_sequences.fa"
     content = "\n".join("%s\n%s" % (header, seq) for header, seq in parts)
-    return _write_fasta(output_dir, filename, content, ctx)
+    written = _write_fasta(output_dir, filename, content, ctx)
+    ctx.line("Mask extracted: %s" % _describe_parts(parts))
+    return written
+
+
+def _describe_parts(parts) -> str:
+    """One-line summary of an extraction: count, length and FASTA headers."""
+    total = sum(len(seq.replace("\n", "")) for _header, seq in parts)
+    headers = ", ".join(header.lstrip(">") for header, _seq in parts)
+    return "%d sequence(s), %d bp: %s" % (len(parts), total, headers)
 
 
 def _prepare_inputs(payload: Dict[str, Any], output_dir: str, ctx):
+    _phase(ctx, PHASE_GENOME, "Preparing genome FASTA")
     genome = prepare_genome(payload.get("genome"), output_dir, ctx)
+    _phase(ctx, PHASE_ANNOTATION, "Preparing annotation")
     annotation = prepare_annotation(payload.get("annotation"), output_dir, ctx)
     return genome, annotation
 
@@ -323,6 +351,7 @@ def download_body(payload: Dict[str, Any]):
             raise ValueError("Organism is required")
         output_dir = resolve_resource_dir(payload)
         os.makedirs(output_dir, exist_ok=True)
+        _phase(ctx, PHASE_GENOME, "Downloading genome and annotation")
         returncode = _run_command(
             [sys.executable, DOWNLOAD_SCRIPT, "--species", species,
              "--output", output_dir],
@@ -361,10 +390,13 @@ def prepare_body(payload: Dict[str, Any]):
         genome, annotation = _prepare_inputs(payload, output_dir, ctx)
         if not _clean(payload.get("target_id")):
             raise ValueError("Please specify Search scope")
+        _phase(ctx, PHASE_EXTRACT, "Extracting Target sequence")
         target_fasta = extract_target_fasta(
             payload, genome, annotation, output_dir, ctx)
+        _phase(ctx, PHASE_EXTRACT + 15, "Extracting Mask sequence")
         mask_fasta = extract_mask_fasta(
             payload, genome, annotation, output_dir, ctx, target_fasta)
+        _phase(ctx, PHASE_WRITE, "Publishing result")
         blastdb = _clean(payload.get("blastdb"))
         ctx.set_result({
             "output_dir": output_dir,
@@ -394,8 +426,10 @@ def extract_target_body(payload: Dict[str, Any]):
         output_dir = resolve_prep_dir()
         os.makedirs(output_dir, exist_ok=True)
         genome, annotation = _prepare_inputs(payload, output_dir, ctx)
+        _phase(ctx, PHASE_EXTRACT, "Extracting Target sequence")
         target_fasta = extract_target_fasta(
             payload, genome, annotation, output_dir, ctx)
+        _phase(ctx, PHASE_WRITE, "Publishing result")
         ctx.set_result({
             "output_dir": output_dir,
             "target_fasta": target_fasta,
@@ -416,12 +450,14 @@ def extract_mask_body(payload: Dict[str, Any]):
         os.makedirs(output_dir, exist_ok=True)
         genome, annotation = _prepare_inputs(payload, output_dir, ctx)
         target_fasta = None
+        _phase(ctx, PHASE_EXTRACT, "Extracting Mask sequence")
         if payload.get("mask_same_as_target", True) and _clean(
                 payload.get("target_id")):
             target_fasta = extract_target_fasta(
                 payload, genome, annotation, output_dir, ctx)
         mask_fasta = extract_mask_fasta(
             payload, genome, annotation, output_dir, ctx, target_fasta)
+        _phase(ctx, PHASE_WRITE, "Publishing result")
         if not mask_fasta:
             ctx.line("No Mask gene FASTA generated")
         ctx.set_result({
@@ -443,7 +479,9 @@ def build_blastdb_body(payload: Dict[str, Any]):
     def run(ctx) -> int:
         output_dir = resolve_prep_dir()
         os.makedirs(output_dir, exist_ok=True)
+        _phase(ctx, PHASE_GENOME, "Preparing genome FASTA")
         genome = prepare_genome(payload.get("genome"), output_dir, ctx)
+        _phase(ctx, PHASE_EXTRACT, "Building genome database (makeblastdb)")
         prefix = ensure_blastdb(genome, output_dir=output_dir, log=ctx.line)
         ctx.line("Genome database built: %s" % prefix)
         ctx.set_result({"blastdb": prefix, "output_dir": output_dir})
@@ -455,9 +493,11 @@ def build_blastdb_body(payload: Dict[str, Any]):
 
 def build_index_body(payload: Dict[str, Any]):
     def run(ctx) -> int:
+        _phase(ctx, PHASE_GENOME, "Preparing genome FASTA")
         genome = require_file(payload.get("genome"), "Genome FASTA")
         output_dir = resolve_resource_dir(payload)
         os.makedirs(output_dir, exist_ok=True)
+        _phase(ctx, PHASE_EXTRACT, "Building genome index")
         cmd = [sys.executable, INDEX_SCRIPT, genome,
                "--output-dir", output_dir]
         if payload.get("k"):

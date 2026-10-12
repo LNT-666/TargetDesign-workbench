@@ -1,0 +1,126 @@
+name: portability
+
+# Evidence for the stand-alone application claim, on the runners GitHub already
+# provides, so no machine of each kind has to be borrowed:
+#
+#   - the native C++20 engine configures, builds and passes its own ctest suite
+#     with the toolchain of each operating system (GCC/Clang/MSVC);
+#   - the Python workbench imports, compiles and passes its test suite there;
+#   - the batch CLI reads the bundled sample data;
+#   - the local web workbench starts and answers HTTP 200, the same assertion
+#     the container job makes on Linux.
+#
+# macOS is covered on both architectures: macos-latest is arm64, and the engine
+# is cross-built for x86_64 in the same job.
+#
+#   - manual run: Actions -> portability -> Run workflow
+#   - tag run:    pushing a tag like v0.2.1, so every release carries the proof
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  portability:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Report the toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --version | head -1
+          python --version
+          python -c "import sys, platform; print(sys.platform, platform.machine())"
+
+      - name: Build the native engine and run its C++ tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native -B native/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOFFTARGET_BUILD_TESTS=ON
+          cmake --build native/build --config Release -j 2
+          ctest --test-dir native/build --output-on-failure -C Release
+
+      - name: Check the engine this platform just built runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=native/bin/offtarget-engine
+          if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
+          "$exe" --version
+          "$exe" capabilities --json > /dev/null
+          echo "engine binary: $exe"
+
+      - name: Cross-build the engine for Intel macOS as well
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native -B native/build-x86_64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOFFTARGET_BUILD_TESTS=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DOFFTARGET_RUNTIME_OUTPUT_DIRECTORY="$PWD/native/bin-x86_64"
+          cmake --build native/build-x86_64 -j 2
+          file native/bin-x86_64/offtarget-engine
+
+      - name: Install the requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile every shipped module
+        run: python -m compileall -q webapp shared tools
+
+      - name: Check no hard import is undeclared
+        run: python tools/dep_scan.py --check
+
+      - name: Run the test suite
+        run: python run_tests.py
+
+      - name: Smoke-test the batch CLI on the bundled sample data
+        shell: bash
+        run: python tools/batch_run.py --spec sample_data/demo_batch.json --dry-run
+
+      - name: Start the local web workbench and fetch it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python webapp/app.py --host 127.0.0.1 --port 5050 &
+          server=$!
+          code=""
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5050/ || true)
+            if [ "$code" = "200" ]; then
+              echo "web workbench answered HTTP 200 on attempt ${attempt}"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$code" != "200" ]; then
+            echo "::error::web workbench did not answer HTTP 200 (last code: ${code})"
+            exit 1
+          fi
+          curl -s -o /dev/null -w '  /static/styles.css -> %{http_code}\n' http://127.0.0.1:5050/static/styles.css
+          curl -s -o /dev/null -w '  /static/app.js     -> %{http_code}\n' http://127.0.0.1:5050/static/app.js
+          kill "$server" || true

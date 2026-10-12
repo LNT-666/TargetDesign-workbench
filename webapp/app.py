@@ -37,6 +37,7 @@ import schema  # noqa: E402
 import services.batch as batch  # noqa: E402
 import services.dataprep as dataprep  # noqa: E402
 import services.designer as designer  # noqa: E402
+import services.gene_suggest as gene_suggest  # noqa: E402
 import services.models as models  # noqa: E402
 
 
@@ -455,6 +456,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/fs/list":
                 self._api_fs_list(query)
                 return
+            if path == "/api/dataprep/genes":
+                self._send_json(self._api_genes(query))
+                return
             if path == "/api/sample":
                 self._api_sample()
                 return
@@ -756,6 +760,21 @@ class Handler(BaseHTTPRequestHandler):
             "entries": entries,
             "truncated": truncated,
         })
+
+    def _api_genes(self, query):
+        """Read-only identifier candidates for the Data prep Target/Mask inputs.
+
+        Mirrors the desktop "load list" button without a job: the annotation is
+        parsed once per (path, mtime, size) through the shared ``load_gene_list``
+        so the web candidates match the desktop rules exactly. Returns the
+        contract A1 payload; a missing/unknown path raises ValueError, which the
+        GET dispatcher turns into a 400.
+        """
+        annotation = (query.get("annotation") or [""])[0]
+        id_type = (query.get("id_type") or [""])[0]
+        text = (query.get("q") or [""])[0]
+        limit = (query.get("limit") or [""])[0]
+        return gene_suggest.suggest(annotation, id_type, text, limit)
 
     def _serve_help_page(self, name):
         """Render one Markdown page of ``docs/help_en`` as HTML."""
