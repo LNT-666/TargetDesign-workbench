@@ -85,6 +85,21 @@ class SystemMemoryTests(unittest.TestCase):
         with mock.patch("utils.system_memory.sys.platform", "linux"):
             self.assertIsNone(system_memory._darwin_memory())
 
+    def test_snapshot_prefers_sysconf_over_the_sysctl_probe(self):
+        # The probe spawns a process, so it must stay a last resort: a
+        # subprocess that shows up in an unrelated pipeline is a real cost.
+        with mock.patch(
+                "utils.system_memory._windows_memory_status",
+                return_value=None), mock.patch(
+                "utils.system_memory._proc_meminfo",
+                return_value=None), mock.patch.object(
+                system_memory.os, "sysconf", create=True,
+                side_effect=[4096, 4194304, -1]), mock.patch(
+                "utils.system_memory.subprocess.run") as run:
+            snapshot = system_memory.memory_snapshot()
+        self.assertEqual(snapshot, {"total_mb": 16384, "available_mb": 0})
+        self.assertFalse(run.called)
+
     def test_remote_memory_query_does_not_require_remote_pythonpath(self):
         completed = SimpleNamespace(
             returncode=0,

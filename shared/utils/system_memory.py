@@ -91,7 +91,9 @@ def _darwin_memory() -> Optional[Dict[str, int]]:
     """macOS: total RAM from ``hw.memsize``; free memory stays unknown.
 
     ``os.sysconf`` does not answer ``SC_AVPHYS_PAGES`` on Darwin, so without
-    this detector the chain reports nothing and Auto cannot resolve at all.
+    this detector a host whose ``sysconf`` refuses to report anything at all
+    would leave Auto unresolvable. It runs last, so the common case costs no
+    subprocess.
     """
     if sys.platform != "darwin":
         return None
@@ -114,8 +116,8 @@ def _darwin_memory() -> Optional[Dict[str, int]]:
 
 def memory_snapshot() -> Dict[str, int]:
     """Return total/available physical memory in MiB for this host."""
-    for detector in (_windows_memory_status, _proc_meminfo, _darwin_memory,
-                     _sysconf_memory):
+    for detector in (_windows_memory_status, _proc_meminfo, _sysconf_memory,
+                     _darwin_memory):
         snapshot = detector()
         if snapshot is not None:
             return snapshot
