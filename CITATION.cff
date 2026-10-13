@@ -12,21 +12,26 @@ authors:
   - family-names: "Song"
     given-names: "Ji"
     affiliation: "School of Mathematics, Sun Yat-sen University, Guangzhou, Guangdong 510275, China"
-  - family-names: "Yang"
-    given-names: "Naisu"
-    affiliation: "College of Bioscience & Biotechnology, Yangzhou University, Yangzhou, Jiangsu 225009, China; Genetics and Genome Biology Program, The Hospital for Sick Children, Toronto, Ontario M5G 1E8, Canada"
+    orcid: "https://orcid.org/0009-0007-5408-9580"
+  - family-names: "Shi"
+    given-names: "Shasha"
+    affiliation: "College of Bioscience & Biotechnology, Yangzhou University, Yangzhou, Jiangsu 225009, China"
+  - family-names: "Wang"
+    given-names: "Saisai"
+    affiliation: "中国科学院微生物研究所"
 contact:
-  - family-names: "Yang"
-    given-names: "Naisu"
+  - family-names: "Song"
+    given-names: "Ji"
+    email: "songj56@mail2.sysu.edu.cn"
 license: MIT
 repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
 version: "0.3.0"
-# date-released: ""          # set to the GitHub release date (YYYY-MM-DD) when the release is created
-# doi: "10.5281/zenodo.0"    # set to the Zenodo version DOI after Zenodo archives the release
+date-released: "2026-10-13"
+doi: "10.5281/zenodo.23328590"
 # Concept DOI covering every version of this software: 10.5281/zenodo.23231712
-# ORCID iDs and the corresponding author email are not recorded yet. Add them here and in
-# .zenodo.json before the next release if they should appear in the archive.
+# The author list, the affiliations and the ORCID follow the manuscript (Ji Song,
+# Shasha Shi, Saisai Wang); keep .zenodo.json in step.
 keywords:
   - CRISPR
   - guide RNA design
