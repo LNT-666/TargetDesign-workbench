@@ -69,20 +69,23 @@ RUN chmod +x /app/native/bin/offtarget-engine \
 FROM python-runtime AS full
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV MAMBA_ROOT_PREFIX=/opt/mamba \
-    CRISPAI_CASOFFINDER_DIR=/usr/local/bin
+    CRISPAI_CASOFFINDER_DIR=/usr/local/bin \
+    CRISPAI_ENV=/opt/crispai
 RUN apt-get update \
  && apt-get install -y --no-install-recommends bzip2 build-essential ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
  && curl -fL -o /usr/local/bin/micromamba \
       https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64 \
  && chmod +x /usr/local/bin/micromamba \
- && micromamba install -y -n base -c conda-forge -c bioconda \
-      cas-offinder viennarna r-base bioconductor-nupop \
+ && micromamba create -y -p /opt/crispai -c conda-forge -c bioconda \
+      python=3.12 cas-offinder viennarna r-base bioconductor-nupop \
  && micromamba clean --all --yes \
- && ln -sf /opt/mamba/bin/cas-offinder /usr/local/bin/cas-offinder \
+ && ln -sf /opt/crispai/bin/cas-offinder /usr/local/bin/cas-offinder \
  && python -m pip install "torch==2.10.*" \
       -c /app/requirements/constraints-linux-cpu.txt \
       --index-url https://download.pytorch.org/whl/cpu
+ENV PATH=/opt/venv/bin:/opt/crispai/bin:$PATH \
+    PYTHONPATH=/opt/crispai/lib/python3.12/site-packages
 
 # ------------------------------------------------- default image (last stage)
 FROM python-runtime AS core
