@@ -17,6 +17,7 @@ import bisect
 import hashlib
 import json
 import os
+import subprocess
 import struct
 import sys
 import time
@@ -107,8 +108,33 @@ def genome_fingerprint(path):
     return digest.hexdigest()
 
 
+def _parse_vm_rss_mb(status_text):
+    """Parse current RSS from Linux /proc/<pid>/status, in MiB."""
+    for line in status_text.splitlines():
+        if not line.startswith("VmRSS:"):
+            continue
+        fields = line.split()
+        if len(fields) < 2:
+            return 0.0
+        try:
+            value = float(fields[1])
+        except ValueError:
+            return 0.0
+        unit = fields[2].lower() if len(fields) > 2 else "kb"
+        if unit == "kb":
+            return value / 1024.0
+        if unit == "mb":
+            return value
+        if unit == "gb":
+            return value * 1024.0
+        if unit == "b":
+            return value / 1048576.0
+        return 0.0
+    return 0.0
+
+
 def _current_rss_mb():
-    """Current resident set size in MB; returns 0.0 when unavailable."""
+    """Current resident set size in MiB; returns 0.0 when unavailable."""
     if sys.platform == "win32":
         try:
             import ctypes
@@ -146,14 +172,23 @@ def _current_rss_mb():
             return counters.WorkingSetSize / 1048576.0
         except Exception:
             return 0.0
-    try:
-        import resource
-        usage = resource.getrusage(resource.RUSAGE_SELF)
-        # ru_maxrss is KiB on Linux and bytes on macOS.
-        divisor = 1048576.0 if sys.platform == "darwin" else 1024.0
-        return usage.ru_maxrss / divisor
-    except Exception:
-        return 0.0
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/self/status", encoding="utf-8") as handle:
+                return _parse_vm_rss_mb(handle.read())
+        except (OSError, ValueError):
+            return 0.0
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "rss=", "-p", str(os.getpid())],
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            if result.returncode == 0:
+                return int(result.stdout.strip()) / 1024.0
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return 0.0
+    return 0.0
 
 
 class _MemTracker:

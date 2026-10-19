@@ -39,27 +39,10 @@ STATUS_LABELS = {
     "external": "External repository",
 }
 
-READY_STATUSES = (
-    "ready",
-    "ready_loaded",
-    "ready_unavailable",
-    "ready_runtime_missing",
-    "dependency_missing",
-)
+READY_STATUSES = ("ready", "ready_loaded")
 
 
-def adjust_status(key: str, status: str) -> str:
-    """Deep-model loadability correction, copied from main.py:1203-1210."""
-    if key == "crispr_m" and status == "ready":
-        loaded = deep_models.crispr_m_status(load=False) == "ready"
-        return "ready_loaded" if loaded else "ready_unavailable"
-    if key == "deepcrispr" and status == "ready":
-        available = deep_models.DeepCrisprPredictor.available()
-        return "ready" if available else "ready_runtime_missing"
-    if key == "deepcas12a" and status == "ready":
-        available = deep_models.DeepCas12aPredictor.available()
-        return "ready" if available else "ready_runtime_missing"
-    return status
+adjust_status = deep_models.adjust_model_status
 
 
 def deep_statuses() -> Dict[str, Any]:

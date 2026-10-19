@@ -12,6 +12,7 @@ launcher call cannot come back.
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -125,22 +126,64 @@ class NoRawLauncherTests(unittest.TestCase):
     }
     NEEDLES = ("os.startfile", '"xdg-open"', "'xdg-open'")
 
-    def test_no_raw_launcher_outside_the_helper(self):
+    @staticmethod
+    def _is_environment_prefix(path):
+        return (
+            os.path.isdir(os.path.join(path, "conda-meta"))
+            or os.path.isfile(os.path.join(path, "pyvenv.cfg"))
+        )
+
+    def _offenders(self, root=ROOT):
         offenders = []
-        for base, dirs, files in os.walk(ROOT):
-            dirs[:] = [d for d in dirs if d not in self.SKIP_DIRS]
+        for base, dirs, files in os.walk(root):
+            dirs[:] = [
+                name for name in dirs
+                if name not in self.SKIP_DIRS
+                and not self._is_environment_prefix(os.path.join(base, name))
+            ]
             for name in files:
                 if not name.endswith(".py"):
                     continue
                 path = os.path.join(base, name)
-                rel = os.path.relpath(path, ROOT)
+                rel = os.path.relpath(path, root)
                 if rel in self.ALLOWED:
                     continue
                 with open(path, encoding="utf-8", errors="replace") as handle:
                     text = handle.read()
                 if any(needle in text for needle in self.NEEDLES):
                     offenders.append(rel)
-        self.assertEqual(offenders, [])
+        return offenders
+
+    def test_no_raw_launcher_outside_the_helper(self):
+        self.assertEqual(self._offenders(), [])
+
+    def test_environment_prefixes_are_skipped_but_plain_env_is_scanned(self):
+        with tempfile.TemporaryDirectory() as root:
+            conda_prefix = os.path.join(root, "conda-prefix")
+            os.makedirs(os.path.join(conda_prefix, "conda-meta"))
+            with open(os.path.join(conda_prefix, "third_party.py"), "w",
+                      encoding="utf-8") as handle:
+                handle.write('subprocess.Popen(["xdg-open", "out"])')
+
+            venv_prefix = os.path.join(root, "project-venv")
+            os.makedirs(venv_prefix)
+            with open(os.path.join(venv_prefix, "pyvenv.cfg"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("home = /usr/bin\n")
+            with open(os.path.join(venv_prefix, "third_party.py"), "w",
+                      encoding="utf-8") as handle:
+                handle.write('subprocess.Popen(["xdg-open", "out"])')
+
+            plain_env = os.path.join(root, "env")
+            os.makedirs(plain_env)
+            with open(os.path.join(plain_env, "project_file.py"), "w",
+                      encoding="utf-8") as handle:
+                handle.write('subprocess.Popen(["xdg-open", "out"])')
+
+            self.assertEqual(
+                self._offenders(root),
+                [os.path.join("env", "project_file.py")],
+            )
 
 
 if __name__ == "__main__":

@@ -28,6 +28,9 @@ The executable is written to `native/bin/offtarget-engine` (`.exe` on
 Windows). Override the output directory with
 `-DOFFTARGET_RUNTIME_OUTPUT_DIRECTORY=...`.
 
+After unpacking the supplementary-data zip on Unix, restore the executable bit
+if the archive tool dropped it: `chmod +x bin/offtarget-engine`.
+
 ## Commands
 
 ```bash

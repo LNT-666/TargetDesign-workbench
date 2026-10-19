@@ -1,0 +1,14 @@
+# Python dependencies for the crispAI aggregate adapter.
+#
+# Included by requirements-linux.txt. Used by external_tools/crispAI-main and
+# the crispAI scoring bridge. R + NuPoP, Cas-OFFinder, and GRCh38/UCSC
+# chromosome FASTA files are non-pip prerequisites documented in docs/CRISPAI.md.
+pybdm>=0.1.0
+genomepy>=0.14.0
+jax>=0.4
+numpyro>=0.13
+tqdm>=4.60
+seaborn>=0.11
+
+# pybdm imports pkg_resources, which setuptools 81 removed.
+setuptools<81

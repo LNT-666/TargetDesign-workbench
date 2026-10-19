@@ -33,16 +33,37 @@ def get_flank(seq_str, pos, motif_len, side, flank_len, strand):
     )
     return seq_str[start:end]
 
+
+def print_usage(stream=sys.stdout):
+    print(
+        "Usage: python extract_complex_queries.py <input.fasta> <left_motif> "
+        "<right_motif> <min_gap> <max_gap> <left_side> <left_len> "
+        "<right_side> <right_len> <output.tsv>",
+        file=stream,
+    )
+    print("  Motif sequences may contain IUPAC degenerate bases (e.g., R, Y, N).", file=stream)
+    print("  left_side/right_side: upstream or downstream", file=stream)
+    print("  Left and right motifs are each matched on plus and minus strands.", file=stream)
+    print(
+        "  Example: python extract_complex_queries.py rRNA.fa TTAT CCGG 5 20 "
+        "upstream 10 downstream 15 queries.tsv",
+        file=stream,
+    )
+
+
 def main():
-    if len(sys.argv) != 11:
-        print("""Usage: python extract_complex_queries.py <input.fasta> <left_motif> <right_motif>
-                 <min_gap> <max_gap> <left_side> <left_len> <right_side> <right_len> <output.tsv>
-        Motif sequences may contain IUPAC degenerate bases (e.g., R, Y, N).
-        left_side/right_side: upstream or downstream
-        Left and right motifs are each matched on plus and minus, so all four
-        strand combinations are considered.
-        Example: python extract_complex_queries.py rRNA.fa TTAT CCGG 5 20 upstream 10 downstream 15 queries.tsv
-        """)
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print_usage()
+        return
+    unknown = [arg for arg in args if arg.startswith("-")]
+    if unknown:
+        print("Error: unknown option: %s" % unknown[0], file=sys.stderr)
+        print_usage(sys.stderr)
+        sys.exit(2)
+    if len(args) != 10:
+        print("Error: expected 10 positional arguments", file=sys.stderr)
+        print_usage(sys.stderr)
         sys.exit(1)
 
     input_fasta = sys.argv[1]

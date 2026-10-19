@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import csv
 import re
 import subprocess
 import sys
@@ -2182,46 +2181,6 @@ class PatternDesignerWorkbench:
                 values=[str(row.get(col, "")) for col in columns],
             )
         self.export_button.config(state=tk.NORMAL)
-
-    def _populate_library_results(self, output_dir: str) -> None:
-        path = os.path.join(output_dir, "library_scores.tsv")
-        if not os.path.isfile(path):
-            self._log_line(
-                "Library scores not found: %s" % path
-            )
-            return
-        try:
-            with open(path, "r", encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader(handle, delimiter="\t")
-                rows = [dict(row) for row in reader]
-        except Exception as exc:
-            self._log_line(f"Failed to read library scores: {exc}")
-            return
-
-        self.last_result_rows = rows
-        self.result_tree.delete(*self.result_tree.get_children())
-        if not rows:
-            self.export_button.config(state=tk.DISABLED)
-            return
-
-        columns = list(rows[0].keys())
-        self.result_tree.configure(columns=columns)
-        for col in columns:
-            self.result_tree.heading(col, text=col)
-            self.result_tree.column(
-                col,
-                width=110,
-                minwidth=70,
-                stretch=True,
-            )
-        for row in rows:
-            self.result_tree.insert(
-                "",
-                tk.END,
-                values=[str(row.get(col, "")) for col in columns],
-            )
-        self.export_button.config(state=tk.NORMAL)
-        self._log_line("Loaded %d library candidate(s)" % len(rows))
 
     def _export_selected(self) -> None:
         selected = self.result_tree.selection()

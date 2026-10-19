@@ -5,7 +5,7 @@ name: container
 #
 #   - manual run: Actions -> container -> Run workflow (set version / whether to build the
 #     full target / whether to publish)
-#   - tag run:    push a tag like v0.3.0 and the version is taken from the tag
+#   - tag run:    push a tag like v<version> and the version is taken from the tag
 #
 # Images produced:
 #   ghcr.io/<owner>/targetdesign-workbench:<version>         default image (core target)
@@ -13,17 +13,17 @@ name: container
 #   ghcr.io/<owner>/targetdesign-workbench:<version>-full    adds ViennaRNA, Cas-OFFinder,
 #                                                            R + NuPoP and a CPU PyTorch build
 #
-# The images are built by the repository, and their visibility follows the repository:
-# while the repository is private the packages are private too, so a reviewer cannot pull
-# them until the package visibility is changed to public (see docs/CONTAINER.md).
+# The workflow builds on GitHub runners. Package visibility is controlled separately in
+# the GHCR package settings; it does not automatically follow repository visibility
+# (see docs/CONTAINER.md).
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Image version tag"
-        required: true
-        default: "0.3.0"
+        description: "Image version tag (leave blank to use pyproject.toml project.version)"
+        required: false
+        default: ""
       build_full:
         description: "Also build the full target (ViennaRNA, Cas-OFFinder, R + NuPoP, CPU torch)"
         type: boolean
@@ -48,13 +48,32 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Resolve the image reference and the version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
+          set -euo pipefail
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [ -n "${REQUESTED_VERSION:-}" ]; then
+            VERSION="${REQUESTED_VERSION}"
           else
-            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+            if ! VERSION="$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"])')"; then
+              echo "::error::Unable to read [project].version from pyproject.toml"
+              exit 1
+            fi
           fi
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Image version is empty; set the workflow input or pyproject.toml [project].version"
+            exit 1
+          fi
+          case "${VERSION}" in
+            *[!A-Za-z0-9._-]*)
+              echo "::error::Invalid image version '${VERSION}'; use only A-Z, a-z, 0-9, '.', '_' or '-'"
+              exit 1
+              ;;
+          esac
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Check the requirements against the imports
         run: |
@@ -133,8 +152,32 @@ jobs:
             ${{ env.IMAGE }}:latest
           cache-from: type=gha
 
-      - name: Build and publish the full image
-        if: ${{ github.event_name == 'push' || inputs.build_full }}
+      - name: Build the full image locally for verification
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish && inputs.build_full }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: full
+          load: true
+          tags: tdb-full:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the full image
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish && inputs.build_full }}
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint bash tdb-full:ci -lc '
+            set -euo pipefail
+            python -c "import torch, RNA; print(\"torch\", torch.__version__)"
+            command -v RNAfold
+            command -v cas-offinder
+            command -v Rscript
+            Rscript -e "library(NuPoP); cat(\"NuPoP available\n\")"
+          '
+
+      - name: Publish the full image
+        if: ${{ github.event_name == 'push' || (inputs.publish && inputs.build_full) }}
         uses: docker/build-push-action@v6
         with:
           context: .

@@ -8,7 +8,7 @@
 #   bash tools/serve_webapp.sh status  [--port 5000]
 #
 # start detaches "python webapp/app.py" with nohup, records its pid in
-# logs/webapp.pid, appends its output to logs/webapp.log and waits for the
+# logs/webapp.PORT.pid, appends its output to logs/webapp.PORT.log and waits for the
 # front page to answer HTTP 200 before reporting success (the first start on a
 # network share can take over a minute).
 #
@@ -18,18 +18,18 @@
 # kept serving.
 #
 # The interpreter is $PYTHON when set, otherwise .venv/bin/python when present,
-# otherwise python3. logs/ is gitignored. One instance per checkout: the pid
-# file and the log are shared by every port.
+# otherwise python3. logs/ is gitignored. One instance per checkout and port:
+# the pid file and log are scoped to the selected port. `status` without
+# --port scans every recorded pid file instead of probing only port 5000.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$HERE")"
 cd "$ROOT" || exit 1
 
-PID_FILE="logs/webapp.pid"
-LOG_FILE="logs/webapp.log"
 HOST="0.0.0.0"
 PORT="5000"
+PORT_EXPLICIT=0
 WAIT_SECONDS="${WEBAPP_WAIT_SECONDS:-120}"
 
 usage() {
@@ -39,7 +39,7 @@ usage: bash tools/serve_webapp.sh {start|stop|restart|status} [--host H] [--port
   start    background the web workbench and wait for HTTP 200 (default)
   stop     end it, and anything else listening on the port
   restart  stop, then start
-  status   pid file, listening pids, HTTP code and log path
+  status   inspect --port N, or every recorded port when --port is omitted
 
 Environment:
   PYTHON               interpreter to use (default: .venv/bin/python, else python3)
@@ -57,7 +57,7 @@ shift
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --host) HOST="${2:-}"; shift 2 ;;
-    --port) PORT="${2:-}"; shift 2 ;;
+    --port) PORT="${2:-}"; PORT_EXPLICIT=1; shift 2 ;;
     -h|--help) usage ;;
     *) echo "unknown option: $1" >&2; usage ;;
   esac
@@ -65,6 +65,9 @@ done
 case "$PORT" in
   ''|*[!0-9]*) echo "bad port: ${PORT}" >&2; exit 2 ;;
 esac
+
+PID_FILE="logs/webapp.${PORT}.pid"
+LOG_FILE="logs/webapp.${PORT}.log"
 
 # ---------- helpers ----------
 
@@ -205,19 +208,46 @@ do_stop() {
   echo "==> stopped; port ${PORT} is free"
 }
 
-do_status() {
+status_one() {
   local pid lines
   pid="$(recorded_pid || true)"
   lines=""
   if [ -f "$LOG_FILE" ]; then
     lines=" ($(wc -l < "$LOG_FILE") lines)"
   fi
+  printf 'port         : %s\n' "$PORT"
   printf 'pid file     : %s\n' "$PID_FILE"
   printf 'recorded pid : %s\n' "${pid:-none}"
   printf 'listening    : %s\n' "$(port_pids | tr '\n' ' ' | sed 's/ $//')"
   printf 'http code    : %s\n' "$(http_code)"
   printf 'log          : %s%s\n' "$LOG_FILE" "$lines"
   describe_pids
+}
+
+do_status() {
+  if [ "$PORT_EXPLICIT" -eq 1 ]; then
+    status_one
+    return
+  fi
+
+  local found=0 pid_file name port
+  for pid_file in logs/webapp.*.pid; do
+    [ -f "$pid_file" ] || continue
+    name="${pid_file#logs/webapp.}"
+    port="${name%.pid}"
+    case "$port" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    PID_FILE="$pid_file"
+    LOG_FILE="logs/webapp.${port}.log"
+    PORT="$port"
+    [ "$found" -eq 0 ] || printf '\n'
+    status_one
+    found=1
+  done
+  if [ "$found" -eq 0 ]; then
+    echo "no recorded instances"
+  fi
 }
 
 case "$action" in

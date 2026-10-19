@@ -1,0 +1,5 @@
+# Tested Linux CUDA entry point. Use with constraints-linux-cuda.txt; the extra
+# explicitly installs the TensorFlow CUDA runtime dependencies.
+-r ../requirements-linux.txt
+torch==2.10.*
+tensorflow[and-cuda]==2.20.*

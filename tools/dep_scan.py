@@ -80,7 +80,7 @@ ENTRY_DIRS = ("basic", "tools", "Target_xbp_Target", "Target_xbp_Y_zbp_Target")
 #: tree, so the scan cannot see its imports.
 OFFLINE_ONLY = {
     "matplotlib": "figure scripts under docs/figures (not published)",
-    "scikit-learn": "one-off Azimuth conversion, see docs/ENVIRONMENT.md",
+    "scikit-learn": "optional offline analysis/figure helpers, see docs/DEPENDENCIES.md",
     "scipy": "offline analysis helpers",
     "tensorboardx": "training logs of the offline model conversions",
     "pybdm": "upstream crispAI script (external_tools/, not published)",
@@ -89,6 +89,7 @@ OFFLINE_ONLY = {
     "numpyro": "upstream crispAI script",
     "tqdm": "upstream crispAI script",
     "seaborn": "upstream crispAI script",
+    "setuptools": "pybdm runtime dependency for pkg_resources",
 }
 
 STD_TOP: Set[str] = set(sys.stdlib_module_names) | {"__future__"}
@@ -126,12 +127,20 @@ def _expand(path: str, found: List[str]) -> None:
 
 def file_sets() -> Tuple[List[str], List[str]]:
     """(tracked, untracked) .py files, as git sees them."""
-    tracked = [p.replace(os.sep, "/") for p in git("ls-files", "-z", "*.py").split("\0") if p]
-    untracked: List[str] = []
-    for line in git("status", "--porcelain").splitlines():
-        if line.startswith("??"):
-            _expand(line[3:].strip().replace("\\", "/"), untracked)
-    return sorted(set(tracked)), sorted(set(untracked) - set(tracked))
+    try:
+        tracked = [p.replace(os.sep, "/") for p in
+                   git("ls-files", "-z", "*.py").split("\0") if p]
+        untracked: List[str] = []
+        for line in git("status", "--porcelain").splitlines():
+            if line.startswith("??"):
+                _expand(line[3:].strip().replace("\\", "/"), untracked)
+        return sorted(set(tracked)), sorted(set(untracked) - set(tracked))
+    except (OSError, subprocess.CalledProcessError):
+        print("not a git checkout; falling back to filesystem walk",
+              file=sys.stderr)
+        walked: List[str] = []
+        _expand(".", walked)
+        return sorted(set(walked)), []
 
 
 def module_map(files) -> Dict[str, str]:

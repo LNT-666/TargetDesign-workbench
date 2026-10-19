@@ -2,10 +2,10 @@
 #
 # TargetDesign-workbench - stand-alone application container image.
 #
-#   docker build -t targetdesign-workbench:0.3.0 .                     # default (core) image
-#   docker build --target full -t targetdesign-workbench:0.3.0-full .  # core + optional adapters
+#   docker build -t targetdesign-workbench:<version> .                     # default (core) image
+#   docker build --target full -t targetdesign-workbench:<version>-full .  # core + optional adapters
 #
-#   docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.3.0
+#   docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:<version>
 #
 # then open http://localhost:5000 . The container starts the local web workbench
 # (webapp/app.py, Python standard library only) together with the native C++20
@@ -46,6 +46,7 @@ RUN apt-get update \
  && python -m pip install --upgrade pip
 WORKDIR /app
 COPY requirements.txt ./
+COPY requirements/constraints-linux-cpu.txt ./requirements/constraints-linux-cpu.txt
 # requirements.txt is the complete runtime set of the workbench. The imports are
 # derived from the source by tools/dep_scan.py, which fails if a hard import is
 # missing from the requirement files, so this layer cannot drift from the code.
@@ -53,7 +54,7 @@ COPY requirements.txt ./
 # not installed here: no shipped module imports scipy/scikit-learn/matplotlib,
 # and pandas is only used by the TIGER scorer, which needs TensorFlow and is
 # therefore not usable in this image either.
-RUN python -m pip install -r requirements.txt
+RUN python -m pip install -c requirements/constraints-linux-cpu.txt -r requirements.txt
 COPY . .
 COPY --from=engine-build /src/native/bin/offtarget-engine /app/native/bin/offtarget-engine
 RUN chmod +x /app/native/bin/offtarget-engine \
@@ -79,7 +80,9 @@ RUN apt-get update \
       cas-offinder viennarna r-base bioconductor-nupop \
  && micromamba clean --all --yes \
  && ln -sf /opt/mamba/bin/cas-offinder /usr/local/bin/cas-offinder \
- && python -m pip install "torch>=2.0" --index-url https://download.pytorch.org/whl/cpu
+ && python -m pip install "torch==2.10.*" \
+      -c /app/requirements/constraints-linux-cpu.txt \
+      --index-url https://download.pytorch.org/whl/cpu
 
 # ------------------------------------------------- default image (last stage)
 FROM python-runtime AS core

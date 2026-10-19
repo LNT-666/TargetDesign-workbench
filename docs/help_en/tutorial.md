@@ -59,9 +59,13 @@ be downloaded. `sample_data/README.md` documents them in more detail.
 
 ### 2.1 Container
 
+Set `VERSION` to `[project].version` from `pyproject.toml`, the single
+image-version source, before running these commands.
+
 ```bash
-docker build -t targetdesign-workbench:0.3.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.3.0
+VERSION="<version>"  # pyproject.toml [project].version
+docker build -t targetdesign-workbench:$VERSION .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:$VERSION
 ```
 
 **Expected:** the build finishes and the run prints the web address. Open

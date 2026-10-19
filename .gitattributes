@@ -1,6 +1,7 @@
 # Normalise line endings in the repository; keep shell scripts LF for Linux.
 * text=auto
 *.sh text eol=lf
+requirements/*.txt text eol=lf
 
 # Binary assets
 *.png binary
@@ -15,3 +16,7 @@
 # Test fixtures are compared byte for byte, so keep them out of the
 # line-ending conversion that ``* text=auto`` turns on.
 tests/data/** -text
+
+# The small benchmark fixtures are shipped byte for byte.  The release staging
+# tool normalises their text files to LF when assembling the public bundle.
+example/** -text

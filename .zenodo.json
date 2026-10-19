@@ -4,12 +4,13 @@
   "upload_type": "software",
   "access_right": "open",
   "license": "mit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "language": "eng",
   "creators": [
     {
       "name": "Song, Ji",
-      "affiliation": "School of Mathematics, Sun Yat-sen University, Guangzhou, Guangdong 510275, China"
+      "affiliation": "School of Mathematics, Sun Yat-sen University, Guangzhou, Guangdong 510275, China",
+      "orcid": "https://orcid.org/0009-0007-5408-9580"
     },
     {
       "name": "Shi, Shasha",
@@ -17,7 +18,7 @@
     },
     {
       "name": "Wang, Saisai",
-      "affiliation": "中国科学院微生物研究所"
+      "affiliation": "Institute of Microbiology, Chinese Academy of Sciences"
     }
   ],
   "keywords": [

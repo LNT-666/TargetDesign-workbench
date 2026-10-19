@@ -166,6 +166,7 @@ PROGRAMFILE_NATIVE_INDEXED_FALLBACK=1
 加固定开销估算，预留 2 GiB 后仅在不超过当前可用内存一半时启用缓存。
 最终 hit 仍按 qid 在内存中汇总。
 Python indexed 继续保留为 native 二进制缺失、不兼容或显式禁用时的 fallback，
-不会删除。`auto` 在 200 Mbp 以内优先 native indexed，大型基因组仍优先
+不会删除。`auto` 在 200 MiB of FASTA file bytes (about 206 Mbp at 60 characters
+per line) 以内优先 native indexed，大型基因组仍优先
 BLAST。native 与 Python 的差分测试和索引双向兼容测试见
 `tests/test_native_indexed.py`。

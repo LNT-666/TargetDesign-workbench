@@ -40,13 +40,14 @@ of enabling bulge search, not bulge recall.
 
 ## Notes
 
-- Auto rule derived from this benchmark: explicit `--blastdb` selects BLAST;
-  explicit `--index-path` selects indexed. With neither resource and at most
-  200 Mbp, use native indexed when available. Without native indexed,
-  `max_bulge=0` tries BLAST, Bowtie2, Python indexed, Cas-OFFinder, then
-  exact; `max_bulge=1` tries BLAST, Bowtie2, exact, then Python indexed.
-  Above 200 Mbp, prefer BLAST over automatically building a very large index.
-  If `max_bulge` is not explicit, auto defaults to `max_bulge=0`.
+- Auto rule derived from this benchmark and `auto_engine_candidates()`: explicit
+  `--blastdb` selects BLAST; explicit `--index-path` selects indexed. With
+  neither resource and at most 200 MiB of FASTA file bytes (about 206 Mbp at 60
+  characters per line), use native indexed first when available, then BLAST,
+  then exact. Without native indexed, `max_bulge=0` tries BLAST, indexed, then
+  exact; `max_bulge>0` tries BLAST, exact, then indexed. Above 200 MiB of FASTA
+  file bytes, prefer BLAST over automatically building a very large index. If
+  `max_bulge` is not explicit, auto defaults to `max_bulge=0`.
 - `GGGenome` searches remote prebuilt genome databases and cannot be compared
   against this custom FASTA fixture.
 - A separate 1-mismatch stress run returned 36/36 hits from exact, indexed,

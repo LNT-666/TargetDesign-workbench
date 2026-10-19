@@ -40,15 +40,20 @@ engine, so no Python or third-party installation is needed on the host.
 Requirements: Docker Engine 24 or newer (or Podman with the equivalent
 `build`/`run` commands) and about 4 GB of free disk space.
 
+The single image-version source is `[project].version` in `pyproject.toml`. Set
+`VERSION` to that value before building or running the image.
+
 ```bash
-docker build -t targetdesign-workbench:0.3.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.3.0
+VERSION="<version>"  # pyproject.toml [project].version
+docker build -t targetdesign-workbench:$VERSION .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:$VERSION
 ```
 
 Then open <http://localhost:5000>. The port is published on the loopback
 interface only; publish `-p 5000:5000` instead if other machines should reach
-it. With Compose, `docker compose up --build` uses the same defaults and keeps
-run data in `./data`.
+it. With Compose, run `TAG="$VERSION" docker compose up --build`; the required
+`TAG` prevents Compose from silently selecting a mismatched image version, while
+run data stays in `./data`.
 
 Genomes, indexes and exported runs live in the volume mounted at `/data` (the
 `TARGETDESIGN_DATA` environment variable), so a rebuilt image never discards a

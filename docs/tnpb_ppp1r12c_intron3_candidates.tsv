@@ -8,7 +8,7 @@
 # Transcribed from the run deliverables output/TnpB_PPP1R12C-intron3_scores.tsv
 # and output/TnpB_PPP1R12C-intron3/query_scores.bed; that directory is not part
 # of the release tree, so the numbers are recorded here (engine:
-# docs/NATIVE_INDEXED_BENCHMARK.md; registration: FILL_REGISTER P6).
+# example/engine_benchmark_small/REPORT.md; registration: FILL_REGISTER P6).
 pos_id	strand	start	end	perfect_matches	matches_within_4mm
 PPP1R12C-intron3_plus_0	plus	1022	1046	1	5
 PPP1R12C-intron3_plus_1	plus	1225	1249	1	1

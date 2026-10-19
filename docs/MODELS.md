@@ -4,11 +4,9 @@
 
 | 模型键 | 文件 | 格式 | 大小 | SHA256 | 注册表状态 | 真实可用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| crispr_m | `tcrispr_model.h5` | Keras HDF5 权重 | 20,820,808 B | `9D6C307C26930E10CEC38D5508069311F2E868716F9A027CE8DA47CF564A7E3E` | ready | **可用**：纯 NumPy 前向已验证，样例输出 0.6321092247962952 |
+| crispr_m | `tcrispr_model.h5` | Keras HDF5 权重 | 20,828,208 B | `9D6C307C26930E10CEC38D5508069311F2E868716F9A027CE8DA47CF564A7E3E` | ready | **可用**：纯 NumPy 前向已验证，样例输出 0.6321092247962952 |
 | deepcrispr | `deepcrispr_offtar_pt_cnn_reg.tar.gz` | TensorFlow 1.x checkpoint（tar.gz） | 29,160,245 B（解压 data 44,228,628 B） | `88A272791B72E915632B815FCE0118F7A6140AFBA99CFC458E51DB778395398C` | ready（仅文件） | 原始 checkpoint 需要 TF，已转成下面的可移植文件 |
 | deepcrispr | `deepcrispr_offtar_pt_cnn_reg.portable.npz` | NumPy 权重（67 个张量） | 14,778,336 B | `468A2B00F94A8A099EC2D4D91D23C7B03380F382F29209DF925D990AA95AEAA4` | - | **可用**：NumPy 前向与 TensorFlow 参考输出最大误差 3e-7 |
-| azimuth | `azimuth_V3_model_nopos.pickle` | 旧版 scikit-learn pickle（GradientBoostingRegressor） | 135,380 B | `AF933634BE494336BC95BF657B07F7599AF842A2E9601797C88A49158D040214` | ready（仅文件） | 原始 pickle 需要旧版 sklearn，已转成下面的可移植文件 |
-| azimuth | `azimuth_V3_model_nopos.portable.npz` | NumPy GBDT 树（100 棵）+ 特征顺序 | 194,548 B | `9659ED5B58A77A94F7306CE20BDE571949656DEA7756EF8E99784A8E89A5E6FB` | - | **可用**：与官方 1000 条参考样例 Spearman 0.993，MAE 0.0073 |
 | teep | 无本地文件 | 在线 HTTP API | - | - | web_api | **可用但依赖网络**：调用 `https://www.tnpb.app/` 的 TEEP CNN/RNN 预测；没有本地权重、缓存或版本锁定 |
 
 ## 选用对比
@@ -18,7 +16,6 @@ On-target 模型：
 | 模型 | 用途 | 特点 | 优点 | 缺点 |
 | --- | --- | --- | --- | --- |
 | CROPSR | Cas9 on-target | 已发表的 Doench/CROPSR 逻辑回归系数；对 30mer 窗口计算，长窗口取最佳 30mer | 纯数值计算，速度快、无外部依赖、结果可复现 | 只面向 Cas9/30mer 结构，非标准窗口会退回启发式 |
-| Azimuth V3 nopos | Cas9 on-target | GBDT 回归（100 棵树），含 order1/order2、GC、NGGX、Tm 特征 | 参考验证好（Spearman 0.993）；不依赖旧版 sklearn | 当前不是默认入口；训练数据年代较早 |
 | DeepCpf1 | Cas12a/Cpf1 on-target | 序列 CNN 模型，HDF5 权重 | 面向 Cas12a/Cpf1 的专项模型 | 需显式选择；输入不足 34 bp 时回退启发式 |
 | TEEP | ISDra2 TnpBmax on-target | 在线 CNN + Bi-LSTM API，预测 20 nt 引导序列 | 针对 ISDra2/TnpBmax 的专项预测 | 需要网络、逐条查询较慢；失败时退回通用启发式，不会退回 omegaRNA 规则 |
 | omegaRNA 规则 | TnpB on-target 编辑效率 | 本地确定性规则：长度、GC、发夹、repeat | 离线可用、快速、稳定 | 是简化规则，不是训练模型；属 on-target 效率规则，不是特异性评分 |
@@ -72,6 +69,10 @@ TensorFlow，因此状态是“文件已下载但运行时不可用”。
 4 个可选的表观通道）和完整 CNN 前向；与 TensorFlow 参考图在 100 条官方示例上的
 最大输出误差为 `2.98e-7`。
 
+portable npz 由转换脚本生成。zip/npz 容器中的时间戳和压缩参数会让重新生成文件的
+SHA256 发生变化，因此不能只凭 SHA256 判断权重是否损坏；完整性应同时核对预期字节数、
+转换是否成功以及参考输出误差检查。
+
 ## DeepCpf1
 
 `seq_deepcpf1_weights.h5` 是 DeepCpf1 的序列-only Cas12a/Cpf1 on-target 权重。
@@ -86,26 +87,6 @@ DeepCpf1 输出是原始编辑效率回归值，不是 0-1 概率。选择 `deep
 会作为 Cas12a 的 on-target 分数写入 `on_target_score`，原始模型值同时写入
 `deepcpf1_on_target`；模型未就绪或输入不足 34 bp 时回退启发式并标记
 `deepcpf1_fallback`。
-
-## Azimuth
-
-`azimuth_V3_model_nopos.pickle` 是 Azimuth V3 `nopos` 模型的旧版 scikit-learn
-pickle。pickle 内引用 `sklearn.ensemble.gradient_boosting.GradientBoostingRegressor`；
-该模块路径在 scikit-learn 1.1+ 被移除，直接加载会报：
-
-```text
-ModuleNotFoundError: No module named 'sklearn.ensemble.gradient_boosting'
-```
-
-因此需要在 Python 3.10 备用环境安装 `scikit-learn==1.0.2` 后加载，再转成
-不依赖旧模块路径的可移植格式。
-
-`azimuth_V3_model_nopos.portable.npz` 包含 100 棵回归树和特征顺序。
-`shared/scoring/azimuth_predictor.py` 在纯 NumPy 下复刻 V3 `nopos` 的 30mer 特征：
-order1/order2 核酸特征、GC、NGGX 和 SantaLucia Tm。
-官方 `1000guides.csv` 参考中 561/947 条完全一致，整体 Spearman 0.993、
-MAE 0.0073；残余差异来自官方参考与当前仓库保存模型之间的版本漂移
-（Azimuth 自带的测试注释也声明预测可能因模型随机性失败）。
 
 ## TIGER (Cas13d)
 
@@ -199,11 +180,21 @@ off-target 用 `cas13_pfs_off_target_specificity`（按
 
 ## 状态定义
 
-Phase 1 会把注册表状态从“文件存在且大小匹配”细化为：
+以下词表与当前注册表和 Web 模型服务的实现一致：
 
 | 状态 | 含义 |
 | --- | --- |
-| `not_downloaded` | 模型文件未下载 |
-| `load_error` | 文件存在但无法加载 |
-| `ready` | 文件存在且运行时可加载 |
-| `prediction_error` | 已加载但推理失败 |
+| `ready` | 所需文件存在且运行时依赖可用；Web 可立即使用 |
+| `ready_loaded` | 模型已加载到当前评分进程；Web 可立即使用 |
+| `ready_unavailable` | 文件已就绪但当前进程无法加载；不能立即用于 Web 评分 |
+| `ready_runtime_missing` | UI 中表示“已下载但运行时缺失”的别名；不能立即使用 |
+| `dependency_missing` | 模型文件存在，但所需 Python/外部运行时缺失 |
+| `needs_conversion` | 原始 checkpoint 存在，仍需转换为可移植格式 |
+| `not_downloaded` | 模型文件或目录不完整 |
+| `size_mismatch` | 文件大小超出注册表容差 |
+| `web_api` | 仅通过在线 API 提供，无本地权重 |
+| `external` | 位于外部仓库，需要手工环境准备 |
+| `load_error` | 文件存在但加载过程中报错 |
+
+只有 `ready` 与 `ready_loaded` 表示 Web 可立即使用；其余状态都需要下载、转换、
+安装运行时、修复文件或依赖网络。

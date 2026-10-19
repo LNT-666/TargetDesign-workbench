@@ -1201,15 +1201,7 @@ class MainApp(gui_common.CommonGUIMixin):
         statuses = model_registry.get_all_statuses()
         for key, var in self.model_vars.items():
             status = statuses[key]
-            if key == "crispr_m" and status == "ready":
-                status = ("ready_loaded" if deep_models.crispr_m_status(load=False) == "ready"
-                          else "ready_unavailable")
-            if key == "deepcrispr" and status == "ready":
-                status = ("ready" if deep_models.DeepCrisprPredictor.available()
-                          else "ready_runtime_missing")
-            if key == "deepcas12a" and status == "ready":
-                status = ("ready" if deep_models.DeepCas12aPredictor.available()
-                          else "ready_runtime_missing")
+            status = deep_models.adjust_model_status(key, status)
             if key in self.model_downloading:
                 text = "Downloading..."
                 label_style = "Downloading.TLabel"
@@ -1248,7 +1240,8 @@ class MainApp(gui_common.CommonGUIMixin):
                     if key in self.model_downloading:
                         download_btn.config(state=tk.DISABLED, text="Download")
                     elif status in ("ready", "ready_loaded", "ready_unavailable",
-                                    "ready_runtime_missing", "dependency_missing"):
+                                    "ready_runtime_missing", "dependency_missing",
+                                    "needs_conversion"):
                         download_btn.config(state=tk.DISABLED, text="Downloaded")
                     else:
                         download_btn.config(state=tk.NORMAL, text="Download")
@@ -1265,7 +1258,8 @@ class MainApp(gui_common.CommonGUIMixin):
                     progress_var.set(
                         100.0 if status in (
                             "ready", "ready_loaded", "ready_unavailable",
-                            "ready_runtime_missing", "dependency_missing") else 0.0)
+                            "ready_runtime_missing", "dependency_missing",
+                            "needs_conversion") else 0.0)
 
     def download_model_gui(self, key):
         if key in self.model_downloading:

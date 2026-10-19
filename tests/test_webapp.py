@@ -791,6 +791,46 @@ class ModelServiceTests(unittest.TestCase):
                 self.assertIn("path", model)
         self.assertIn("crispr_m", keys)
 
+    def test_needs_conversion_is_reported_and_not_ready(self):
+        self.assertIs(
+            models_service.adjust_status,
+            models_service.deep_models.adjust_model_status,
+        )
+        self.assertEqual(models_service.READY_STATUSES, ("ready", "ready_loaded"))
+        with mock.patch.object(
+                model_registry, "get_all_statuses",
+                return_value={"deepcrispr": "ready"}), \
+                mock.patch.object(
+                    models_service.deep_models.DeepCrisprPredictor,
+                    "status", return_value="needs_conversion") as status:
+            data = models_service.list_models()
+
+        model = next(
+            item for group in data["groups"] for item in group["models"]
+            if item["key"] == "deepcrispr"
+        )
+        self.assertEqual(model["status"], "needs_conversion")
+        self.assertEqual(model["status_label"], "Downloaded (needs conversion)")
+        self.assertFalse(model["is_ready"])
+        self.assertIn(mock.call(load=True), status.call_args_list)
+
+    def test_deepcas12a_dependency_status_is_not_ready(self):
+        with mock.patch.object(
+                model_registry, "get_all_statuses",
+                return_value={"deepcas12a": "ready"}), \
+                mock.patch.object(
+                    models_service.deep_models.DeepCas12aPredictor,
+                    "status", return_value="dependency_missing") as status:
+            data = models_service.list_models()
+
+        model = next(
+            item for group in data["groups"] for item in group["models"]
+            if item["key"] == "deepcas12a"
+        )
+        self.assertEqual(model["status"], "dependency_missing")
+        self.assertFalse(model["is_ready"])
+        status.assert_called_once_with()
+
     def test_model_descriptions_come_from_the_registry(self):
         data = models_service.list_models()
         keys = []

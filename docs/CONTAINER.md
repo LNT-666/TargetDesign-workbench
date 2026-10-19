@@ -7,14 +7,22 @@ the host.
 
 ## Pulling the published image
 
+The release version's single source is `[project].version` in `pyproject.toml`. Set
+`VERSION` to that value before using the examples below; no second hard-coded image tag
+needs to be maintained.
+
 The images are built, smoke-tested and published by the `container` workflow
 (`.github/workflows/container.yml`) on GitHub's runners, so producing or obtaining them needs no
-local Docker installation:
+local Docker installation. For a verification-only run, start the workflow manually with
+`publish=false` and `build_full=true`. The runner builds both targets without logging in to GHCR,
+smoke-tests the core web/native surface and checks that the full image imports CPU PyTorch plus
+the bundled ViennaRNA, Cas-OFFinder and R/NuPoP tools:
 
 ```bash
-docker pull ghcr.io/lnt-666/targetdesign-workbench:latest       # default image
-docker pull ghcr.io/lnt-666/targetdesign-workbench:0.3.0-full   # with the optional adapters
-docker run --rm -p 127.0.0.1:5000:5000 ghcr.io/lnt-666/targetdesign-workbench:latest
+VERSION="<version>"  # pyproject.toml [project].version
+docker pull ghcr.io/lnt-666/targetdesign-workbench:$VERSION
+docker pull ghcr.io/lnt-666/targetdesign-workbench:$VERSION-full
+docker run --rm -p 127.0.0.1:5000:5000 ghcr.io/lnt-666/targetdesign-workbench:$VERSION
 ```
 
 Image visibility is set separately from the repository. This package is public, so the images can
@@ -30,8 +38,9 @@ be pulled without an account and without a prior `docker login`.
 ## Build and run
 
 ```bash
-docker build -t targetdesign-workbench:0.3.0 .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:0.3.0
+VERSION="<version>"  # pyproject.toml [project].version
+docker build -t targetdesign-workbench:$VERSION .
+docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:$VERSION
 ```
 
 Then open <http://localhost:5000>. The port is published on the loopback interface only;
@@ -40,10 +49,12 @@ add `-p 5000:5000` instead if other machines should reach it.
 With Compose:
 
 ```bash
-docker compose up --build
+VERSION="<version>"  # pyproject.toml [project].version
+TAG="$VERSION" docker compose up --build
 ```
 
-`docker-compose.yml` uses the same defaults and keeps run data in `./data`.
+`docker-compose.yml` requires `TAG` so Compose fails with a clear message instead of silently
+pulling a mismatched image tag. Run data remains in `./data`.
 
 The native engine is compiled during the build and its unit tests are executed by `ctest`,
 so a successful build already reports the engine version and passes the engine test suite.
@@ -57,8 +68,8 @@ public, so anyone can pull the images without an account (verified anonymously o
 also checked on a Linux host with GCC 13.3 and CMake 3.28 (1/1 test passed,
 `offtarget-engine 0.1.0 index-format=1`), and the web workbench answered HTTP 200 on `/`,
 `/static/styles.css` and `/static/app.js`. Both targets are built and published by the same
-workflow, `.github/workflows/container.yml`. Neither this workstation nor the lab server has Docker or
-Podman, so the image was not rebuilt locally.
+workflow, `.github/workflows/container.yml`. Container builds are intentionally delegated to
+GitHub runners; local Docker or Podman is not a verification requirement.
 
 ## Operating-system coverage
 
@@ -95,8 +106,8 @@ Neither needs a download or any host installation.
 
 | Target | Contents | Command |
 | --- | --- | --- |
-| `core` (default) | engine + web workbench + core Python stack (numpy, h5py, biopython, pyfaidx, openpyxl, pandas, scipy, scikit-learn, matplotlib) | `docker build -t tdb:0.3.0 .` |
-| `full` | `core` plus ViennaRNA, Cas-OFFinder, R + NuPoP (crispAI adapter) and a CPU PyTorch build | `docker build --target full -t tdb:0.3.0-full .` |
+| `core` (default) | engine + web workbench + core Python stack (numpy, h5py, biopython, pyfaidx, openpyxl, pandas, scipy, scikit-learn, matplotlib) | `docker build -t tdb:$VERSION .` |
+| `full` | `core` plus ViennaRNA, Cas-OFFinder, R + NuPoP (crispAI adapter) and a CPU PyTorch build | `docker build --target full -t tdb:$VERSION-full .` |
 
 ## What is not inside the image
 
@@ -112,7 +123,7 @@ Neither needs a download or any host installation.
 ## Command-line access to the same container
 
 ```bash
-docker run --rm -v targetdesign-data:/data targetdesign-workbench:0.3.0 \
+docker run --rm -v targetdesign-data:/data targetdesign-workbench:$VERSION \
   python tools/batch_run.py --spec example/batch/example_batch.json
 ```
 

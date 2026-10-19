@@ -87,13 +87,16 @@ jobs:
       - name: Install the requirements
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -c requirements/constraints-linux-cpu.txt -r requirements.txt
 
       - name: Compile every shipped module
         run: python -m compileall -q webapp shared tools
 
       - name: Check no hard import is undeclared
         run: python tools/dep_scan.py --check
+
+      - name: Check tested Linux dependency constraints
+        run: python tools/check_constraints.py
 
       - name: Run the test suite
         shell: bash

@@ -1,0 +1,4 @@
+# Tested Linux CPU entry point. Use with constraints-linux-cpu.txt and the CPU
+# PyTorch wheel index; see docs/ENVIRONMENT.md.
+-r ../requirements-linux.txt
+torch==2.10.*

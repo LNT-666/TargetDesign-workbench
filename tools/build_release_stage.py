@@ -136,7 +136,12 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def copy_file(src: Path, dest: Path, rows: list, edit=None) -> None:
+def normalize_text_lf(text: str) -> str:
+    """Return UTF-8 text with the LF line endings used by the public bundle."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def copy_file(src: Path, dest: Path, rows: list, bundle: str, edit=None) -> None:
     if not src.is_file():
         raise SystemExit(f"missing source file: {src}")
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -144,7 +149,8 @@ def copy_file(src: Path, dest: Path, rows: list, edit=None) -> None:
         shutil.copyfile(src, dest)
     else:
         dest.write_text(edit(src.read_text(encoding="utf-8")), encoding="utf-8", newline="")
-    rows.append((src.relative_to(REPO).as_posix(), dest, dest.stat().st_size, sha256(dest)))
+    rows.append((bundle, src.relative_to(REPO).as_posix(), dest,
+                 dest.stat().st_size, sha256(dest)))
 
 
 def git_tracked() -> list[str]:
@@ -160,9 +166,11 @@ def build_zip(stage_data: Path, dest: Path) -> int:
     members = sorted(p for p in stage_data.rglob("*") if p.is_file() and p.name != ZIP_NAME)
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in members:
-            info = zipfile.ZipInfo(path.relative_to(stage_data).as_posix(), date_time=ZIP_STAMP)
+            name = path.relative_to(stage_data).as_posix()
+            info = zipfile.ZipInfo(name, date_time=ZIP_STAMP)
             info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = 0o644 << 16
+            info.create_system = 3
+            info.external_attr = (0o755 if name == "bin/offtarget-engine" else 0o644) << 16
             zf.writestr(info, path.read_bytes())
     return dest.stat().st_size
 
@@ -294,16 +302,24 @@ def main() -> int:
     (stage / "repo").mkdir(parents=True, exist_ok=True)
 
     for rel in submission_files(args.version):
-        copy_file(REPO / rel, stage / "submission" / Path(rel).name, rows)
+        copy_file(REPO / rel, stage / "submission" / Path(rel).name, rows,
+                  "journal-submission")
     for rel in SUBMISSION_FIGURES_BY_VERSION.get(args.version, SUBMISSION_FIGURES):
-        copy_file(REPO / rel, stage / "submission" / "figures" / Path(rel).name, rows)
+        copy_file(REPO / rel, stage / "submission" / "figures" / Path(rel).name, rows,
+                  "journal-submission")
     for rel, dest in SUPPLEMENTARY_DATA:
-        copy_file(REPO / rel, stage / "supplementary-data" / dest, rows)
+        copy_file(REPO / rel, stage / "supplementary-data" / dest, rows,
+                  "supplementary-data")
     zip_path = stage / "supplementary-data" / ZIP_NAME
     zip_bytes = build_zip(stage / "supplementary-data", zip_path)
     for rel in RELEASE_SET:
-        edit = (lambda text: staged_gitignore(text, local[0])) if rel == ".gitignore" else None
-        copy_file(REPO / rel, stage / "repo" / rel, rows, edit)
+        if rel == ".gitignore":
+            edit = lambda text: normalize_text_lf(staged_gitignore(text, local[0]))
+        elif rel.startswith("example/engine_benchmark_small/"):
+            edit = normalize_text_lf
+        else:
+            edit = None
+        copy_file(REPO / rel, stage / "repo" / rel, rows, "public-release", edit)
 
     tracked = git_tracked()
     list_lines = ["# Files that the public repository would contain", "",
@@ -323,15 +339,16 @@ def main() -> int:
         f"- built from the working repository (read-only source), paths below are repository-relative",
         f"- journal submission bundle: `submission/` (manuscript `{stem}`)",
         f"- supplementary data bundle: `supplementary-data/` (zip: `{ZIP_NAME}`, {zip_bytes:,} B)",
-        f"- public release set: `repo/` (12 evidence items + `.gitignore` + `RELEASE_FILE_LIST.txt`)",
-        f"- files staged: {len(rows)}", "",
+        f"- public release set: `repo/` (12 evidence items plus `.gitignore`)",
+        f"- files staged: {len(rows)} (inventory rows 1-{len(rows)}; row {len(rows) + 1}"
+        " is assembled from them and is not counted)", "",
         "## Pending before upload", "",
         "- `SUPPLEMENTARY_v1.pdf` is the supplementary file to upload (NAR: supplementary"
         " data preferably PDF); `SUPPLEMENTARY_v1.md` is its source.",
         f"- `[TO FILL]` placeholders still present in the manuscript: {placeholders} occurrence(s) on {placeholder_lines} line(s).",
         "- `submission/figures/` carries PDF (print) and PNG (preview), numbered in the"
-        " order the text cites them; the artwork-format check is recorded in"
-        " `docs/NAR_FORMAT_CHECKLIST.md` section 6.",
+        " order the text cites them. This manifest records the files actually staged;"
+        " no separate format-checklist source file is claimed.",
         "- `repo/.gitignore` is the working copy with the lines naming local-only tooling removed;"
         " the development copy is unchanged.",
         "", "## Leak scan (pre-upload gate)", "",
@@ -343,10 +360,30 @@ def main() -> int:
     ]
     for path, label, count, sample in hits:
         manifest.append(f"  - `{path}`: {label} x{count} {sample}")
-    manifest += ["", "## Inventory", "", "| destination | size (B) | sha256 | source (repo-relative) |", "| --- | ---: | --- | --- |"]
-    for rel, dest, size, digest in rows:
-        manifest.append(f"| `{dest.relative_to(stage).as_posix()}` | {size:,} | `{digest[:16]}` | `{rel}` |")
-    manifest += ["", f"| `supplementary-data/{ZIP_NAME}` | {zip_bytes:,} | `{sha256(zip_path)[:16]}` | (assembled from `supplementary-data/`) |"]
+    manifest += ["", "## Inventory", "",
+                 "| # | bundle | destination | size (B) | sha256 | source |",
+                 "| ---: | --- | --- | ---: | --- | --- |"]
+    for number, (bundle, rel, dest, size, digest) in enumerate(rows, 1):
+        if bundle == "journal-submission":
+            source = f"`{rel}` (author staging tree; not a public repository path)"
+        elif rel.startswith("example/engine_benchmark_small/"):
+            source = f"`{rel}` (LF-normalized)"
+        elif rel == ".gitignore":
+            source = f"`{rel}` (filtered for the public bundle)"
+        else:
+            source = f"`{rel}`"
+        manifest.append(
+            f"| {number} | `{bundle}` | `{dest.relative_to(stage).as_posix()}` |"
+            f" {size:,} | `{digest[:16]}` | {source} |")
+    manifest += [
+        f"| {len(rows) + 1} | `supplementary-data` (assembled) |"
+        f" `supplementary-data/{ZIP_NAME}` | {zip_bytes:,} |"
+        f" `{sha256(zip_path)[:16]}` | assembled from `supplementary-data/` |",
+        "",
+        "`repo/RELEASE_FILE_LIST.txt` is generated into the public-release bundle at"
+        " staging time; it is not a pre-existing repository source file and is not"
+        " counted as a staged source row.",
+    ]
     (stage / "MANIFEST.md").write_text("\n".join(manifest) + "\n", encoding="utf-8", newline="")
 
     print(f"stage: {stage}")

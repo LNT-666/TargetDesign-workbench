@@ -420,6 +420,41 @@ def predictor_status(model_key, load=False):
     raise ValueError("Unknown predictor: %s" % model_key)
 
 
+def adjust_model_status(model_key, registry_status, load=True):
+    """Correct a downloaded model's status for its current runtime.
+
+    Registry status only says that a file exists.  The Web and desktop model
+    tabs use this shared conversion so a downloaded but non-runnable predictor
+    is never presented as ready.
+    """
+    if registry_status != "ready":
+        return registry_status
+    key = (model_key or "").lower()
+    if key == "crispr_m":
+        try:
+            loaded = crispr_m_status(load=False) == "ready"
+        except Exception:
+            loaded = False
+        return "ready_loaded" if loaded else "ready_unavailable"
+    if key == "deepcrispr":
+        try:
+            runtime_status = DeepCrisprPredictor.status(load=load)
+        except Exception:
+            runtime_status = "load_error"
+    elif key == "deepcas12a":
+        try:
+            runtime_status = DeepCas12aPredictor.status()
+        except Exception:
+            runtime_status = "load_error"
+    else:
+        return registry_status
+    if runtime_status == "ready":
+        return "ready"
+    if runtime_status in ("needs_conversion", "dependency_missing"):
+        return runtime_status
+    return "ready_runtime_missing"
+
+
 def deep_model_off_target_specificity(guide, off_pairs, model_key="crispr_m",
                                       assume_one_primary=True):
     """Aggregate deep-model off-target activity like GuideScan2's CFD sum."""

@@ -7,7 +7,7 @@
     python tools/run_lookup.py 20261006-0114 # one specific day
     python tools/run_lookup.py --day 20261006
 
-Every run lives in ``output/<YYYYMMDD>/<ID>/`` and owns ``run.json``,
+Every run lives in ``output/<YYYYMMDD>-<ID>/`` and owns ``run.json``,
 ``run.log``, ``batch.json``, ``manifest.tsv``, ``summary/batch_scores.tsv``
 and one folder per unit.
 """

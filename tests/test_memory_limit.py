@@ -23,7 +23,7 @@ from design.pattern_spec import (  # noqa: E402
     Side,
 )
 from gui.gui_common import Workspace  # noqa: E402
-from search import native_offtarget  # noqa: E402
+from search import genome_index, native_offtarget  # noqa: E402
 from search.offtarget_backend import IndexedBackend, SearchParams  # noqa: E402
 from utils import system_memory  # noqa: E402
 
@@ -115,6 +115,31 @@ class SystemMemoryTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn("/proc/meminfo", command[-1])
         self.assertNotIn("shared.utils.system_memory", command[-1])
+
+
+class GenomeIndexMemoryReadingTests(unittest.TestCase):
+    def test_linux_current_rss_uses_vm_rss_not_peak(self):
+        status = (
+            "Name:\tpython\n"
+            "VmHWM:\t524288 kB\n"
+            "VmRSS:\t204800 kB\n"
+        )
+        self.assertEqual(genome_index._parse_vm_rss_mb(status), 200.0)
+        with mock.patch("search.genome_index.sys.platform", "linux"), \
+                mock.patch("builtins.open", mock.mock_open(read_data=status)):
+            self.assertEqual(genome_index._current_rss_mb(), 200.0)
+
+    def test_memory_budget_checks_current_rss(self):
+        tracker = SimpleNamespace(peak=0.0)
+        with mock.patch(
+                "search.genome_index._current_rss_mb", return_value=128.0):
+            genome_index._MemoryBudget(256, tracker).check("sampling")
+        self.assertEqual(tracker.peak, 128.0)
+
+        with mock.patch(
+                "search.genome_index._current_rss_mb", return_value=512.0):
+            with self.assertRaises(genome_index.MemoryLimitExceededError):
+                genome_index._MemoryBudget(256, tracker).check("sampling")
 
 
 class NativeMemoryPropagationTests(unittest.TestCase):

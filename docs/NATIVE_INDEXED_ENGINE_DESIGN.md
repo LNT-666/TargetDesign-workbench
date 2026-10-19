@@ -699,7 +699,7 @@ every unified field, not only coordinates.
 
 ### 15.5 Performance benchmark
 
-The recorded native measurements live in `docs/NATIVE_INDEXED_BENCHMARK.md`;
+The recorded native measurements live in `example/engine_benchmark_small/REPORT.md`;
 this section only fixes what a benchmark run must record for the design to be
 considered verified.
 

@@ -6,7 +6,7 @@ Python/`server_build_index.sh` 流程保留为 native 二进制不可用时的 f
 本机 17 GB 内存不够一次性构建全 GRCh38 索引，推荐把索引构建放到
 Linux 服务器上完成。服务器建议配置：
 
-- Linux，Python 3.10+
+- Linux，Python 3.12（支持到 3.13，见 `pyproject.toml`）
 - 内存 64 GB+（全基因组构建峰值约 50–64 GB）
 - 磁盘至少预留 40 GB
 - 已有 GRCh38 FASTA；没有的话先上传，3.3 GB 文件建议走内网或共享盘
@@ -20,6 +20,21 @@ scp -r shared tools requirements.txt user@server:/data/crispr_tool/
 
 如果服务器已有 GRCh38，不要重复上传 `example\` 下的 3.3 GB FASTA。
 只需要把共享模块、工具脚本和依赖清单传过去。
+
+### 可选：使用 conda 前缀
+
+conda 环境可以放在源码树外，例如 `/data/conda-envs/targetdesign`：
+
+```bash
+conda create -p /data/conda-envs/targetdesign python=3.12 pip
+conda activate /data/conda-envs/targetdesign
+cd /data/crispr_tool
+python -m pip install -r requirements-linux.txt
+```
+
+如果部署策略要求前缀靠近源码树，可以直接放在项目内；测试会通过前缀中的
+`conda-meta/`（或 venv 的 `pyvenv.cfg`）识别并跳过环境目录。不要把 conda 前缀提交到仓库，
+也不要把安装在其中的 Python 或原生库移动到别的路径。
 
 ## 2. 服务器上构建（SSH）
 

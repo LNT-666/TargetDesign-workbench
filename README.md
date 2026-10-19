@@ -9,13 +9,13 @@
 
 ## 设计功能（补充）
 
-- **BED designer**：`designer_workbench.py --bed` 以 BED 区域为输入打开设计器（窗口标题为 `BED Designer`），或在统一工作台的 Designer 工具条点击 “Open BED Designer”。结果 `library_scores.tsv` 会带 `genomic_start`/`genomic_end`/`genomic_strand` 和 `genomic_positions`（JSON，列出所有出现位置）；这些列仅在区域/BED 输入时填充，纯 FASTA 输入时全空并被隐藏。
+- **BED designer**：`designer_workbench.py --bed` 以 BED 区域作为搜索输入打开设计器（窗口标题为 `BED Designer`），或在统一工作台的 Designer 工具条点击 “Open BED Designer”。候选表列以 `shared/design/pattern_spec.py::candidate_columns()` 和 `docs/OUTPUTS.md` 的当前定义为准。
 
-- **全空列自动隐藏**：结果表（`library_scores.tsv`、`query_scores_sorted.tsv` 等）写出前检查每列，整列全空（`None`/`""`/纯空格）的列默认不显示；数值 0/0.0 不算空。
+- **全空列自动隐藏**：结果表（如 `query_scores_sorted.tsv`）写出前检查每列，整列全空（`None`/`""`/纯空格）的列默认不显示；数值 0/0.0 不算空。
 
 - **MM 列跟随 mismatch 预算**：`max_mismatch=N` 时结果表只输出 `MM0` 到 `MMN`，最后一列统计 `>= N` 的合并数量；例如预算 2 不再输出恒为 0 的 `MM3`，预算 4 会输出 `MM4`。
 
-- **TnpB / TEEP**：designer 不再提供 TnpB 亚型选择。TnpB 默认使用离线、确定性的 `omega` / `omega_rna_rules` on-target 规则；`teep` 是显式选择的在线 ISDra2 TnpBmax 参考模型。TEEP 失败时回退通用启发式，不会自动改用 omega 规则。`tnpb_subtype` 和模型名称/文献内部字段已从当前候选表移除。完整公式、文献和字段说明见 `docs/TNPB.md`。
+- **TnpB / TEEP**：designer 仍提供只读的 `tnpb_subtype` 选择，并把它传入运行参数和评分；`tnpb_subtype` 不再作为当前候选表的输出列。TnpB 默认使用离线、确定性的 `omega` / `omega_rna_rules` on-target 规则；`teep` 是显式选择的在线 ISDra2 TnpBmax 参考模型。TEEP 失败时回退通用启发式，不会自动改用 omega 规则。完整公式、文献和字段说明见 `docs/TNPB.md`。
 
 ## 当前架构
 
@@ -42,49 +42,74 @@
 
 ## 目录结构
 
+以下是主要顶层目录与文件；生成目录、缓存、模型权重和本地运行产物不列入。
+
 ```text
 .
+├─ .dockerignore
+├─ .gitattributes
+├─ .github/          CI、容器与可移植性工作流
+├─ .gitignore
+├─ .zenodo.json
+├─ basic/            单 motif 命令行流程
+├─ docs/             公开文档与帮助页
+├─ example/          可复现示例与小型基准证据
+├─ native/           C++20 indexed 引擎源码与构建说明
+├─ sample_data/      演示输入数据
+├─ shared/           设计、搜索、评分、数据与输出模块
+├─ Target_xbp_Target/
+├─ Target_xbp_Y_zbp_Target/
+├─ tests/
+├─ tools/            索引构建、搜索、批量与发布工具
+├─ webapp/           本地 Web 服务和任务存储
+├─ CITATION.cff
+├─ Dockerfile
+├─ docker-compose.yml
 ├─ designer_workbench.py
 ├─ unified_gui.py
 ├─ main.py
 ├─ run_tests.py
+├─ pyproject.toml
+├─ requirements.txt
+├─ requirements-linux.txt
+├─ requirements-models-linux.txt
+├─ requirements-crispai.txt
+├─ requirements-windows.txt
+├─ requirements/      Linux CPU/CUDA constraint snapshots
 ├─ README.md
-├─ shared/
-│  ├─ design/       pattern 定义、guide 设计、library pipeline（已废弃）
-│  ├─ search/       exact、BLAST、indexed、外部 Off-target 引擎
-│  ├─ scoring/      评分模型、预设规则、非 Cas9/RNA 规则
-│  ├─ data/         genome/annotation 下载、解析和本地提取
-│  ├─ output/       TSV/BED/FASTA/XLSX/HTML
-│  ├─ gui/          共享 GUI mixin 和 preset 控件
-│  └─ utils/        日志、子进程工具
-├─ basic/           单 motif 命令行流程
-├─ tools/           索引构建、索引搜索、模型转换
-├─ webapp/          本地 Web 服务和任务存储
-├─ Target_xbp_Target/
-├─ Target_xbp_Y_zbp_Target/
-├─ tests/
-├─ docs/
-└─ models/
+└─ LICENSE
 ```
 
 `models/` 存放本地模型权重，权重文件不入库，获取方式见 `docs/MODELS.md`；
-基因组、索引和基准数据同样不入库，见 `docs/GENOME_INDEX.md`。
+大体积基因组与索引不入库；`example/engine_benchmark_small/` 的小型基准证据和
+`sample_data/` 演示数据随仓库发布。索引构建与复用见 `docs/GENOME_INDEX.md`。
 
 ## 环境
 
-- 主运行环境：Python 3.13，虚拟环境 `.venv`
-- 旧模型转换环境：Python 3.10，虚拟环境 `.venv310`
+- 主运行环境：Python 3.12（默认；Python 3.13 也受支持），虚拟环境 `.venv`
+- 旧模型转换环境：Python 3.10，使用独立的模型转换虚拟环境
 - 外部工具：NCBI BLAST+，需要 `blastn` 和 `makeblastdb`
 
 Windows 初始化：
 
 ```powershell
-py -3.13 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements-windows.txt
 ```
 
-Linux/macOS 使用 `requirements.txt`，并按需安装 BLAST+。
+Linux/macOS 初始化：
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-linux.txt
+```
+
+`requirements-linux.txt` 是完整环境入口，会安装基础、模型和 crispAI 的 Python 依赖；
+系统级 BLAST+ 仍需按需安装。需要复现已测试的 Linux 版本组合时，按
+`docs/ENVIRONMENT.md` 的 CPU/CUDA 命令同时传入 `requirements/constraints-linux-*.txt`。
+机器可读的 Python 版本范围见 `pyproject.toml`。
 
 ## 启动
 
@@ -112,7 +137,7 @@ bash tools/serve_webapp.sh start     # 默认 0.0.0.0:5000；restart / stop / st
 
 ```powershell
 .\.venv\Scripts\python.exe basic\extract.py input.fasta TTAT 10 upstream extracted.tsv
-.\.venv\Scripts\python.exe basic\blast.py queries.tsv genome.fa --outdir results --max-mismatch 2
+.\.venv\Scripts\python.exe basic\blast.py queries.tsv genome.fa --输出目录 results --max-mismatch 2
 .\.venv\Scripts\python.exe basic\analyze_scores.py results\blast_results.tsv results
 ```
 
@@ -120,7 +145,7 @@ bash tools/serve_webapp.sh start     # 默认 0.0.0.0:5000；restart / stop / st
 
 ```powershell
 .\.venv\Scripts\python.exe tools\build_genome_index.py genome.fa --prefix genome_index
-.\.venv\Scripts\python.exe tools\search_indexed.py genome_index guides.tsv --out results
+python tools/search_indexed.py guides.tsv genome.fa results --index-path genome_index --pam NGG
 ```
 
 更多参数使用各脚本的 `--help`。
@@ -145,7 +170,8 @@ bash tools/serve_webapp.sh start     # 默认 0.0.0.0:5000；restart / stop / st
 `exact` / `indexed` / `blast` / `gggenome` / `auto` 的统一命中记录、能力矩阵、
 `auto` 运行期引擎链与回退策略见 `docs/OFFTARGET_ENGINES.md`；本地 `.ggi` 索引
 格式、构建与复用见 `docs/GENOME_INDEX.md`；native indexed 的实测数据见
-`docs/NATIVE_INDEXED_BENCHMARK.md`，构建说明见 `native/offtarget_engine/README.md`。
+`example/engine_benchmark_small/REPORT.md`，设计说明见
+`docs/NATIVE_INDEXED_ENGINE_DESIGN.md`，构建说明见 `native/offtarget_engine/README.md`。
 
 `indexed` 默认优先使用 C++20 CLI 实现，读取和写出相同的 `.ggi` v1 格式；找不到或
 不兼容原生二进制时使用 Python 实现，`PROGRAMFILE_NATIVE_INDEXED=0` 可强制回退。
@@ -154,7 +180,7 @@ bash tools/serve_webapp.sh start     # 默认 0.0.0.0:5000；restart / stop / st
 排他锁，以及 GUI 的 Auto 内存限制，见 `docs/OFFTARGET_ENGINES.md` 与
 `docs/GENOME_INDEX.md`。
 
-Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）与 `guidescan2_nrg`（搜索 NRG = NGG + NAG，CFD 使用实际的 `GG` / `AG` 2 nt 权重）两种模式；CLI 用 `--pam-mode`，网页版和桌面主工作台在 Run Settings 选择，并显示当前模式，桌面 Run Settings 也暴露 `Max Bulge` 的 engine-default / 0 / 1 选项。模式定义与权重细节见 `docs/SCORING_GUIDE.md`。
+Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）、`guidescan2_nrg`（搜索 NRG = NGG + NAG，CFD 使用实际的 `GG` / `AG` 2 nt 权重）与 `custom`（使用用户输入的 PAM motif）三种模式；CLI 用 `--pam-mode`，网页版和桌面主工作台在 Run Settings 选择，并显示当前模式，桌面 Run Settings 也暴露 `Max Bulge` 的 engine-default / 0 / 1 选项。模式定义与权重细节见 `docs/SCORING_GUIDE.md`。
 
 搜索结果为每条 hit 保留真实 alignment span、CIGAR、`rna_bulges` 和 `dna_bulges`；结果列与 bulge / 校准列见 `docs/OUTPUTS.md`。BLAST 数据库的 `.source.json` 校验、批量性能工具 `tools/benchmark_search.py`，以及各引擎的完整约束与使用示例，见 `docs/OFFTARGET_ENGINES.md`。
 
@@ -172,21 +198,37 @@ Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）与 `guidescan2_nrg`（搜索 NRG
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_core.py" -v
 ```
 
-`test_library_fasta` 覆盖的是已废弃的 library 管线，其既有失败不再修复。
-
 ## 文档
 
-- `docs/OUTPUTS.md`：结果文件与结果列说明（输出结果的单一入口）
-- `docs/design_patterns_en.md`：pattern 定义说明
-- `docs/PAIR_RANKING.md`：双靶点必须同时成功时的 PairRank 排序规范
-- `docs/ENVIRONMENT.md`：Python 环境和模型转换
-- `docs/OFFTARGET_ENGINES.md`：Off-target 引擎说明
-- `docs/GENOME_INDEX.md`：本地 `.ggi` 索引格式、构建和 native/Python 关系
-- `docs/MODELS.md`：模型文件状态
-- `docs/TNPB.md`：TnpB/TEEP 模型公式、适用范围和参考文献（结果字段见 `docs/OUTPUTS.md`）
-- `docs/GUI.md`：桌面工作台使用说明
-- `docs/WEBAPP.md`：本地 Web UI 使用说明
+公开文档按用途分组列出。未跟踪的本地笔记、生成物和投稿材料不在本清单内。
+
+使用、部署与输出：
+
 - `docs/BATCH.md`：批量运行规范（CLI 与 webapp 共用内核、manifest、汇总表与退出码）
-- `docs/SCORING_GUIDE.md`：评分字段与候选优劣判断
-- `docs/CRISPAI.md`：crispAI 运行时环境准备
+- `docs/WEBAPP.md`：本地 Web UI 使用说明
+- `docs/GUI.md`：桌面工作台使用说明
+- `docs/OUTPUTS.md`：结果文件与结果列说明（输出结果的单一入口）
+- `docs/CONTAINER.md`：容器镜像与运行说明
+- `docs/CRISPAI.md`：crispAI 外部运行时准备
 - `docs/SERVER_DEPLOY.md`：Linux 服务器部署与全基因组索引构建
+
+设计、模型、搜索与评分：
+
+- `docs/design_patterns_en.md`：pattern 定义说明
+- `docs/MODELS.md`：模型文件、格式与状态
+- `docs/ENVIRONMENT.md`：Python 环境和模型转换
+- `docs/DEPENDENCIES.md`：Python 与非 Python 依赖清单
+- `docs/GENOME_INDEX.md`：本地 `.ggi` 索引格式、构建和 native/Python 关系
+- `docs/OFFTARGET_ENGINES.md`：Off-target 引擎说明
+- `docs/NATIVE_INDEXED_ENGINE_DESIGN.md`：native indexed 引擎设计契约
+- `docs/RNA_RULES.md`：Cas13 RNA 规则与 ViennaRNA 行为
+- `docs/SCORING_GUIDE.md`：评分字段与候选优劣判断
+- `docs/TNPB.md`：TnpB/TEEP 模型公式、适用范围和参考文献
+- `docs/PAIR_RANKING.md`：双靶点必须同时成功时的 PairRank 排序规范
+
+英文帮助：
+
+- `docs/help_en/index.md`：英文帮助入口
+- `docs/help_en/README.md`：英文帮助概览
+- `docs/help_en/tutorial.md`：英文教程
+- `docs/help_en/sample_output/README.md`：英文示例输出说明

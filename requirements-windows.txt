@@ -33,6 +33,9 @@ numpyro>=0.13
 tqdm>=4.60
 seaborn>=0.11
 
+# pybdm imports pkg_resources, which setuptools 81 removed.
+setuptools<81
+
 # crispAI non-pip prerequisites (Linux server):
 #   conda install -c r r-base
 #   Rscript -e 'if(!requireNamespace("BiocManager",quietly=TRUE)) install.packages("BiocManager",repos="https://cloud.r-project.org"); BiocManager::install("NuPoP",lib=Sys.getenv("R_LIBS_USER"),ask=FALSE,update=FALSE)'

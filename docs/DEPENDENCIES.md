@@ -52,31 +52,39 @@
 | 位置 | 内容 | 备注 |
 | --- | --- | --- |
 | `requirements.txt` | biopython, pyfaidx, requests, openpyxl, numpy, h5py | 已验证的运行必需集合；容器 `core` 层只装它 |
-| `requirements-linux.txt` | 以上 + torch, tensorflow, ViennaRNA, pandas, scipy, scikit-learn, matplotlib, tensorboardX, 以及 crispAI 的 pybdm/genomepy/jax/numpyro/tqdm/seaborn | 服务器/桌面全功能 |
+| `requirements-models-linux.txt` | torch, tensorflow, ViennaRNA, pandas, scipy, scikit-learn, matplotlib, tensorboardX | 模型打分、DeepCRISPR 转换与离线配图；使用方见文件头注释 |
+| `requirements-crispai.txt` | pybdm, genomepy, jax, numpyro, tqdm, seaborn, setuptools<81 | crispAI 聚合适配器；`setuptools<81` 保留 pybdm 所需 `pkg_resources`；R/NuPoP、Cas-OFFinder 仍是非 pip 依赖 |
+| `requirements-linux.txt` | 通过 `-r` 聚合上面三个文件 | 保留为 `pip install -r requirements-linux.txt` 的兼容完整入口 |
 | `requirements-windows.txt` | 同上，Windows 变体 | 桌面 |
+| `requirements/constraints-linux-cpu.txt` | Linux x86_64 / Python 3.12 已测试 CPU 快照 | 来自已验证的 Linux CPU 环境：`pip check`、内存/索引/依赖扫描测试通过 |
+| `requirements/constraints-linux-cuda.txt` | Linux x86_64 / Python 3.12 CUDA 快照 | 来自已验证的 RTX 4090 Linux GPU 环境：torch/TensorFlow GPU 张量运算和关键 import 通过 |
+| `requirements/requirements-linux-cpu.txt` | 完整 Linux 依赖 + CPU torch 安装入口 | 与 CPU constraints 和 PyTorch CPU 索引一起使用 |
+| `requirements/requirements-linux-cuda.txt` | 完整 Linux 依赖 + `tensorflow[and-cuda]` 安装入口 | 与 CUDA constraints 一起使用 |
 | 镜像 `core` | 只装 `requirements.txt` | 经典管线 + native 引擎 + h5py 深度模型；没有 torch/tensorflow/ViennaRNA |
 | 镜像 `full` | core + ViennaRNA + Cas-OFFinder + R/NuPoP + CPU torch | 仍不含 tensorflow 与 crispAI 的 Python 依赖，所以 TIGER 与 crispAI 在容器里不可用 |
 
 ## 4. 只在离线论文工作流里需要
 
-这些包在 `requirements-linux.txt` / `requirements-windows.txt` 里声明，但仓库里没有任何
-模块导入它们。删掉会打断论文配图与模型转换的离线脚本（脚本在 `docs/figures/`、
-`external_tools/`，不入库），因此保留：
+这些包通过 `requirements-linux.txt` 的聚合入口或 `requirements-windows.txt` 声明，但仓库里
+没有主程序模块导入它们。删掉会打断论文配图与模型转换的离线脚本（脚本在
+`docs/figures/`、`external_tools/`，不入库），因此保留：
 
 | 包 | 谁在用 |
 | --- | --- |
 | `matplotlib` | `docs/figures/` 的配图脚本（不入库） |
-| `scikit-learn` | 一次性 Azimuth 转换，见 docs/ENVIRONMENT.md |
+| `scikit-learn` | 离线分析与配图的可选依赖；当前公开模型流程不使用 |
 | `scipy` | 离线分析辅助 |
 | `tensorboardX` | 离线模型转换的训练日志 |
 | `pybdm`、`genomepy`、`jax`、`numpyro`、`tqdm`、`seaborn` | 上游 crispAI 脚本（`external_tools/crispAI-main`，不入库） |
 
 ## 5. 维护规则
 
-1. 新增第三方导入：硬导入必须在 `requirements.txt` 里声明，软导入至少要在
-   `requirements-linux.txt` 里声明，否则 `tools/dep_scan.py --check` 失败，CI 的
-   `container` 工作流会拦在构建之前。
+1. 新增第三方导入：硬导入必须在 `requirements.txt` 里声明；模型/推理软导入写入
+   `requirements-models-linux.txt`，crispAI 运行时依赖写入 `requirements-crispai.txt`。
+   两者均由 `requirements-linux.txt` 聚合，完整 Linux 安装入口保持不变。
 2. 新增本地模块：必须提交进 git。`--check` 会报 `UNTRACKED LOCAL MODULE` —— 漏提交的
    文件在 clone 里不存在；`shared/output/` 正是这样让容器 smoke test 报
    `ModuleNotFoundError: No module named 'output'` 的。
 3. 容器只装 `requirements.txt`。要在镜像里跑深度模型或 Cas13，需要单独扩展 `full` 层。
+4. 修改 requirements 后运行 `python tools/check_constraints.py` 与约束测试；Linux 快照只能在
+   安装、`pip check` 和聚焦测试都通过的 Python 3.12 环境中重新生成，不能手工猜版本。

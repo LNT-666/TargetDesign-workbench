@@ -15,10 +15,29 @@ from data.annotation_utils import ensure_plain_fasta
 def reverse_complement(seq):
     return str(Seq(seq).reverse_complement())
 
+
+def print_usage(stream=sys.stdout):
+    print(
+        "Usage: python extract.py <input.fasta> <motif> "
+        "<flanking sequence length> <side> <output.tsv>",
+        file=stream,
+    )
+    print("  side: upstream or downstream", file=stream)
+
+
 def main():
-    if len(sys.argv) != 6:
-        print("Usage: python extract.py <input.fasta> <motif> <flanking sequence length> <side> <output.tsv>")
-        print("  side: upstream or downstream")
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print_usage()
+        return
+    unknown = [arg for arg in args if arg.startswith("-")]
+    if unknown:
+        print("Error: unknown option: %s" % unknown[0], file=sys.stderr)
+        print_usage(sys.stderr)
+        sys.exit(2)
+    if len(args) != 5:
+        print("Error: expected 5 positional arguments", file=sys.stderr)
+        print_usage(sys.stderr)
         sys.exit(1)
 
     input_fasta = sys.argv[1]
