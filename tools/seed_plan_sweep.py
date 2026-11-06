@@ -11,6 +11,12 @@ reproduction required by the paper analysis.
 
 Usage
 -----
+Generate the default 1 Mb fixture if it is missing:
+
+    python tools/benchmark_all_engines.py \
+        --fixture-dir example/engine_benchmark_small --genome-mb 1 \
+        --contigs 4 --guides 12 --seed 20260914 --generate-only
+
 Grid sweep (16 configurations, C3):
 
     python tools/seed_plan_sweep.py \
@@ -62,6 +68,89 @@ HIT_TAG = '"type":"hit"'                # C4
 # each platform, so the default is the one this platform can execute.
 DEFAULT_ENGINE_EXE = ("native/bin/offtarget-engine.exe" if os.name == "nt"
                       else "native/bin/offtarget-engine")
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_FIXTURE_DIR = "example/engine_benchmark_small"
+DEFAULT_FIXTURE_GENOME = DEFAULT_FIXTURE_DIR + "/synthetic_genome.fa"
+DEFAULT_FIXTURE_GUIDES = DEFAULT_FIXTURE_DIR + "/guides.tsv"
+DEFAULT_SWEEP_OUT = "docs/seed_plan_sweep.json"
+FIXTURE_GENERATOR = "tools/benchmark_all_engines.py"
+FIXTURE_SEED = 20260914
+DEFAULT_FIXTURE_COMMAND = (
+    "python tools/benchmark_all_engines.py "
+    "--fixture-dir example/engine_benchmark_small "
+    "--genome-mb 1 --contigs 4 --guides 12 --seed 20260914 --generate-only"
+)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fasta_stats(path: Path) -> tuple[int, int]:
+    bases = 0
+    contigs = 0
+    with path.open(encoding="ascii") as handle:
+        for line in handle:
+            if line.startswith(">"):
+                contigs += 1
+            else:
+                bases += len(line.strip())
+    return bases, contigs
+
+
+def fixture_reproduction_command(genome: Path, total_bases: int, contigs: int,
+                                 guide_count: int) -> str:
+    fixture_path = genome.parent
+    try:
+        fixture_path = fixture_path.relative_to(ROOT)
+    except ValueError:
+        fixture_path = Path(os.path.abspath(fixture_path))
+    fixture_arg = str(fixture_path).replace(os.sep, "/")
+    if any(character.isspace() for character in fixture_arg):
+        fixture_arg = '"%s"' % fixture_arg.replace('"', '\\"')
+    genome_mb = total_bases / 1000000
+    genome_mb_arg = ("%d" % genome_mb if genome_mb.is_integer()
+                     else "%g" % genome_mb)
+    return (
+        "python %s --fixture-dir %s --genome-mb %s --contigs %d "
+        "--guides %d --seed %d --generate-only"
+        % (FIXTURE_GENERATOR, fixture_arg, genome_mb_arg, contigs, guide_count,
+           FIXTURE_SEED)
+    )
+
+
+def fixture_provenance(genome: Path, guides: Path, guide_count: int,
+                       guide_len: int) -> dict:
+    total_bases, contigs = fasta_stats(genome)
+    return {
+        "genome": str(genome),
+        "guides": str(guides),
+        "guide_count": guide_count,
+        "guide_len": guide_len,
+        "generator": FIXTURE_GENERATOR,
+        "seed": FIXTURE_SEED,
+        "genome_bases": total_bases,
+        "contigs": contigs,
+        "command": fixture_reproduction_command(
+            genome, total_bases, contigs, guide_count),
+        "genome_sha256": sha256_file(genome),
+        "guides_sha256": sha256_file(guides),
+        "genome_size_bytes": genome.stat().st_size,
+        "guides_size_bytes": guides.stat().st_size,
+    }
+
+
+def print_missing_fixture(genome: Path, guides: Path) -> None:
+    missing = [str(path) for path in (genome, guides) if not path.is_file()]
+    print("fixture file not found: %s" % ", ".join(missing), file=sys.stderr)
+    print("Generate the default fixture from the repository root:",
+          file=sys.stderr)
+    print("  %s" % DEFAULT_FIXTURE_COMMAND, file=sys.stderr)
 
 
 def resolve_engine_exe(value: str) -> str:
@@ -335,11 +424,15 @@ def sha256_of_hits(hit_lines: list[str]) -> str:
 
 
 def run_sweep(args) -> int:
-    exe = resolve_engine_exe(args.engine_exe)
     genome = Path(args.genome).resolve()
     guides = Path(args.guides).resolve()
+    if not genome.is_file() or not guides.is_file():
+        print_missing_fixture(genome, guides)
+        return 2
+    exe = resolve_engine_exe(args.engine_exe)
     out_path = Path(args.out)
     guide_count, guide_len = count_guides(guides)
+    fixture = fixture_provenance(genome, guides, guide_count, guide_len)
 
     work_root = (Path(args.work_dir).resolve() if args.work_dir
                  else Path(tempfile.mkdtemp(prefix="seed_plan_sweep_")))
@@ -424,8 +517,7 @@ def run_sweep(args) -> int:
         "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
         "engine": {"path": exe, "version": version,
                    "capabilities": capabilities},
-        "fixture": {"genome": str(genome), "guides": str(guides),
-                    "guide_count": guide_count, "guide_len": guide_len},
+        "fixture": fixture,
         "protocol": {
             "grid": {"max_mismatch": list(args.mismatches),
                      "max_bulge": list(args.bulges), "k": list(args.ks)},
@@ -496,9 +588,12 @@ def run_plan_table(args) -> int:
 
 
 def run_determinism(args) -> int:
-    exe = resolve_engine_exe(args.engine_exe)
     genome = Path(args.genome).resolve()
     guides = Path(args.guides).resolve()
+    if not genome.is_file() or not guides.is_file():
+        print_missing_fixture(genome, guides)
+        return 2
+    exe = resolve_engine_exe(args.engine_exe)
     k = args.det_k
     work_root = (Path(args.work_dir).resolve() if args.work_dir
                  else Path(tempfile.mkdtemp(prefix="seed_plan_det_")))
@@ -561,10 +656,11 @@ def main(argv=None) -> int:
     parser.add_argument("--engine-exe", default=DEFAULT_ENGINE_EXE,
                         help="path to the native engine executable "
                              "(default: the bundled build for this platform)")
-    parser.add_argument("--genome", default="example/engine_benchmark_small/synthetic_genome.fa")
-    parser.add_argument("--guides", default="example/engine_benchmark_small/guides.tsv")
-    parser.add_argument("--out", default="docs/seed_plan_sweep.json",
-                        help="grid sweep output JSON")
+    parser.add_argument("--genome", default=DEFAULT_FIXTURE_GENOME)
+    parser.add_argument("--guides", default=DEFAULT_FIXTURE_GUIDES)
+    parser.add_argument("--out", default=None,
+                        help="grid sweep output JSON "
+                             "(default: docs/seed_plan_sweep.json)")
     parser.add_argument("--repeats", type=int, default=3, help="C3: repeats per grid cell")
     parser.add_argument("--threads", type=int, default=8,
                         help="threads for build and search")
@@ -596,6 +692,11 @@ def main(argv=None) -> int:
 
     if args.repeats < 1:
         raise SystemExit("--repeats must be >= 1")
+    if args.plan_table and args.out is not None:
+        parser.error("--plan-table only prints the plan table and cannot be "
+                     "used with --out")
+    if args.out is None:
+        args.out = DEFAULT_SWEEP_OUT
     if args.plan_table:
         return run_plan_table(args)
     if args.determinism:

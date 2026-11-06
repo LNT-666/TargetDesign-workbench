@@ -63,6 +63,7 @@ ALIASES = {
     "pil": "pillow",
     "cv2": "opencv-python",
     "keras": "tensorflow",
+    "docx": "python-docx",
 }
 
 #: Requirement files, in report order.
@@ -74,7 +75,7 @@ REQUIREMENTS = (
 
 #: Entry points: their import closure defines "what the program needs".
 ENTRY_FILES = ("webapp/app.py", "main.py", "designer_workbench.py", "unified_gui.py")
-ENTRY_DIRS = ("basic", "tools", "Target_xbp_Target", "Target_xbp_Y_zbp_Target")
+ENTRY_DIRS = ("basic", "tools", "tests", "Target_xbp_Target", "Target_xbp_Y_zbp_Target")
 
 #: Declared for the offline paper workflow, which lives outside the published
 #: tree, so the scan cannot see its imports.
@@ -163,6 +164,18 @@ def module_map(files) -> Dict[str, str]:
                 mapping.setdefault(rel[:-12].replace("/", "."), path)
             elif rel.endswith(".py"):
                 mapping.setdefault(rel[:-3].replace("/", "."), path)
+
+    # Namespace packages: ``tools`` and ``tests`` have .py modules but no
+    # __init__.py, yet ``from tools import dep_scan`` only records the bare
+    # top-level name.  Register them so that import is not read as a
+    # third-party distribution.
+    for top in sorted({f.split("/")[0] for f in files if "/" in f}):
+        if os.path.isfile(os.path.join(ROOT, top, "__init__.py")):
+            continue
+        member = next((f for f in files
+                       if f.startswith(top + "/") and f.endswith(".py")), None)
+        if member:
+            mapping.setdefault(top, member)
     return mapping
 
 

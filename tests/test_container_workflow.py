@@ -21,7 +21,11 @@ class ContainerWorkflowTests(unittest.TestCase):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("Publish the full image", text)
         self.assertIn(
-            "github.event_name == 'push' || (inputs.publish && inputs.build_full)",
+            "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+            text,
+        )
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.build_full == true",
             text,
         )
         self.assertNotIn(

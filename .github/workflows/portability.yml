@@ -15,12 +15,18 @@ name: portability
 #
 #   - manual run: Actions -> portability -> Run workflow
 #   - tag run:    pushing a tag like v0.2.1, so every release carries the proof
+#   - main/PR:    regular pushes and pull requests verify without publishing
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -37,6 +43,13 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
+
+      - name: Report the tested revision
+        shell: bash
+        run: |
+          echo "github.sha: ${{ github.sha }}"
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.ref: ${{ github.ref }}"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -88,6 +101,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -c requirements/constraints-linux-cpu.txt -r requirements.txt
+          python -m pip install -r requirements-test.txt
+
+      - name: Install NCBI BLAST+ for the mandatory Linux regression
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ncbi-blast+
+
+      - name: Report NCBI BLAST+ versions
+        if: runner.os == 'Linux'
+        run: |
+          blastn -version
+          makeblastdb -version
+
+      - name: Run the mandatory real-BLAST regression
+        if: runner.os == 'Linux'
+        run: python run_tests.py --require-blast --only-blast
 
       - name: Compile every shipped module
         run: python -m compileall -q webapp shared tools
@@ -98,10 +128,11 @@ jobs:
       - name: Check tested Linux dependency constraints
         run: python tools/check_constraints.py
 
-      - name: Run the test suite
+      - name: Run the test suite with branch coverage
         shell: bash
         run: |
-          if python run_tests.py 2>&1 | tee suite.log; then
+          if python -m coverage run run_tests.py 2>&1 | tee suite.log; then
+            python -m coverage report
             exit 0
           fi
           # Name the failing tests in the check run, so the summary says what
@@ -110,6 +141,9 @@ jobs:
             echo "::error::$line"
           done < <(grep -E "^(FAIL|ERROR): " suite.log || true)
           exit 1
+
+      - name: Check expressiveness evidence
+        run: python tools/expressiveness_probe.py --json
 
       - name: Smoke-test the batch CLI on the bundled sample data
         shell: bash

@@ -51,14 +51,28 @@ STEM = {
     "v4": "SUBMISSION_MAIN_v4",
     "short": "SUBMISSION_SHORT_v1",
 }
+#: Superseded manuscript versions live here; only the short (current) line
+#: stays in docs/submission.  The resolver keeps --version v1/v2/v4 working
+#: without putting the old drafts back next to the active manuscript.
+ARCHIVE_DIR = "docs/archive/submission_history"
+
+
+def resolve_submission_path(rel: str) -> str:
+    """Return ``rel`` or its archived copy, whichever exists."""
+    if (REPO / rel).is_file():
+        return rel
+    archived = "%s/%s" % (ARCHIVE_DIR, Path(rel).name)
+    if (REPO / archived).is_file():
+        return archived
+    return rel
 
 
 def submission_files(version: str) -> list:
     """Journal-submission files for one manuscript version."""
     stem = STEM[version]
     return [
-        f"docs/submission/{stem}.docx",
-        f"docs/submission/{stem}.md",
+        resolve_submission_path(f"docs/submission/{stem}.docx"),
+        resolve_submission_path(f"docs/submission/{stem}.md"),
         "docs/submission/SUPPLEMENTARY_v1.md",
         "docs/submission/SUPPLEMENTARY_v1.pdf",
     ]
@@ -289,6 +303,17 @@ def main() -> int:
         print("leak hits:", len(hits))
         return 1 if hits else 0
 
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import manuscript_lineage
+
+    errors = manuscript_lineage.check()
+    if errors:
+        for error in errors:
+            print("FAIL: %s" % error, file=sys.stderr)
+        print("refusing to stage; run tools/manuscript_lineage.py seal after "
+              "fixing the manuscript", file=sys.stderr)
+        return 1
+
     rows: list = []
     if not args.no_clean:
         for name in ("submission", "supplementary-data", "repo", "MANIFEST.md"):
@@ -329,7 +354,8 @@ def main() -> int:
     (stage / "repo" / "RELEASE_FILE_LIST.txt").write_text("\n".join(list_lines) + "\n", encoding="utf-8", newline="")
 
     stem = STEM[args.version]
-    main_md = (REPO / f"docs/submission/{stem}.md").read_text(encoding="utf-8")
+    main_md = (REPO / resolve_submission_path(f"docs/submission/{stem}.md")).read_text(
+        encoding="utf-8")
     placeholders = len(re.findall(r"\[TO FILL", main_md))
     placeholder_lines = sum(1 for line in main_md.splitlines() if "[TO FILL" in line)
     hits = scan(stage, local)

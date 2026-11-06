@@ -26,8 +26,8 @@ contact:
 license: MIT
 repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
-version: "0.3.1"
-date-released: "2026-10-19"
+version: "0.3.2"
+date-released: "2026-11-06"
 doi: "10.5281/zenodo.23472599"
 # Concept DOI covering every version of this software: 10.5281/zenodo.23231712
 # The author list, the affiliations and the ORCID follow the manuscript (Ji Song,

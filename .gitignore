@@ -16,6 +16,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # ---- Agent and editor working directories --------------------------------
 .codex/
@@ -140,6 +143,7 @@ docs/BULGE_FIXTURE.md
 docs/submission/
 docs/figures/
 docs/qa/
+docs/archive/
 # Internal audit record: ignored by pattern so its name never appears in a
 # published ignore list (the file on disk keeps its original name).
 docs/*APPLICABILITY_AUDIT.md

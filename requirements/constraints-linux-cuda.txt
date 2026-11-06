@@ -2,7 +2,7 @@
 # Generated: 2026-10-19
 # Environment: validated Linux x86_64 CUDA GPU (RTX 4090), NVIDIA driver 565.57.01, Python 3.12.7, pip 26.2.1
 # Validation: torch 2.10.0 CUDA and TensorFlow 2.20.0 GPU tensor operations; pip check OK; key imports OK
-# Install: pip install -r requirements-linux.txt -c requirements/constraints-linux-cuda.txt
+# Install: pip install -c requirements/constraints-linux-cuda.txt -r requirements/requirements-linux-cuda.txt
 # This file is runtime-verified for the torch/TensorFlow CUDA stack.
 absl-py==2.5.1
 anyio==4.15.1
@@ -85,6 +85,7 @@ pyfaidx==0.9.0.4
 Pygments==2.21.0
 pyparsing==3.3.3
 python-dateutil==2.9.0.post0
+python-docx==1.2.0
 PyYAML==6.0.3
 requests==2.34.2
 rich==15.0.0

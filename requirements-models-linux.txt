@@ -15,5 +15,5 @@ torch>=2.0
 # are documented in docs/ENVIRONMENT.md.
 tensorflow>=2.10
 
-# RNA folding for Cas13 scoring. See docs/RNA_RULES.md for platform fallbacks.
+# RNA folding for Cas13 scoring. See docs/ENVIRONMENT.md for installation and fallbacks.
 ViennaRNA>=2.5.0

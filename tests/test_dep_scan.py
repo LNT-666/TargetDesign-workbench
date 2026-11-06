@@ -54,5 +54,14 @@ class FileSetTests(unittest.TestCase):
         self.assertEqual(untracked, ["new.py"])
 
 
+class ModuleMapTests(unittest.TestCase):
+    def test_bare_namespace_package_name_is_local(self):
+        mapping = dep_scan.module_map(["tools/dep_scan.py"])
+        self.assertIn("tools", mapping)
+
+    def test_import_name_is_mapped_to_distribution_name(self):
+        self.assertEqual(dep_scan.dist_name("docx"), "python-docx")
+
+
 if __name__ == "__main__":
     unittest.main()

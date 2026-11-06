@@ -2,7 +2,7 @@
 # Generated: 2026-10-19
 # Environment: validated Linux x86_64 CPU, Python 3.12.3, pip 26.2.1
 # CPU torch source: https://download.pytorch.org/whl/cpu
-# Install: pip install -r requirements-linux.txt -c requirements/constraints-linux-cpu.txt
+# Install: pip install -c requirements/constraints-linux-cpu.txt -r requirements/requirements-linux-cpu.txt
 #          (add --extra-index-url https://download.pytorch.org/whl/cpu)
 # Validation: pip check OK; test_memory_limit 14 OK; test_genome_index 10 OK; test_dep_scan 2 OK
 # This is a tested-environment snapshot, not a hand-authored resolver guess.
@@ -68,6 +68,7 @@ pyfaidx==0.9.0.4
 Pygments==2.21.0
 pyparsing==3.3.3
 python-dateutil==2.9.0.post0
+python-docx==1.2.0
 PyYAML==6.0.3
 requests==2.34.2
 rich==15.0.0
