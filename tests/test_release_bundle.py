@@ -16,6 +16,9 @@ SUBMISSION_DIR = ROOT / "docs" / "submission"
 FIGURES_DIR = ROOT / "docs" / "figures"
 SUBMISSION_AVAILABLE = SUBMISSION_DIR.is_dir() and FIGURES_DIR.is_dir()
 
+#: The native engine is built in place, with a .exe suffix on Windows runners.
+ENGINE_BINS = {"native/bin/offtarget-engine", "native/bin/offtarget-engine.exe"}
+
 
 class CodeSelectionTests(unittest.TestCase):
     @classmethod
@@ -27,9 +30,9 @@ class CodeSelectionTests(unittest.TestCase):
             "shared/scoring/deepcrispr_convert.py",
             "webapp/services/models.py",
             "tools/build_release_bundle.py",
-            "native/bin/offtarget-engine",
         ):
             self.assertIn(rel, self.rels)
+        self.assertTrue(ENGINE_BINS & self.rels, self.rels)
         launcher = ROOT / "TargetDesign-workbench.exe"
         if launcher.is_file():
             self.assertIn("TargetDesign-workbench.exe", self.rels)
@@ -79,13 +82,14 @@ class BundleContentTests(unittest.TestCase):
 
     def test_launcher_and_shell_scripts_keep_their_executable_bit(self):
         for rel in (
-            "native/bin/offtarget-engine",
             "tools/serve_webapp.sh",
             "tools/server_build_index.sh",
             "tools/build_crispai_env.sh",
         ):
             self.assertIn(rel, bundle.EXECUTABLE_PATHS)
             self.assertIn(rel, self.rels)
+        self.assertIn("native/bin/offtarget-engine", bundle.EXECUTABLE_PATHS)
+        self.assertTrue(ENGINE_BINS & self.rels, self.rels)
 
 
 @unittest.skipUnless(SUBMISSION_AVAILABLE,

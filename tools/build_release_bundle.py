@@ -122,7 +122,6 @@ EXCLUDE_PREFIXES = (
     "out/",
     "output/",
     "native/build/",
-    "native/build-windows/",
     "docs/submission/",
     "docs/figures/",
     "docs/qa/",
@@ -318,6 +317,10 @@ def _excluded(rel: str) -> bool:
     if rel in EXCLUDE_NAMES:
         return True
     if rel.endswith(EXCLUDE_SUFFIXES):
+        return True
+    # Every CMake tree under native/ is a build artifact, whatever suffix the
+    # target gave it (native/build, native/build-windows, native/build-x86_64).
+    if rel == "native/build" or rel.startswith("native/build-"):
         return True
     for prefix in EXCLUDE_PREFIXES:
         if rel == prefix.rstrip("/") or rel.startswith(prefix):
