@@ -508,7 +508,7 @@ function renderLoadedHint() {
   });
 }
 
-/* Write a finished Data prep / Models job's ``outputs`` into empty fields. */
+/* Write a finished Data prep / Model setup job's ``outputs`` into empty fields. */
 function applyJobOutputs(job) {
   const outputs = (job && job.outputs) || {};
   if (!Object.keys(outputs).length) {
@@ -1522,9 +1522,23 @@ function formatSize(bytes) {
   return (value / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+function modelSetupLabel(model) {
+  const status = model.status || 'not_downloaded';
+  if (status === 'needs_conversion') return 'Finish setup';
+  if (status === 'size_mismatch') return 'Repair setup';
+  if (status === 'ready' || status === 'ready_loaded' ||
+      status === 'ready_unavailable') return 'Re-run setup';
+  return 'Set up';
+}
+
+function modelSetupBlocked(model) {
+  return model.status === 'dependency_missing' ||
+    model.status === 'ready_runtime_missing';
+}
+
 async function loadModels() {
   const container = $('models-groups');
-  container.textContent = 'Loading...';
+  container.textContent = 'Loading model setup...';
   try {
     const data = await api('/api/models');
     const groups = data.groups || [];
@@ -1534,7 +1548,8 @@ async function loadModels() {
       box.appendChild(el('h4', {text: group.label || group.protein}));
       const table = el('table', {class: 'models-table'});
       const head = el('tr');
-      ['Model', 'Status', 'Path', 'Description', ''].forEach(function (label) {
+      const columns = ['Model', 'Status', 'Path', 'Description', 'Actions'];
+      columns.forEach(function (label) {
         head.appendChild(el('th', {text: label}));
       });
       table.appendChild(head);
@@ -1555,11 +1570,14 @@ async function loadModels() {
         row.appendChild(el('td', {class: 'muted', text: model.description || ''}));
         const actions = el('td');
         if (model.downloadable !== false) {
-          const download = el('button', {type: 'button', text: 'Download'});
-          download.addEventListener('click', function () {
-            startModelAction(model.key, 'download');
+          const setup = el('button', {
+            type: 'button', text: modelSetupLabel(model),
           });
-          actions.appendChild(download);
+          setup.disabled = modelSetupBlocked(model);
+          setup.addEventListener('click', function () {
+            startModelAction(model.key, 'setup');
+          });
+          actions.appendChild(setup);
         }
         if (model.has_file) {
           const remove = el('button', {type: 'button', text: 'Delete'});
@@ -1589,29 +1607,30 @@ async function loadModels() {
     $('models-dir').textContent = data.models_dir
       ? ('Model directory: ' + data.models_dir) : '';
   } catch (err) {
-    container.textContent = 'Could not load models: ' + err.message;
-    showBanner('Could not load models: ' + err.message, true);
+    container.textContent = 'Could not load model setup: ' + err.message;
+    showBanner('Could not load model setup: ' + err.message, true);
   }
 }
 
 async function startModelAction(key, action) {
+  const verb = action === 'delete' ? 'Delete' : 'Set up';
   try {
     const response = await api('/api/models/' + key + '/' + action, {
       method: 'POST',
       body: {},
     });
-    showBanner('Model ' + key + ': job ' + response.job_id + ' queued.', false);
+    showBanner(verb + ' ' + key + ': job ' + response.job_id + ' queued.', false);
     state.modelLogOffset = 0;
-    $('models-job').textContent = 'Queued...';
+    $('models-job').textContent = verb + ' queued...';
     revealJobBox('models-job');
-    resetRecentJob(response.job_id, 'models', 'Model ' + key + ' ' + action);
+    resetRecentJob(response.job_id, 'models', verb + ' ' + key);
     watchJobInto(response.job_id, 'models-job', 'modelLogOffset', function (job) {
       if (DONE_STATUSES.indexOf(job.status) >= 0) {
         loadModels();
       }
     });
   } catch (err) {
-    showBanner('Model ' + key + ' ' + action + ' failed: ' + err.message, true);
+    showBanner(verb + ' ' + key + ' failed: ' + err.message, true);
   }
 }
 

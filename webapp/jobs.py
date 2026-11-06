@@ -372,10 +372,19 @@ class JobManager:
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             status = self.get_job(job_id)
-            if status is None or status.get("status") in TERMINAL_STATUSES:
+            if status is None:
+                return None
+            if status.get("status") in TERMINAL_STATUSES:
                 return status
             if deadline is not None and time.monotonic() >= deadline:
-                return status
+                raise TimeoutError(
+                    "job %s did not reach a terminal status within %ss "
+                    "(last status: %s)" % (
+                        job_id,
+                        timeout,
+                        status.get("status") or "unknown",
+                    )
+                )
             time.sleep(interval)
 
     def cancel(self, job_id: str) -> Optional[Dict[str, Any]]:

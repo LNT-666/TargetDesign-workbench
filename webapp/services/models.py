@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Model registry service: status list, download and delete jobs.
+"""Model registry service: status list, setup and delete jobs.
 
-Statuses mirror ``main.py``'s Models tab, including the deep-model loadability
+Statuses mirror ``main.py``'s Model setup tab, including the deep-model loadability
 correction (``crispr_m`` / ``deepcrispr`` / ``deepcas12a``), so the web tab and
 the desktop tab never disagree.
 """
@@ -25,15 +25,15 @@ import scoring.deep_models as deep_models  # noqa: E402
 import scoring.model_registry as model_registry  # noqa: E402
 
 
-#: Labels shown by the desktop Models tab (main.py:1213-1230).
+#: Labels shown by the desktop Model setup tab (main.py:1213-1230).
 STATUS_LABELS = {
     "ready": "Ready",
     "ready_loaded": "Ready (scoring)",
-    "ready_unavailable": "Ready (not loadable)",
-    "ready_runtime_missing": "Downloaded (runtime missing)",
-    "dependency_missing": "Downloaded (runtime missing)",
-    "needs_conversion": "Downloaded (needs conversion)",
-    "not_downloaded": "Not downloaded",
+    "ready_unavailable": "Set up (not loadable)",
+    "ready_runtime_missing": "Runtime missing",
+    "dependency_missing": "Runtime missing",
+    "needs_conversion": "Needs conversion",
+    "not_downloaded": "Not set up",
     "size_mismatch": "Size mismatch",
     "web_api": "Online API",
     "external": "External repository",
@@ -53,14 +53,23 @@ def deep_statuses() -> Dict[str, Any]:
 
 
 def list_models() -> Dict[str, Any]:
-    """Model groups with status, path and actions for the Models tab."""
-    statuses = model_registry.get_all_statuses()
+    """Model groups with status, path and actions for the Model setup tab."""
+    status_details = model_registry.get_all_status_details()
+    statuses = {
+        key: detail["status"] for key, detail in status_details.items()
+    }
     groups = []
     for group in schema.model_catalog():
         models = []
         for entry in group["models"]:
             key = entry["key"]
             status = adjust_status(key, statuses.get(key, "not_downloaded"))
+            status_detail = status_details.get(key) or {
+                "status": status,
+                "errors": [],
+                "warnings": [],
+                "paths": {"model": model_registry.get_model_path(key) or ""},
+            }
             path = model_registry.get_model_path(key) or ""
             models.append(dict(
                 entry,
@@ -69,6 +78,7 @@ def list_models() -> Dict[str, Any]:
                 path=path,
                 has_file=bool(path) and os.path.isfile(path),
                 is_ready=status in READY_STATUSES,
+                status_detail=status_detail,
             ))
         groups.append(dict(group, models=models))
     return {
@@ -83,16 +93,16 @@ def _check_key(key: str) -> Dict[str, Any]:
     if info is None:
         raise ValueError("unknown model: %s" % key)
     if not model_registry.is_downloadable(info):
-        raise ValueError("%s cannot be downloaded or deleted" % key)
+        raise ValueError("%s cannot be set up or deleted" % key)
     return info
 
 
-def download_body(key: str):
+def setup_body(key: str):
     info = model_registry.MODELS.get(key) or {}
     name = info.get("name") or key
 
     def run(ctx) -> int:
-        ctx.line("Downloading model: %s (%s)" % (key, name))
+        ctx.line("Setting up model: %s (%s)" % (key, name))
         last_percent = {"value": -1}
 
         def progress(downloaded, total):
@@ -101,19 +111,24 @@ def download_body(key: str):
             percent = int(100 * downloaded / total)
             if percent != last_percent["value"]:
                 last_percent["value"] = percent
-                ctx.progress(percent, "Downloading %s" % name)
+                ctx.progress(percent, "Setting up %s" % name)
 
         def status(state, downloaded, total):
             ctx.line("model %s: %s (%s/%s bytes)"
                      % (key, state, downloaded, total or 0))
 
-        path = model_registry.download_model(
+        path = model_registry.setup_model(
             key, progress_callback=progress, status_callback=status)
         ctx.line("Model ready: %s" % path)
-        ctx.set_result({"model": key, "path": path, "action": "download"})
+        ctx.set_result({"model": key, "path": path, "action": "setup"})
         return 0
 
     return run
+
+
+def download_body(key: str):
+    """Backward-compatible alias for :func:`setup_body`."""
+    return setup_body(key)
 
 
 def delete_body(key: str):
@@ -126,13 +141,18 @@ def delete_body(key: str):
     return run
 
 
-def submit_download(key: str, manager) -> Dict[str, Any]:
+def submit_setup(key: str, manager) -> Dict[str, Any]:
     info = _check_key(key)
-    title = "Download %s" % (info.get("name") or key)
+    title = "Set up %s" % (info.get("name") or key)
     job_id = manager.create_job(
-        "model", title, download_body(key),
-        {"model": key, "action": "download", "title": title})
+        "model", title, setup_body(key),
+        {"model": key, "action": "setup", "title": title})
     return {"job_id": job_id, "title": title, "model": key}
+
+
+def submit_download(key: str, manager) -> Dict[str, Any]:
+    """Backward-compatible alias for :func:`submit_setup`."""
+    return submit_setup(key, manager)
 
 
 def submit_delete(key: str, manager) -> Dict[str, Any]:

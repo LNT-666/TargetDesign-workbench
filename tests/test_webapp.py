@@ -126,6 +126,27 @@ class JobManagerTests(JobManagerTestCase):
         with self.assertRaises(ValueError):
             self.manager.job_dir("not-an-id")
 
+    def test_wait_contract_for_missing_terminal_and_timed_out_jobs(self):
+        with mock.patch.object(self.manager, "get_job", return_value=None):
+            self.assertIsNone(self.manager.wait("aaaaaaaaaaaa", timeout=0.5))
+
+        terminal = {"job_id": "aaaaaaaaaaaa", "status": "succeeded"}
+        with mock.patch.object(self.manager, "get_job", return_value=terminal):
+            self.assertIs(self.manager.wait("aaaaaaaaaaaa", timeout=0.5), terminal)
+
+        running = {"job_id": "aaaaaaaaaaaa", "status": "running"}
+        with mock.patch.object(self.manager, "get_job", return_value=running):
+            with mock.patch.object(
+                job_module.time, "monotonic", side_effect=[0.0, 1.0]
+            ):
+                with self.assertRaises(TimeoutError) as raised:
+                    self.manager.wait("aaaaaaaaaaaa", timeout=0.5)
+
+        message = str(raised.exception)
+        self.assertIn("aaaaaaaaaaaa", message)
+        self.assertIn("0.5", message)
+        self.assertIn("running", message)
+
     def test_list_jobs_newest_first_and_read_log_offsets(self):
         def runner(ctx):
             ctx.line("hello")
@@ -492,6 +513,7 @@ class DesignerServiceTests(DesignerFormTestCase):
         self.assertEqual(data["columns"], ["guide", "score", "extra"])
         self.assertEqual(data["total"], 1)
         self.assertEqual(data["rows"][0]["guide"], "GGG")
+        self.assertEqual(data["rows"][0]["score"], "0.50")
         self.assertNotIn("query_seq", data["rows"][0])
 
     def test_results_reads_the_deliverable_table(self):
@@ -771,7 +793,7 @@ class ModelServiceTests(unittest.TestCase):
         self.assertIn("unknown model", str(caught.exception))
         with self.assertRaises(ValueError) as caught:
             models_service._check_key("teep")
-        self.assertIn("cannot be downloaded or deleted", str(caught.exception))
+        self.assertIn("cannot be set up or deleted", str(caught.exception))
         self.assertIsInstance(models_service._check_key("crispr_m"), dict)
 
     def test_list_models_reports_status_labels_and_paths(self):
@@ -791,6 +813,25 @@ class ModelServiceTests(unittest.TestCase):
                 self.assertIn("path", model)
         self.assertIn("crispr_m", keys)
 
+    def test_crispai_status_and_preflight_detail_are_returned(self):
+        detail = {
+            "status": "dependency_missing",
+            "errors": ["R package NuPoP not available"],
+            "warnings": [],
+            "paths": {"genome": "GRCh38"},
+        }
+        with mock.patch.object(
+                model_registry, "get_all_status_details",
+                return_value={"crispai": detail}):
+            data = models_service.list_models()
+        model = next(
+            item for group in data["groups"] for item in group["models"]
+            if item["key"] == "crispai"
+        )
+        self.assertEqual(model["status"], "dependency_missing")
+        self.assertFalse(model["is_ready"])
+        self.assertEqual(model["status_detail"], detail)
+
     def test_needs_conversion_is_reported_and_not_ready(self):
         self.assertIs(
             models_service.adjust_status,
@@ -798,8 +839,8 @@ class ModelServiceTests(unittest.TestCase):
         )
         self.assertEqual(models_service.READY_STATUSES, ("ready", "ready_loaded"))
         with mock.patch.object(
-                model_registry, "get_all_statuses",
-                return_value={"deepcrispr": "ready"}), \
+                model_registry, "get_all_status_details",
+                return_value={"deepcrispr": {"status": "ready"}}), \
                 mock.patch.object(
                     models_service.deep_models.DeepCrisprPredictor,
                     "status", return_value="needs_conversion") as status:
@@ -810,14 +851,14 @@ class ModelServiceTests(unittest.TestCase):
             if item["key"] == "deepcrispr"
         )
         self.assertEqual(model["status"], "needs_conversion")
-        self.assertEqual(model["status_label"], "Downloaded (needs conversion)")
+        self.assertEqual(model["status_label"], "Needs conversion")
         self.assertFalse(model["is_ready"])
         self.assertIn(mock.call(load=True), status.call_args_list)
 
     def test_deepcas12a_dependency_status_is_not_ready(self):
         with mock.patch.object(
-                model_registry, "get_all_statuses",
-                return_value={"deepcas12a": "ready"}), \
+                model_registry, "get_all_status_details",
+                return_value={"deepcas12a": {"status": "ready"}}), \
                 mock.patch.object(
                     models_service.deep_models.DeepCas12aPredictor,
                     "status", return_value="dependency_missing") as status:
@@ -850,15 +891,23 @@ class ModelServiceTests(unittest.TestCase):
         self.assertEqual(teep["path"], "")
         self.assertTrue(teep["url"])
 
-    def test_submit_download_and_delete_queue_model_jobs(self):
+    def test_submit_setup_and_delete_queue_model_jobs(self):
+        manager = mock.Mock()
+        manager.create_job.return_value = "abcdefabcdef"
+        result = models_service.submit_setup("crispr_m", manager)
+        self.assertEqual(result["model"], "crispr_m")
+        self.assertEqual(result["title"], "Set up CRISPR-M")
+        self.assertEqual(manager.create_job.call_args[0][0], "model")
+        self.assertEqual(manager.create_job.call_args[0][3]["action"], "setup")
+        models_service.submit_delete("crispr_m", manager)
+        self.assertEqual(manager.create_job.call_args[0][3]["action"], "delete")
+
+    def test_download_alias_still_queues_setup(self):
         manager = mock.Mock()
         manager.create_job.return_value = "abcdefabcdef"
         result = models_service.submit_download("crispr_m", manager)
-        self.assertEqual(result["model"], "crispr_m")
-        self.assertEqual(manager.create_job.call_args[0][0], "model")
-        self.assertEqual(manager.create_job.call_args[0][3]["action"], "download")
-        models_service.submit_delete("crispr_m", manager)
-        self.assertEqual(manager.create_job.call_args[0][3]["action"], "delete")
+        self.assertEqual(result["title"], "Set up CRISPR-M")
+        self.assertEqual(manager.create_job.call_args[0][3]["action"], "setup")
 
 class HandlerRouteTests(JobManagerTestCase):
     def setUp(self):
@@ -895,7 +944,7 @@ class HandlerRouteTests(JobManagerTestCase):
         self.assertEqual((kind, status), ("bytes", 200))
         self.assertIn("text/html", content_type)
         html = body.decode("utf-8")
-        for tab in ("Data prep", "Models", "Designer", "Results / Output"):
+        for tab in ("Data prep", "Model setup", "Designer", "Results / Output"):
             self.assertIn(tab, html)
         self.assertIn("/static/app.js", html)
         self.assertIn("/static/styles.css", html)
@@ -1131,12 +1180,16 @@ class HandlerRouteTests(JobManagerTestCase):
         manager = mock.Mock()
         manager.create_job.return_value = "abcdefabcdef"
         app.set_manager(manager)
-        calls = self.call("/api/models/crispr_m/download", method="POST", body={})
+        calls = self.call("/api/models/crispr_m/setup", method="POST", body={})
         self.assertEqual(calls[0][1], 200)
         self.assertEqual(calls[0][2]["model"], "crispr_m")
         self.assertEqual(manager.create_job.call_args[0][0], "model")
 
-        self.assertEqual(self.call("/api/models/teep/download",
+        calls = self.call("/api/models/crispr_m/download", method="POST", body={})
+        self.assertEqual(calls[0][1], 200)
+        self.assertEqual(calls[0][2]["model"], "crispr_m")
+
+        self.assertEqual(self.call("/api/models/teep/setup",
                                    method="POST", body={})[0][1], 400)
         self.assertEqual(self.call("/api/models/nope/delete",
                                    method="POST", body={})[0][1], 400)
@@ -1163,6 +1216,8 @@ class HandlerRouteTests(JobManagerTestCase):
         self.assertEqual(app.job_route("/api/models/x"), (None, None))
         self.assertEqual(app.model_action_route("/api/models/crispr_m/download"),
                          ("crispr_m", "download"))
+        self.assertEqual(app.model_action_route("/api/models/crispr_m/setup"),
+                         ("crispr_m", "setup"))
         self.assertEqual(app.model_action_route("/api/models/crispr_m"), (None, None))
 
 

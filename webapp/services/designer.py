@@ -43,6 +43,7 @@ from output.candidate_export import (  # noqa: E402
     SUPPORTED_FORMATS,
     export_selected,
 )
+from output.output_columns import format_display_value  # noqa: E402
 from utils import system_memory  # noqa: E402
 from utils.paths import default_output_dir  # noqa: E402
 
@@ -348,7 +349,10 @@ def candidates(job_id: str, manager) -> Dict[str, Any]:
             if key not in columns and key not in HIDDEN_COLUMNS:
                 columns.append(key)
     rendered = [
-        {column: str(row.get(column, "")) for column in columns}
+        {
+            column: format_display_value(row.get(column, ""))
+            for column in columns
+        }
         for row in rows
     ]
     return {"columns": columns, "rows": rendered, "total": len(rendered)}
@@ -361,7 +365,7 @@ def _read_delimited_table(path: str) -> Dict[str, Any]:
         columns = [str(name) for name in (reader.fieldnames or [])]
         rows = [
             {
-                column: "" if raw.get(column) is None else str(raw.get(column))
+                column: format_display_value(raw.get(column))
                 for column in columns
             }
             for raw in reader

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Web workbench: Data prep / Models / Designer / Results.
+"""Web workbench: Data prep / Model setup / Designer / Results.
 
 Run from the repository root:
 
@@ -544,8 +544,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             key, action = model_action_route(path)
             if key is not None:
-                if action == "download":
-                    self._send_json(models.submit_download(key, manager))
+                if action in ("setup", "download"):
+                    self._send_json(models.submit_setup(key, manager))
                     return
                 if action == "delete":
                     self._send_json(models.submit_delete(key, manager))

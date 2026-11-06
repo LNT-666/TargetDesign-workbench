@@ -15,7 +15,7 @@
 <div class="topbar" id="designer-topbar">
   <div class="topbar-line">
     <button id="drawer-toggle" class="drawer-toggle" type="button"
-            aria-expanded="false" aria-controls="drawer">Data prep / Models</button>
+            aria-expanded="false" aria-controls="drawer">Data prep / Model setup</button>
     <label for="designer-mode">Design Pattern</label>
     <select id="designer-mode"></select>
     <button id="designer-find" class="primary" type="button">Find Targets</button>
@@ -35,9 +35,9 @@
 
 <div class="workspace" id="workspace">
   <aside class="drawer" id="drawer" aria-hidden="true"
-         aria-label="Data prep and Models">
+         aria-label="Data prep and model setup">
     <div class="drawer-head">
-      <h2>Data prep &amp; Models</h2>
+      <h2>Data prep &amp; Model setup</h2>
       <button id="drawer-close" type="button">Close</button>
     </div>
 
@@ -160,7 +160,11 @@
     </section>
 
     <section class="drawer-block" id="drawer-models">
-      <h3>Models</h3>
+      <h3>Model setup</h3>
+      <p class="hint">
+        Set up downloads required files, converts formats when needed, and
+        checks local readiness. Runtime dependencies remain visible in Status.
+      </p>
       <div class="actions">
         <button id="models-refresh" type="button">Refresh status</button>
         <span id="models-dir" class="muted"></span>
