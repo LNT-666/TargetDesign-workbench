@@ -75,7 +75,7 @@ release/
   之外的 `example/` 内容。
 - 运行产物：`logs/`、`output/`、`out/`、`backup/`、`jobs/`、`webapp/jobs/`、
   `__pycache__/`、`*.pyc`。注意 `shared/output/` 是源码，不在此列。
-- 构建树：`native/build/`、`native/build-windows/`（CMake 配置与 MSVC 中间产物）。
+- 构建树：`native/build*/`（CMake 配置与编译中间产物，含 `build/`、`build-windows/`、`build-x86_64/`）。
 - 本机专用文件：`docs/SSH_ACCESS.md`、`tools/release_scan_denylist.local.txt`。
 - 内部材料：`docs/submission/`、`docs/figures/`、`docs/qa/`、`docs/handoff/`、
   `docs/archive/`、`docs/PAPER_*`、`docs/FIGURE_TABLE_PLAN.md`、

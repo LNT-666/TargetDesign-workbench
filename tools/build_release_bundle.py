@@ -242,7 +242,7 @@ Linux 服务器把依赖文件换成 `requirements-linux.txt`，其余命令相�
   `docs/handoff/`、`docs/PAPER_*`。
 - `.git`、虚拟环境和缓存文件。
 - 本机专用文件：`docs/SSH_ACCESS.md`、`tools/release_scan_denylist.local.txt`。
-- `native/build/`、`native/build-windows/`：CMake 配置树与 MSVC 中间产物。
+- `native/build*/`：CMake 配置树与编译中间产物（含 `build/`、`build-windows/`、`build-x86_64/` 等）。
 
 ## 说明
 
