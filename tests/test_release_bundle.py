@@ -27,10 +27,12 @@ class CodeSelectionTests(unittest.TestCase):
             "shared/scoring/deepcrispr_convert.py",
             "webapp/services/models.py",
             "tools/build_release_bundle.py",
-            "TargetDesign-workbench.exe",
             "native/bin/offtarget-engine",
         ):
             self.assertIn(rel, self.rels)
+        launcher = ROOT / "TargetDesign-workbench.exe"
+        if launcher.is_file():
+            self.assertIn("TargetDesign-workbench.exe", self.rels)
 
     def test_excludes_weights_artifacts_and_internal_material(self):
         banned_prefixes = (

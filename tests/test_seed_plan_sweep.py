@@ -81,7 +81,6 @@ class FixtureGenerationTests(unittest.TestCase):
         genome = ROOT / "example" / "engine_benchmark_small" / (
             "synthetic_genome.fa")
         guides = ROOT / "example" / "engine_benchmark_small" / "guides.tsv"
-        actual = seed_plan_sweep.fixture_provenance(genome, guides, 12, 20)
         fixture_metadata = json.loads(
             (ROOT / "example" / "engine_benchmark_small" / "fixture.json")
             .read_text(encoding="utf-8")
@@ -91,11 +90,21 @@ class FixtureGenerationTests(unittest.TestCase):
                 encoding="utf-8")
         )["fixture"]
 
-        for key in (
+        keys = (
             "generator", "seed", "genome_bases", "contigs", "command",
             "genome_sha256", "guides_sha256", "genome_size_bytes",
             "guides_size_bytes",
-        ):
+        )
+        for key in keys:
+            self.assertEqual(fixture_metadata[key], sweep_metadata[key])
+
+        if not genome.is_file():
+            self.skipTest(
+                "synthetic_genome.fa is a 1 MB generated fixture and is not "
+                "tracked; only the metadata pair was compared")
+
+        actual = seed_plan_sweep.fixture_provenance(genome, guides, 12, 20)
+        for key in keys:
             self.assertEqual(fixture_metadata[key], actual[key])
             self.assertEqual(sweep_metadata[key], actual[key])
         self.assertEqual(fixture_metadata["guides_count"],
