@@ -2,6 +2,8 @@
 
 检查日期：2026-09-12。本文以当前仓库实现为准，说明 TnpB 评分路径、
 适用边界、参考文献和结果字段。
+pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`（Basic）、
+`Gap-anchored pair`（Pattern A）与 `Centered-anchor pair`（Pattern B）。
 
 ## 一、结论
 
@@ -14,8 +16,8 @@
   归一化到 0-1。
 - TnpB 的 off-target 路径固定为 `identity` 启发式，不调用 TEEP，
   也不是针对 TnpB 实验数据训练的特异性模型。
-- 单 motif、unique guide 和 library 输出按 `off_target_specificity`
-  降序排名；Pattern A / Y-ZBP 使用 `prediction_only` PairRank。
+- `Single-anchor pattern`、unique guide 和 library 输出按 `off_target_specificity`
+  降序排名；paired pattern 使用 `prediction_only` PairRank。
   `combined_score` 已从实现和输出中删除。
 - TnpB 默认模型组合是 `identity` + `omega`；只有显式勾选 `teep` 时，
   结果才会额外出现 `on_target_score_teep`。
@@ -145,7 +147,7 @@ off_target_specificity = 1 / (1 + total)
 这个函数，不走带 seed penalty 的 `preset_off_target_specificity()`；
 `non_cas9_rules.py` 中记录的建议 seed 参数不会影响该分值。PAM/TAM 过滤发生在
 进入评分前：只有启用 `Require PAM` 并提供了正确 motif 时，带有错误 TAM 的
-命中才会被排除。
+off-target hit 才会被排除。
 
 ## 三、适用范围和当前限制
 
@@ -174,7 +176,7 @@ TAM motif 与 side。
 `off_target_model`、`reference_only`、`reference_note`、`rule_source`、
 `rule_reference`、`rule_summary`、`subtype_note`、`omega_model` 等列。
 这些字段中的一部分仍保留在内部评分结果、库流水线或 `library_summary.json`，
-但不属于当前单 motif / Pattern A / Y-ZBP 候选表的统一输出契约。
+但不属于当前 `Single-anchor pattern` / paired pattern 候选表的统一输出契约。
 不要从旧 TSV 的列存在性推断当前程序仍会写这些列。
 
 ## 四、输出字段
@@ -197,11 +199,11 @@ TAM motif 与 side。
 | `guide_structure_penalty` | guide 自身发夹/反向互补惩罚 | `clamp((guide_hairpin_len-3)/6, 0, 1)`，越低越好 |
 | `repeat_hairpin_score` | direct repeat 的发夹结构分数 | `min(1, repeat_hairpin_len/6)`；没有 direct repeat 时为空，整列可能被隐藏 |
 | `AT_score` | TnpB preset 的 flanking AT 分数 | 仅当对应侧 system preset 为 `tnpb` 时计算和输出；Pattern A 列名为 `left_AT_score` / `right_AT_score`，Y-ZBP 为逐侧 `AT_score` |
-| `omega_model` | 本地模型标识 | `library_scores.tsv` 中的值为 `omega_rna_rules`；单 motif 和复杂模式候选表会过滤该内部列 |
+| `omega_model` | 本地模型标识 | `library_scores.tsv` 中的值为 `omega_rna_rules`；`Single-anchor pattern` 和 paired pattern 候选表会过滤该内部列 |
 
-### 4.2 Pattern A / Y-ZBP 的左、右列
+### 4.2 Gap-anchored pair / Centered-anchor pair 的左、右列
 
-复杂模式对每一侧独立评分并加前缀：
+paired pattern 对每一侧独立评分并加前缀：
 
 - `left_on_target_score_omega`
 - `right_on_target_score_omega`
@@ -221,11 +223,11 @@ TAM motif 与 side。
 
 | 列 | 含义 |
 | --- | --- |
-| `rank` | 当前写出器自己的排名。单 motif、unique guide 和 `library_scores.tsv` 按 `off_target_specificity` 降序；Pattern A / Y-ZBP 的 `rank` 来自 PairRank 分组顺序 |
+| `rank` | 当前写出器自己的排名。`Single-anchor pattern`、unique guide 和 `library_scores.tsv` 按 `off_target_specificity` 降序；paired pattern 的 `rank` 来自 PairRank 分组顺序 |
 | `nuclease` | 本次评分的核酸酶类型，TnpB 为 `tnpb` |
-| `total_matches` | 搜索后端返回的当前 query 命中数 |
-| `valid_matches` | 排除屏蔽区域后参与统计和评分的命中数 |
-| `sum_mismatch` | 有效命中的错配总数 |
+| `total_matches` | search engine 返回的当前 search query off-target hit 数 |
+| `valid_matches` | 排除屏蔽区域后参与统计和评分的 off-target hit 数 |
+| `sum_mismatch` | 有效 off-target hit 的错配总数 |
 | `MM0` ... `MMn` | 各错配桶；最后一列 `MMn` 表示 `>= n`，n 等于本次 `max_mismatch` |
 | `GC-content`、`GC-hint` | query 的 GC 百分比和程序内的低/通过/高提示 |
 | `Self-complementarity`、`Self-comp-hint` | 最长反向互补长度及提示；其计算范围可能覆盖完整 query window，不等同于输出中的 `guide_structure_penalty` |
@@ -238,7 +240,7 @@ TAM motif 与 side。
 | `query_scores_sorted.tsv` | 每个候选一行；包含勾选模型的 `on_target_score_<model>` 和 `off_target_specificity_<model>`，以及非空的 TnpB 子特征 |
 | `unique_guides.tsv` | 按唯一 guide 去重后的同一类模型和 TnpB 子特征列 |
 | `library_scores.tsv` | Library 流程结果；额外保留 `omega_model`，TnpB 子特征和其他模型评分同样存在 |
-| `top_offtargets.tsv` | 每个 guide 排名靠前的命中位点，不包含 on-target 模型分数 |
+| `top_offtargets.tsv` | 每个 guide 排名靠前的 off-target hit，不包含 on-target 模型分数 |
 | `query_scores.bed` | 候选区间和归一化 BED 分数，不展开 TnpB 子特征 |
 | `library_summary.json` | 包含主 `off_target_model`、`rule_source`、`rule_reference`、`subtype_note`、`omega_model`、搜索引擎等摘要字段 |
 
@@ -262,7 +264,7 @@ TAM motif 与 side。
 3. 先用 `off_target_specificity_identity` 排除额外相似位点多的候选。
 4. 本地筛选优先看 `on_target_score_omega`；要比较在线 TEEP 时，再同时查看
    `on_target_score_teep`，并确认运行日志中没有 TEEP 回退。
-5. 单 motif 按 `off_target_specificity` 查看；双靶点按 PairRank 状态和
+5. `Single-anchor pattern` 按 `off_target_specificity` 查看；paired pattern 按 PairRank 状态和
    风险字段查看。再人工核查 `top_offtargets.tsv`、种子区域和实验链路。
    不要把任一启发式分数直接当成绝对编辑效率。
 

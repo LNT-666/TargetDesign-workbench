@@ -61,10 +61,17 @@ python -m unittest discover -s tests -v
 可把虚拟环境放在本机磁盘，例如
 `<local disk>\.venvs\...`。
 
-### DeepCRISPR 转换（TensorFlow 2.10）
+### DeepCRISPR 转换
 
-使用 Python 3.10 + TensorFlow 2.10 的隔离环境，通过 `tf.compat.v1` 读取原始
-TensorFlow 1.x checkpoint，并生成 portable npz：
+Web 或桌面端的模型设置会先取得原始 tar.gz，再由
+`shared/scoring/deepcrispr_convert.py` 直接解析 TensorFlow checkpoint 并生成
+portable npz。这条链路只依赖 NumPy，不需要 TensorFlow，也不需要额外的转换环境；
+转换完成后模型状态为 `ready`。如果本地只有原始 tar.gz 而 portable npz 缺失，
+状态会显示 `needs_conversion`，重新执行该模型的下载即可补做转换。
+
+只有在修改转换器或前向实现、需要重新做 TensorFlow 参考校验时，才建议使用下面的
+隔离环境。人工脚本会用 `tf.compat.v1` 读取 checkpoint、导出权重，并比较
+NumPy 前向与 TensorFlow 参考图的输出：
 
 ```powershell
 py -3.10 -m venv .venv310-tf
@@ -82,13 +89,13 @@ pip install tensorflow==2.10.0
 python tools/convert_deepcrispr.py
 ```
 
-转换脚本会用 TensorFlow 参考图与 NumPy 前向做一致性校验。转换完成后，模型以
-portable npz 运行，不再依赖 TensorFlow。
+`tools/convert_deepcrispr.py` 是可选的人工校验路径，不是正常下载所必需。转换完成后，
+模型始终以 portable npz 运行，不再依赖 TensorFlow。
 
-## 3. 锁定依赖与 CPU-only / CUDA 安装
+## 3. 固定版本安装与 CPU-only / CUDA 安装
 
-Linux x86_64 / Python 3.12 的两份快照由已安装并通过检查的环境生成，不是手工编写的
-版本猜测：
+Linux x86_64 的 CPU-only / CUDA 快照支持 Python >=3.12,<3.14，并在推荐版本 Python 3.12
+上验证。两份快照由已安装并通过检查的环境生成，不是手工编写的版本猜测：
 
 - `requirements/constraints-linux-cpu.txt`：已验证的 Linux CPU 环境，Python 3.12.3、pip 26.2.1；`pip check`
   通过，内存限制 14 项、索引 10 项、依赖扫描 2 项测试通过。
@@ -138,10 +145,23 @@ python -m pip install -c requirements/constraints-linux-cuda.txt \
 主运行流程不要求 scikit-learn。它仅作为离线分析与配图的可选依赖保留在完整
 requirements 中；没有当前模型预测器依赖它。
 
-### ViennaRNA（Phase 4 的 RNA 可及性计算）
+### ViennaRNA（Cas13 RNA 可及性）
 
-安装方式（conda / pip / WSL）与未安装时的回退行为见 `docs/RNA_RULES.md` 的
-「ViennaRNA 安装」。
+Cas13 的 RNA 可及性评分依赖 ViennaRNA。Linux/macOS 可用 conda 安装：
+
+```bash
+conda install -c bioconda viennarna
+```
+
+也可安装 Python 绑定：
+
+```bash
+pip install ViennaRNA
+```
+
+Windows 建议在 WSL 中安装。未安装时评分自动回退到确定性的
+`cas13_u_rich` / `cas13_a_rich` 启发式，`rna_features` 中的结构值为 `None`，
+不会中断流程；评分字段与行为见 `docs/SCORING_GUIDE.md`。
 
 ### 其它可选工具
 

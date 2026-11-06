@@ -33,57 +33,34 @@ TnpB/omegaRNA, plus a `custom` mode in which nothing is assumed.
 
 ### 2.1 Container (recommended for reviewers)
 
-The container image **is** the distributed stand-alone application: it starts
-the web workbench on port 5000 and bundles the native C++20 indexed off-target
-engine, so no Python or third-party installation is needed on the host.
-
-Requirements: Docker Engine 24 or newer (or Podman with the equivalent
-`build`/`run` commands) and about 4 GB of free disk space.
-
-The single image-version source is `[project].version` in `pyproject.toml`. Set
-`VERSION` to that value before building or running the image.
+The distributed stand-alone application runs from a container image. Docker
+Engine 24 or newer (or Podman with equivalent commands) and about 4 GB of free
+space are required. Set `VERSION` to `[project].version` in `pyproject.toml`,
+then pull and run:
 
 ```bash
-VERSION="<version>"  # pyproject.toml [project].version
-docker build -t targetdesign-workbench:$VERSION .
-docker run --rm -p 127.0.0.1:5000:5000 -v targetdesign-data:/data targetdesign-workbench:$VERSION
+VERSION="<version>"
+docker run --rm -p 127.0.0.1:5000:5000 ghcr.io/lnt-666/targetdesign-workbench:$VERSION
 ```
 
-Then open <http://localhost:5000>. The port is published on the loopback
-interface only; publish `-p 5000:5000` instead if other machines should reach
-it. With Compose, run `TAG="$VERSION" docker compose up --build`; the required
-`TAG` prevents Compose from silently selecting a mismatched image version, while
-run data stays in `./data`.
-
-Genomes, indexes and exported runs live in the volume mounted at `/data` (the
-`TARGETDESIGN_DATA` environment variable), so a rebuilt image never discards a
-genome index. The default image target is `core`; `--target full` adds
-ViennaRNA, Cas-OFFinder, R + NuPoP and a CPU PyTorch build.
-
-Full build details, including the two image targets and what is deliberately
-not shipped inside the image (model weights, third-party trees, genomes), are
-in [`../CONTAINER.md`](../CONTAINER.md).
+Open <http://localhost:5000>. The image contains the web workbench and native
+C++20 indexed engine; add a volume at `/data` to retain genomes, indexes and
+exports. Build targets, Compose usage, versioning and data persistence are
+documented in [`../CONTAINER.md`](../CONTAINER.md).
 
 ### 2.2 From source
 
-The source tree needs Python 3.13 and the pinned requirements. NCBI BLAST+
-(`blastn`, `makeblastdb`) is optional and only needed for the `blast` engine.
-
-Windows:
-
-```powershell
-py -3.13 -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements-windows.txt
-```
-
-Linux/macOS:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-```
+The source tree supports Python >=3.12,<3.14 and recommends Python 3.12. Install
+the compatible ranges with `requirements-windows.txt` or
+`requirements-linux.txt` as shown in the [repository README](../../README.md).
+Tested Linux
+snapshots pair `requirements/constraints-linux-cpu.txt` with
+`requirements/requirements-linux-cpu.txt`, and
+`requirements/constraints-linux-cuda.txt` with
+`requirements/requirements-linux-cuda.txt`; the formal commands and
+model-conversion environments are in [`../ENVIRONMENT.md`](../ENVIRONMENT.md).
+NCBI BLAST+ (`blastn`, `makeblastdb`) is optional and only needed for the
+`blast` engine.
 
 Third-party model weights are not redistributed with the software; runs that
 use published rule sets need no weights. See [`../MODELS.md`](../MODELS.md) for
@@ -100,7 +77,7 @@ python webapp/app.py --port 8080     # different port
 ```
 
 The page answers on <http://127.0.0.1:5000>. Long steps (index builds, searches,
-batches) run as queued background jobs; only one heavy job runs at a time and
+batches) run as queued background runs; only one heavy run is active at a time and
 progress is streamed to the Run Log panel.
 
 The same pipeline can be driven from the desktop workbench
@@ -136,15 +113,15 @@ their provenance.
 
 | Area | What it is for |
 | --- | --- |
-| **Data prep / Models** (drawer) | Download a genome and annotation, extract a target or mask region, build a BLAST database or a genome index, and inspect model availability. A successful job back-fills empty Designer inputs; values you typed yourself are never overwritten. |
-| **Design Pattern** (top bar) | Chooses the layout to design: single target, Pattern A or Pattern B. |
+| **Data prep / Model setup** (drawer) | Download a genome and annotation, extract a target region or mask region, build a BLAST database or a genome index, and set up model files and runtime status. A successful run back-fills empty Designer inputs; values you typed yourself are never overwritten. |
+| **Design Pattern** (top bar) | Chooses the layout: `Single-anchor pattern` (UI: Basic), `Gap-anchored pair` (Pattern A; UI: Complex), or `Centered-anchor pair` (Pattern B; UI: Y/ZBP). |
 | **Find Targets** | Extracts the candidate windows of the current pattern from the search scope. |
 | **Score & Off-target** | Runs the off-target search and scores, filters and ranks the candidates. |
 | **Structure Preview** | Human-readable summary of the current pattern, e.g. `[downstream flank 20 bp] + [NGG]`. |
-| **Run Settings** | Engine, search budget, PAM mode, GC hints and memory limits (Section 5.9). |
-| **Run Log** | Streamed output of the current or last job. |
+| **Run Settings** | Search engine, search budget, PAM mode, GC hints and memory limits (Section 5.9). |
+| **Run Log** | Streamed output of the current or last run. |
 | **Results Table** | The candidate table with the export controls. |
-| **Results / Output** | Past jobs, their logs, and a file browser for an output directory. |
+| **Results / Output** | Past runs, their logs, and a file browser for an output directory. |
 
 ## 5. The Designer form, field by field
 
@@ -155,7 +132,7 @@ their provenance.
 | **Search FASTA** | The sequence(s) to design against: the sequence whose sites are turned into candidates. Use this for a single gene or an amplicon. |
 | **BED Regions** | Alternative scope input. Instead of whole FASTA records, only the intervals of a BED file are searched. |
 | **Genome FASTA** | The genome used for the off-target search. It may be a different file from the search scope (design in a gene, search the whole genome). A `.fna.gz` path is decompressed next to the file. |
-| **Mask FASTA** | Optional. Regions present in this file are excluded from off-target counting and from the off-target flank extraction. Get this wrong and the "off-target" columns become meaningless: if the mask covers the whole search scope, every hit is excluded (see the note in [`tutorial.md`](tutorial.md)). A `.fna.gz` path is decompressed next to the file, like the genome. |
+| **Mask FASTA** | Optional. Regions present in this file are excluded from off-target counting and from the off-target flank extraction. Get this wrong and the "off-target" columns become meaningless: if the mask covers the whole search scope, every off-target hit is excluded (see the note in [`tutorial.md`](tutorial.md)). A `.fna.gz` path is decompressed next to the file, like the genome. |
 | **BLAST DB Prefix** | Optional pre-built BLAST database prefix (`<prefix>.nin`/`.nsq` plus the `.source.json` sidecar) for the `blast` engine. Empty means it is built on demand. |
 | **Annotation GFF3** | Optional GFF/GTF annotation. It adds the `Annotation`, `Nearest-TSS`, `Isoforms` and `Downstream-ATG` columns to the score table, so candidates can be judged by where they sit. Without it those columns are omitted. |
 | **Result Label** | Name of this run. Blank derives a name from system and target (`<system>-<target>`), which is also the prefix of the delivered files. |
@@ -165,11 +142,17 @@ their provenance.
 Three layouts are available; the form to the right of the pattern selector
 changes with the choice.
 
+The canonical names are **Single-anchor pattern** (UI: Basic), **Gap-anchored
+pair** (Pattern A; UI: Complex) and **Centered-anchor pair** (Pattern B; UI:
+Y/ZBP). The former names *Single target design*, *paired target design pattern A
+(Target-xbp-Target)* and *paired target design pattern B
+(Target-xbp-Motif-ybp-Target)* remain valid aliases.
+
 | Pattern | Layout | Typical use |
 | --- | --- | --- |
-| **Single target design** (`single_motif_flank`) | `[flank][motif]` | One guide next to one PAM/TAM. This is the classic single-guide design and the pattern used by the tutorial. |
-| **Paired-target design Pattern A** (`motif_gap_motif`) | `[flank][motif] ... gap ... [motif][flank]` | Two guides flanking a short gap, so both cut the same locus. Ranked as pairs by PairRank. |
-| **Paired-target design Pattern B** (`y_centered_motifs`) | left motif, a mandatory middle motif, right motif, each with its own distance window | Two guides surrounding a required central motif. |
+| **Single-anchor pattern** (UI: Basic; `single_motif_flank`) | `[flank][motif]` | One guide next to one PAM/TAM. This is the pattern used by the tutorial. |
+| **Gap-anchored pair** (Pattern A; UI: Complex; `motif_gap_motif`) | `[flank][motif] ... gap ... [motif][flank]` | Two guides flanking a short gap, so both cut the same locus. Ranked as pairs by PairRank. |
+| **Centered-anchor pair** (Pattern B; UI: Y/ZBP; `y_centered_motifs`) | left motif, a mandatory middle motif, right motif, each with its own distance window | Two guides surrounding a required central motif. |
 
 For each target side the form offers:
 
@@ -188,6 +171,16 @@ between the two motifs, measured to the left PAM/TAM), and Pattern B has a
 **Middle Motif** plus one distance pair per side. Paired patterns also require
 the PairRank policy fields under Run Settings; a paired run stops instead of
 quietly falling back to a different ranking when a threshold is missing.
+
+Pattern A matches the left and right motifs independently on both genomic
+strands, so `++`, `+-`, `-+` and `--` combinations are all considered. Each
+row records the actual orientation in `left_strand` and `right_strand`;
+`strand` is `plus` for the cross-strand combinations and `minus` only when both
+motifs are on the minus strand. Target intervals are 0-based half-open
+`left_target_start/end` and `right_target_start/end`. The two flanks are scored
+as separate guides and complete pairs are ranked by PairRank. Assembled query
+sequences are kept in the sibling `.queries.fa` sidecar; `query_seq` and
+`gap_seq` are not TSV columns.
 
 ### 5.3 Preset or custom (nuclease)
 
@@ -253,7 +246,7 @@ on the minus strand.
 
 | Field | Meaning |
 | --- | --- |
-| **Require PAM** | Requires the motif to be present when a hit is scored. Leave it on unless you deliberately want PAM-less similar sites counted. |
+| **Require PAM** | Requires the motif to be present when an off-target hit is scored. Leave it on unless you deliberately want PAM-less similar sites counted. |
 | **Minimum / Maximum Distance** | The allowed distance between the two motifs (Pattern A), or between the middle motif and each side (Pattern B). Both bounds are inclusive and are written as `min_gap` / `max_gap` in the batch spec. |
 | **Middle Motif** (Pattern B) | A short motif that must be present in the gap between the two targets with no mismatch. |
 
@@ -273,9 +266,9 @@ models add columns without changing the order.
 
 | Field | Meaning and default |
 | --- | --- |
-| **Engine** | How hits are found: `exact` (in-memory), `indexed` (the local `.ggi` index, native C++ engine when available), `blast` (NCBI BLAST+), `gggenome` (remote), or `auto` (default; picks a working engine and falls back if one is unavailable). |
+| **Engine** | How off-target hits are found: `exact` (in-memory), `indexed` (the local `.ggi` index, native C++ engine when available), `blast` (NCBI BLAST+), `gggenome` (remote), or `auto` (default; picks a working search engine and falls back if one is unavailable). |
 | **Max Mismatch** | The mismatch budget, `0`-`4` (default `4`). It sets both the search budget and how many mismatch-bucket columns are written (`MM0` ... `MMn`, see Section 6.2). |
-| **Max Bulge** | Bulge budget: empty (engine default, no bulge scoring), `0`, or `1`. With `0` or `1`, bulge hits are searched and scored with the conservative, explicitly uncalibrated penalty. |
+| **Max Bulge** | Bulge budget: empty (search-engine default, no bulge scoring), `0`, or `1`. With `0` or `1`, bulge off-target hits are searched and scored with the conservative, explicitly uncalibrated penalty. |
 | **PAM Mode** | `Strict NGG`, `GuideScan2 NRG (NGG + NAG)` or `Custom PAM` (Section 5.4). |
 | **Seed Length** | Informational only: the engine uses the index k-mer length as the seed length. Changing this value does not change the search. |
 | **Index Prefix** | Path prefix of a pre-built genome index (`<prefix>.ggi` + `<prefix>.json`). Supplying it re-uses that index instead of building one; blank builds an index under the run directory. |
@@ -299,7 +292,7 @@ A single-target run writes, per run unit:
 | `top_offtargets.tsv` | The ranked off-target loci behind the score (Section 6.3). |
 | `query_scores.bed` | The candidate intervals as BED. |
 | `unique_guides.tsv` | The same columns de-duplicated by guide, with `position_count` (written when unique-guide output is requested). |
-| `blast_results.tsv` | The raw search hits (intermediate; large). |
+| `blast_results.tsv` | The raw search off-target hits (intermediate; large). |
 
 A batch adds `manifest.tsv`, `run.json`, `run.log`, `batch.json` and
 `summary/batch_scores.tsv` (Section 6.4). Columns that are empty in every row
@@ -314,14 +307,14 @@ present, the rest appear when the corresponding option or model is used.
 
 | Column | Meaning |
 | --- | --- |
-| `rank` | Row order of this table: single-target and unique-guide tables are sorted by `off_target_specificity` descending. |
+| `rank` | Row order of this table: `Single-anchor pattern` and unique-guide tables are sorted by `off_target_specificity` descending. |
 | `nuclease` | The effector used for scoring (`cas9`, `cas12a`, `cas12b`, `cas13`, `tnpb`). |
 | `pos_id`, `seq_id`, `strand`, `motif_pos` | Where the candidate came from: an identifier for the occurrence, the sequence record, the strand, and the 0-based start of the motif. |
 | `qid`, `query_seq` | The candidate identifier and the extracted query window (motif plus target, Section 5.5). |
-| `total_matches` | Hits returned by the search backend for this query. |
-| `valid_matches` | Hits that survive masking and repeat filtering and are used for scoring. |
-| `sum_mismatch` | Total mismatches over the valid hits. |
-| `MM0` ... `MMn` | Mismatch buckets. `MM0` counts hits with zero mismatches, and the last column is the merged `>= n` bucket where `n` is **Max Mismatch**. The number of columns follows the budget: budget 0 writes only `MM0`, budget 2 writes `MM0`-`MM2`. `MM0` counts only hits that cover the whole query, so a gene with genuine repeat structure shows a high `MM0`; a large `MM0` with a single-copy target is a signal to check the PAM setting and the mask. |
+| `total_matches` | Off-target hits returned by the search engine for this search query. |
+| `valid_matches` | Off-target hits that survive masking and repeat filtering and are used for scoring. |
+| `sum_mismatch` | Total mismatches over the valid off-target hits. |
+| `MM0` ... `MMn` | Mismatch buckets. `MM0` counts off-target hits with zero mismatches, and the last column is the merged `>= n` bucket where `n` is **Max Mismatch**. The number of columns follows the budget: budget 0 writes only `MM0`, budget 2 writes `MM0`-`MM2`. `MM0` counts only off-target hits that cover the whole query, so a gene with genuine repeat structure shows a high `MM0`; a large `MM0` with a single-copy target region is a signal to check the PAM setting and the mask. |
 | `GC-content`, `GC-hint` | GC percentage of the query and the `low` / `pass` / `high` hint from **GC Min/Max**. |
 | `Self-complementarity`, `Self-comp-hint` | Length of the longest reverse-complement stretch inside the query and the `pass` / `warn` hint. |
 | `off_target_specificity` | The main score: higher is more specific, `1.0` means no additional similar site beyond the intended one. It is aggregated as `1 / (1 + sum(model scores))` with the perfect-match contribution removed. |
@@ -329,9 +322,9 @@ present, the rest appear when the corresponding option or model is used.
 | `off_target_specificity_<model>` | The same quantity for each selected off-target model (for example `off_target_specificity_cfd`). |
 | `on_target_score_<model>` | The predicted on-target activity of each selected on-target model (for example `on_target_score_cropsr`). Not a column of its own: a model only ever writes a suffixed column. |
 | `calibration_status` | How the score was calibrated, not how it was validated (Section 6.5). |
-| `bulge_score_method` | `conservative_bulge_v1` when bulge hits were scored, `not_applicable` when the run used no bulge budget or found none. |
+| `bulge_score_method` | `conservative_bulge_v1` when bulge off-target hits were scored, `not_applicable` when the run used no bulge budget or found none. |
 | `input_offtargets`, `substitution_offtargets` | Sites entering scoring, and how many of them are substitution-type. |
-| `bulge_hits`, `scored_bulge_hits`, `unscored_bulge_hits` | Bulge hits; always `bulge_hits = scored + unscored`. |
+| `bulge_hits`, `scored_bulge_hits`, `unscored_bulge_hits` | Bulge off-target hits; always `bulge_hits = scored + unscored`. |
 | `bulge_risk_sum` | The conservative sum of bulge risk folded into the specificity. |
 | `Annotation`, `Nearest-TSS`, `Isoforms`, `Downstream-ATG` | Annotation columns, present only when an annotation file was given. |
 | `left_*`, `right_*` | Paired patterns score the two sides independently and write them side by side; Pattern A adds the PairRank columns described in [`../OUTPUTS.md`](../OUTPUTS.md). |
@@ -343,7 +336,7 @@ Columns: `qid`, `position_count`, `rank`, `target`, `start`, `mismatch`,
 to, that candidate's occurrence count, its internal rank, the sequence record,
 the 0-based start, the mismatch count and the overlapping annotation if any.
 This is the table to spot-check: a good candidate has few rows, at high
-mismatch, far from a TSS. In a run where the mask removes every hit the file
+mismatch, far from a TSS. In a run where the mask removes every off-target hit the file
 contains only its header, which means "no site survived masking", not "no
 off-target was found" (see the note in [`tutorial.md`](tutorial.md)).
 
@@ -367,12 +360,12 @@ was validated experimentally:
 
 | Value | Meaning |
 | --- | --- |
-| `calibrated_reference` | Substitution-only hits scored by a published reference model (for example CFD for SpCas9). This is the strongest label. |
-| `uncalibrated` | Everything else: scores from generic sequence-composition heuristics, the Cas12a/Cas12b/TnpB paths, and any run in which bulge hits were scored. |
+| `calibrated_reference` | Substitution-only off-target hits scored by a published reference model (for example CFD for SpCas9). This is the strongest label. |
+| `uncalibrated` | Everything else: scores from generic sequence-composition heuristics, the Cas12a/Cas12b/TnpB paths, and any run in which bulge off-target hits were scored. |
 
 Related labels to watch for:
 
-- `bulge_score_method` = `conservative_bulge_v1` marks bulge hits. They are
+- `bulge_score_method` = `conservative_bulge_v1` marks bulge off-target hits. They are
   folded into the specificity with a deliberately conservative penalty and are
   always labelled `uncalibrated`.
 - Every model score is a **relative** ranking aid. It is not an absolute

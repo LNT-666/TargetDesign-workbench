@@ -3,14 +3,14 @@
 运行 `python main.py` 直接打开统一工作台，按工作流步骤组织界面。
 不再单独保留 `--legacy` 入口，也不再需要分别打开三个 Motif 独立窗口。
 
-主控制台原来的公共功能已并入工作流：数据准备、Target/Mask、模型下载、
+主控制台原来的公共功能已并入工作流：数据准备、Target/Mask、模型设置、
 搜索、评分、导出都由统一工作台串联完成。
 
 ## 布局
 
 ```text
 顶部   工作流步骤条：Back / Next、当前步骤
-步骤 0 Data prep / Models
+步骤 0 Data prep / Model setup
 步骤 1 Motif analysis
 步骤 2 Results / Output
 底部   进度条、日志
@@ -18,10 +18,10 @@
 
 ## 工作流步骤
 
-1. Data prep / Models：下载基因组与注释、补 UTR、提取 Target/Mask、模型下载。
-   Models 页签按效应蛋白（Cas9 / Cas12a / TnpB）分组展示本地模型，
+1. Data prep / Model setup：下载基因组与注释、补 UTR、提取 Target/Mask、模型设置。
+   Model setup 页签按效应蛋白（Cas9 / Cas12a / TnpB）分组展示本地模型，
    每组默认收起，点击组头展开后再下载 / 删除。
-2. Motif analysis：打开 Pattern Designer，由 Design Pattern 选择 Basic、Complex 或 Y/ZBP 模式。
+2. Motif analysis：打开 Pattern Designer，在 Design Pattern 中选择 `Single-anchor pattern`（Basic）、`Gap-anchored pair`（Pattern A，界面 `Complex`）或 `Centered-anchor pair`（Pattern B，界面 `Y/ZBP`）。
 3. Results / Output：查看运行摘要、输出文件和日志；参数统一在 Pattern Designer 中设置。
 
 打开 Pattern Designer 时会自动带入 Data prep 中填写的 Genome FASTA、
@@ -43,7 +43,7 @@ Annotation GFF3 为空时打分表会隐藏 `Annotation` / `Nearest-TSS` / `Isof
 - On-target / Off-target 模型（per-side）：各 TAM 组的模型行按该侧核酸酶
   自适应显示对应选项；模型行是多选下拉框，勾选的每个模型都会单独计算
   并写入 `on_target_score_<model>` / `off_target_specificity_<model>` 列。
-  双靶 pattern 使用 PairRank 作为主排序；单靶 pattern 按
+  paired pattern 使用 PairRank 作为主排序；`Single-anchor pattern` 按
   `off_target_specificity` 排序，旧 `combined_score` 已删除。选择
   `custom` 时，下拉框自动包含所有预设的模型，并按蛋白类型显示
   `[Cas9]` / `[Cas12a]` / `[Cas13]` / `[TnpB]` / `[General]`；新增预设模型
@@ -68,7 +68,7 @@ on-target 选择映射为该侧 `reference_only_model`
 （`omega` -> `none`，`teep` -> `teep`），仅作在线参考。
 左右两侧的 PAM/TAM motif、side 和 require 现在各自独立保存；在 Pattern A
 与 Y-ZBP 的评分阶段，`analyze_complex_scores.py` / `blast_combined.py` 会分别
-按左右侧 PAM 做脱靶搜索与过滤。单侧模式仍使用全局 PAM，三个字段都有回退
+按左右侧 PAM 做脱靶搜索与过滤。`Single-anchor pattern` 仍使用全局 PAM，三个字段都有回退
 到全局值，旧的命令行参数保持兼容。
 Pattern A 提取时，左右 motif 会各自在正链和负链上搜索，
 `++`、`+-`、`-+`、`--` 四种组合都会保留，结果中含
@@ -87,7 +87,7 @@ Pattern A 评分不再把整条拼接序列当作 guide，而是对左右两个
 引擎、最大错配、seed、索引前缀、GC、基因组 build、Hard Filter 等
 公共运行参数放在底部 Run Settings。PAM Mode 可选择 `strict_ngg` 或
 `guidescan2_nrg`；Max Bulge 留空时采用 engine-specific default。
-双靶模式还会显示 `PairRank prediction_only policy` 设置区，必须显式填写
+`Gap-anchored pair` 与 `Centered-anchor pair` 还会显示 `PairRank prediction_only policy` 设置区，必须显式填写
 `e_high`、`e_min`、`e_fail`、`delta_default`、`b_low`、`b_high`、
 `m_low`、`m_high`、`h_risk`、`h_max`。缺少任一项时 readiness 会阻止运行，
 不会使用隐藏的全局固定阈值。
@@ -118,7 +118,7 @@ Run Settings 下方常驻进度条：流程输出 `PROGRESS:` 百分比时按真
 用英文提示缺失项（如 `Missing: Search FASTA is required`）；运行中为蓝色。
 右上角流程已拆成两步：`Find Targets` 只做候选提取，`Score & Off-target`
 在已有提取结果上继续做脱靶搜索和打分；未先提取时点打分会提示先运行
-`Find Targets`。Run Settings 中选择的 engine（exact / indexed / blast /
+`Find Targets`。Run Settings 中选择的 search engine（exact / indexed / blast /
 gggenome / auto）现在会直接用于这两步的脱靶搜索；
 exact 在大基因组上会自动回退到 blast，避免直接建立超大内存索引。
 
@@ -140,7 +140,7 @@ exact 在大基因组上会自动回退到 blast，避免直接建立超大内�
 统一工作台不再需要分别打开三个 Motif 独立窗口：
 
 - Motif 分析：`Motif analysis -> Pattern Designer`，在 Design Pattern 中选择 Basic、Complex 或 Y/ZBP。
-- Data prep / Models：统一工作台内嵌页签，保留数据准备、Target/Mask、模型下载等原功能
+- Data prep / Model setup：统一工作台内嵌页签，保留数据准备、Target/Mask、模型设置等原功能
 
 Pattern Designer 本身只提供 `Find Targets` 和 `Score & Off-target`。
 

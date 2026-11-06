@@ -32,7 +32,7 @@
 | `designer_workbench.py` | 当前主桌面工作台，以结果表为中心 |
 | `unified_gui.py` | 统一模式/pattern/候选表工作台 |
 | `main.py` | 旧版启动器，承担部分数据准备和共享 GUI 功能 |
-| `webapp/app.py` | 本地 Web UI：单页工作区（Designer 常驻主区 + Data prep/Models 近满屏滑出面板） |
+| `webapp/app.py` | 本地 Web UI：单页工作区（Designer 常驻主区 + Data prep/Model setup 近满屏滑出面板） |
 
 支持的 pattern 类型由 `shared/design/pattern_spec.py` 定义：
 
@@ -80,17 +80,19 @@
 └─ LICENSE
 ```
 
-`models/` 存放本地模型权重，权重文件不入库，获取方式见 `docs/MODELS.md`；
+`models/` 存放本地模型权重，权重文件不入库，设置方式见 `docs/MODELS.md`；
 大体积基因组与索引不入库；`example/engine_benchmark_small/` 的小型基准证据和
 `sample_data/` 演示数据随仓库发布。索引构建与复用见 `docs/GENOME_INDEX.md`。
+交给导师或合作者查看的完整交付包（代码 + 投稿件）用
+`python tools\build_release_bundle.py` 生成，规则见 `docs/PACKAGING.md`。
 
 ## 环境
 
-- 主运行环境：Python 3.12（默认；Python 3.13 也受支持），虚拟环境 `.venv`
+- 主运行环境：Python >=3.12,<3.14（推荐 3.12），虚拟环境 `.venv`
 - 旧模型转换环境：Python 3.10，使用独立的模型转换虚拟环境
 - 外部工具：NCBI BLAST+，需要 `blastn` 和 `makeblastdb`
 
-Windows 初始化：
+Windows 兼容范围安装（不固定依赖版本）：
 
 ```powershell
 py -3.12 -m venv .venv
@@ -98,7 +100,7 @@ py -3.12 -m venv .venv
 pip install -r requirements-windows.txt
 ```
 
-Linux/macOS 初始化：
+Linux/macOS 兼容范围安装（不固定依赖版本）：
 
 ```bash
 python3.12 -m venv .venv
@@ -106,10 +108,14 @@ source .venv/bin/activate
 pip install -r requirements-linux.txt
 ```
 
-`requirements-linux.txt` 是完整环境入口，会安装基础、模型和 crispAI 的 Python 依赖；
-系统级 BLAST+ 仍需按需安装。需要复现已测试的 Linux 版本组合时，按
-`docs/ENVIRONMENT.md` 的 CPU/CUDA 命令同时传入 `requirements/constraints-linux-*.txt`。
+`requirements-windows.txt` 和 `requirements-linux.txt` 是完整环境入口，按兼容版本范围解析
+依赖，不固定锁版本；系统级 BLAST+ 仍需按需安装。需要复现已测试的 Linux CPU/CUDA 版本
+组合时，按 `docs/ENVIRONMENT.md` 的正式命令同时传入
+`requirements/constraints-linux-cpu.txt` 与 `requirements/requirements-linux-cpu.txt`，或
+`requirements/constraints-linux-cuda.txt` 与 `requirements/requirements-linux-cuda.txt`。
 机器可读的 Python 版本范围见 `pyproject.toml`。
+`python-docx` 只服务 `run_tests.py` 的稿件密封检查；缺它时
+`tests/test_manuscript_lineage.py` 会明确 skip，其余测试照常运行。
 
 ## 启动
 
@@ -167,7 +173,7 @@ python tools/search_indexed.py guides.tsv genome.fa results --index-path genome_
 
 ### 脱靶搜索引擎
 
-`exact` / `indexed` / `blast` / `gggenome` / `auto` 的统一命中记录、能力矩阵、
+`exact` / `indexed` / `blast` / `gggenome` / `auto` 的统一 off-target hit 记录、能力矩阵、
 `auto` 运行期引擎链与回退策略见 `docs/OFFTARGET_ENGINES.md`；本地 `.ggi` 索引
 格式、构建与复用见 `docs/GENOME_INDEX.md`；native indexed 的实测数据见
 `example/engine_benchmark_small/REPORT.md`，设计说明见
@@ -182,13 +188,24 @@ python tools/search_indexed.py guides.tsv genome.fa results --index-path genome_
 
 Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）、`guidescan2_nrg`（搜索 NRG = NGG + NAG，CFD 使用实际的 `GG` / `AG` 2 nt 权重）与 `custom`（使用用户输入的 PAM motif）三种模式；CLI 用 `--pam-mode`，网页版和桌面主工作台在 Run Settings 选择，并显示当前模式，桌面 Run Settings 也暴露 `Max Bulge` 的 engine-default / 0 / 1 选项。模式定义与权重细节见 `docs/SCORING_GUIDE.md`。
 
-搜索结果为每条 hit 保留真实 alignment span、CIGAR、`rna_bulges` 和 `dna_bulges`；结果列与 bulge / 校准列见 `docs/OUTPUTS.md`。BLAST 数据库的 `.source.json` 校验、批量性能工具 `tools/benchmark_search.py`，以及各引擎的完整约束与使用示例，见 `docs/OFFTARGET_ENGINES.md`。
+搜索结果为每条 off-target hit 保留真实 alignment span、CIGAR、`rna_bulges` 和 `dna_bulges`；结果列与 bulge / 校准列见 `docs/OUTPUTS.md`。BLAST 数据库的 `.source.json` 校验、批量性能工具 `tools/benchmark_search.py`，以及各引擎的完整约束与使用示例，见 `docs/OFFTARGET_ENGINES.md`。
 
-双靶 Pattern A / Pattern B 的 Run Settings 必须显式填写完整的 `PairRank prediction_only policy`；缺少参数时 GUI 不会回退到旧的 `combined_score` 排序，规则见 `docs/GUI.md` 与 `docs/PAIR_RANKING.md`。
+双靶 `Gap-anchored pair`（Pattern A）/ `Centered-anchor pair`（Pattern B）的 Run Settings 必须显式填写完整的 `PairRank prediction_only policy`；缺少参数时 GUI 不会回退到旧的 `combined_score` 排序，规则见 `docs/GUI.md` 与 `docs/PAIR_RANKING.md`。
 
 ## 测试
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-test.txt
+.\.venv\Scripts\python.exe -m coverage run run_tests.py
+.\.venv\Scripts\python.exe -m coverage report
+```
+
+覆盖率按 `shared/`、`basic/`、`tools/`、`webapp/` 的进程内代码统计，并要求分支覆盖率不低于 55%。CLI 子进程不在统计范围内，因此这是保守下限而不是最终目标。
+
+Library 出库已废弃，`LibraryFastaTests`、`PreflightTests` 和 `PipelinePreflightTests` 默认跳过。需要回归旧 Library 管线时显式开启：
+
+```powershell
+$env:PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS='1'
 .\.venv\Scripts\python.exe run_tests.py
 ```
 
@@ -202,6 +219,8 @@ Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）、`guidescan2_nrg`（搜索 NRG 
 
 公开文档按用途分组列出。未跟踪的本地笔记、生成物和投稿材料不在本清单内。
 
+- `GLOSSARY.md`：项目核心术语、规范用词和应避免的混用
+
 使用、部署与输出：
 
 - `docs/BATCH.md`：批量运行规范（CLI 与 webapp 共用内核、manifest、汇总表与退出码）
@@ -214,21 +233,19 @@ Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）、`guidescan2_nrg`（搜索 NRG 
 
 设计、模型、搜索与评分：
 
-- `docs/design_patterns_en.md`：pattern 定义说明
 - `docs/MODELS.md`：模型文件、格式与状态
 - `docs/ENVIRONMENT.md`：Python 环境和模型转换
 - `docs/DEPENDENCIES.md`：Python 与非 Python 依赖清单
 - `docs/GENOME_INDEX.md`：本地 `.ggi` 索引格式、构建和 native/Python 关系
 - `docs/OFFTARGET_ENGINES.md`：Off-target 引擎说明
 - `docs/NATIVE_INDEXED_ENGINE_DESIGN.md`：native indexed 引擎设计契约
-- `docs/RNA_RULES.md`：Cas13 RNA 规则与 ViennaRNA 行为
-- `docs/SCORING_GUIDE.md`：评分字段与候选优劣判断
+- `docs/SCORING_GUIDE.md`：评分字段、RNA 规则与候选优劣判断
 - `docs/TNPB.md`：TnpB/TEEP 模型公式、适用范围和参考文献
 - `docs/PAIR_RANKING.md`：双靶点必须同时成功时的 PairRank 排序规范
 
 英文帮助：
 
-- `docs/help_en/index.md`：英文帮助入口
+- `docs/help_en/index.md`：英文帮助入口（含 pattern 定义）
 - `docs/help_en/README.md`：英文帮助概览
 - `docs/help_en/tutorial.md`：英文教程
 - `docs/help_en/sample_output/README.md`：英文示例输出说明

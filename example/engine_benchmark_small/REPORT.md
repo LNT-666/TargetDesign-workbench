@@ -3,6 +3,18 @@
 Tested on a Linux workstation with a synthetic 1,000,000 bp genome, 12 guides of
 20 nt, 8 threads for external tools, and the median of 3 repeated searches.
 
+> **Historical snapshot:** The BLAST timings in this report and the `31/36`
+> BLAST stress result predate the 2026-10-26 full-query realignment fix. They
+> are retained as historical benchmark evidence and do not characterize the
+> current implementation. BLAST HSPs are only approximate candidate
+> generators and do not promise exhaustive recall. Candidate neighborhoods are
+> constrained by `max_bulge`, while final hits are rebuilt against the actual
+> reference sequence using the complete query. Coordinates are plus-strand
+> genomic 0-based half-open intervals, including for negative-strand hits.
+> PAM filtering can be enabled or disabled; seed placement remains at the
+> PAM-proximal end of the spacer, and the seed interval does not change when
+> PAM filtering is toggled.
+
 The fixture contains one sampled exact target, one reverse-complement exact
 target, and one one-mismatch target per guide. The main comparison uses
 `max_mismatch=0, max_bulge=0` so every engine starts from the same 24 exact
@@ -50,10 +62,12 @@ of enabling bulge search, not bulge recall.
   `max_bulge` is not explicit, auto defaults to `max_bulge=0`.
 - `GGGenome` searches remote prebuilt genome databases and cannot be compared
   against this custom FASTA fixture.
-- A separate 1-mismatch stress run returned 36/36 hits from exact, indexed,
-  native-indexed, and Cas-OFFinder. BLAST returned 31/36 because its local
-  alignment extension truncated some one-mismatch 20 nt alignments. BLAST
-  speed should therefore be interpreted together with that recall difference.
+- In the historical pre-realignment snapshot, a separate 1-mismatch stress run
+  returned 36/36 hits from exact, indexed, native-indexed, and Cas-OFFinder.
+  BLAST returned 31/36 because its local alignment extension truncated some
+  one-mismatch 20 nt alignments. These values are retained without rescoring;
+  current full-query rebuilding changes the hit contract and may change recall
+  and timing.
 - Raw results are in `results_mm0.json`, `results_bulge1.json`, and
   `results_bulge0.json`.
 

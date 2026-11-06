@@ -25,7 +25,7 @@
 
 | 包 | 用途 | 缺失时 |
 | --- | --- | --- |
-| `h5py` | 读 DeepCpf1 / DeepCRISPR 的 HDF5 权重 | 对应深度模型报不可用 |
+| `h5py` | 读 CRISPR-M / DeepCpf1 的 HDF5 权重；DeepCRISPR 运行时读取 portable npz | 对应深度模型报不可用 |
 | `torch` | Cas12a ViT 打分（`shared/scoring/deepcas12a_model.py`，由 `deep_models.py` 在函数内导入） | Cas12a 深度模型不可用 |
 | `tensorflow`（含 `keras`） | TIGER 打分模型 | TIGER 不可用 |
 | `pandas` | TIGER 模型的 pickle 参数，仅 `shared/scoring/tiger_model.py` 使用 | TIGER 不可用 |
@@ -41,8 +41,11 @@
 | NCBI BLAST+（`blastn`/`makeblastdb`） | BLAST off-target 引擎：`shared/search/blast_utils.py`、`basic/blast.py`、`main.py` | 系统包或 conda |
 | `offtarget-engine` | 自带的 native 索引引擎 | 由仓库 `native/` 编译（C++20 + CMake + GCC）；容器里现编后装到 `native/bin/` |
 | ViennaRNA | Cas13 的 RNA 折叠 | bioconda 或 pip，见 docs/CRISPAI.md |
-| Cas-OFFinder | crispAI 聚合打分 | micromamba/bioconda，或用 `CRISPAI_CASOFFINDER_DIR` 指向可执行文件 |
-| R + NuPoP | crispAI 的核小体占据/亲和注释 | R >= 4.3 需从 Bioconductor 装，见 docs/CRISPAI.md |
+| Cas-OFFinder | crispAI aggregate 的全基因组脱靶搜索 | micromamba/bioconda；`CRISPAI_CASOFFINDER_DIR` 必须指向包含可执行文件的目录 |
+| R + NuPoP | crispAI aggregate 的核小体占据/亲和注释 | R 包 NuPoP 需从 Bioconductor 安装；preflight 要求 Rscript 退出码 0 且输出严格为 `TRUE`，见 docs/CRISPAI.md |
+| UCSC 分染色体 FASTA | Cas-OFFinder 的全基因组搜索输入 | 放在 `<CRISPAI_CASOFFINDER_DIR>/ucsc_chroms/`，至少一份 `.fa`/`.fasta`/`.fna`；不随仓库分发 |
+| genomepy 全基因组资源 | crispAI 73 bp 侧翼注释 | 安装到 genomepy 本地库，或把 `CRISPAI_GENOME` 指向可解析 FASTA；还可设置 `CRISPAI_GENOME_DIR` |
+| crispAI vendored 代码 + checkpoint | aggregate 外部运行器 | 均被 git 忽略，不随仓库或发布包分发；来源、默认路径和获取顺序见 docs/CRISPAI.md |
 | `curl` | 模型权重下载，`shared/scoring/model_registry.py` | 系统包 |
 | 参考基因组与索引 | 实际搜索 | 用户自备，`example/`、`genome_index/` 不入库 |
 | 模型权重 | 深度打分模型 | 不随仓库分发，见 docs/MODELS.md |
@@ -52,8 +55,8 @@
 | 位置 | 内容 | 备注 |
 | --- | --- | --- |
 | `requirements.txt` | biopython, pyfaidx, requests, openpyxl, numpy, h5py | 已验证的运行必需集合；容器 `core` 层只装它 |
-| `requirements-models-linux.txt` | torch, tensorflow, ViennaRNA, pandas, scipy, scikit-learn, matplotlib, tensorboardX | 模型打分、DeepCRISPR 转换与离线配图；使用方见文件头注释 |
-| `requirements-crispai.txt` | pybdm, genomepy, jax, numpyro, tqdm, seaborn, setuptools<81 | crispAI 聚合适配器；`setuptools<81` 保留 pybdm 所需 `pkg_resources`；R/NuPoP、Cas-OFFinder 仍是非 pip 依赖 |
+| `requirements-models-linux.txt` | torch, tensorflow, ViennaRNA, pandas, scipy, scikit-learn, matplotlib, tensorboardX | 模型打分、可选的 DeepCRISPR TensorFlow 参考校验与离线配图；正常下载转换不需要 TensorFlow |
+| `requirements-crispai.txt` | pybdm, genomepy, jax, numpyro, tqdm, seaborn, setuptools<81 | crispAI 聚合适配器；`setuptools<81` 保留 pybdm 所需 `pkg_resources`；torch/pandas/numpy 由基础或模型依赖提供；R/NuPoP、Cas-OFFinder、UCSC FASTA、genomepy 全基因组、vendored 代码与 checkpoint 仍属外部依赖 |
 | `requirements-linux.txt` | 通过 `-r` 聚合上面三个文件 | 保留为 `pip install -r requirements-linux.txt` 的兼容完整入口 |
 | `requirements-windows.txt` | 同上，Windows 变体 | 桌面 |
 | `requirements/constraints-linux-cpu.txt` | Linux x86_64 / Python 3.12 已测试 CPU 快照 | 来自已验证的 Linux CPU 环境：`pip check`、内存/索引/依赖扫描测试通过 |
@@ -75,7 +78,7 @@
 | `scikit-learn` | 离线分析与配图的可选依赖；当前公开模型流程不使用 |
 | `scipy` | 离线分析辅助 |
 | `tensorboardX` | 离线模型转换的训练日志 |
-| `pybdm`、`genomepy`、`jax`、`numpyro`、`tqdm`、`seaborn` | 上游 crispAI 脚本（`external_tools/crispAI-main`，不入库） |
+| `pybdm`、`genomepy`、`jax`、`numpyro`、`tqdm`、`seaborn` | 上游 crispAI aggregate 脚本；vendored 源码目录本身被 git 忽略，不随仓库分发 |
 
 ## 5. 维护规则
 

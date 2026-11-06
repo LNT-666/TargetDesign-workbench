@@ -47,7 +47,7 @@ runs over the whole genome. The batch specification is
 
 | File | What it is |
 | --- | --- |
-| `sample_data/demo_genome.fa` | 5,000,000 bp in four contigs (`chr1`-`chr4`), uniform random A/C/G/T with no repeats, so any reported hit can be checked by hand. |
+| `sample_data/demo_genome.fa` | 5,000,000 bp in four contigs (`chr1`-`chr4`), uniform random A/C/G/T with no repeats, so any reported off-target hit can be checked by hand. |
 | `sample_data/demo_target.fa` | The first 200,000 bp of `chr1`; the scope guides are designed from. |
 | `sample_data/demo_batch.json` | The one-unit batch specification above: scope `demo` (the 200 kb target region) with pattern `NGG`. |
 | `sample_data/demo_guides.tsv` | 24 guides with a known exact and one-mismatch target, used by the engine benchmark. |
@@ -94,12 +94,12 @@ The default is port 5000 on host `0.0.0.0`; pass `--port` to change the port and
 
 Open <http://127.0.0.1:5000>. You should see the title
 **TargetDesign-workbench**, a **Design Pattern** selector, the buttons
-**Find Targets** and **Score & Off-target**, and a **Data prep / Models**
+**Find Targets** and **Score & Off-target**, and a **Data prep / Model setup**
 drawer button.
 
 ### Step 1 - point the workbench at the genome
 
-Open the **Data prep / Models** drawer and fill in the **Genome / annotation**
+Open the **Data prep / Model setup** drawer and fill in the **Genome / annotation**
 group:
 
 | Field | Value |
@@ -114,7 +114,7 @@ to `<program_root>/output`, and the genome index goes to
 `<program_root>/resource`. The `Download output directory` field (in the
 **Download** group) is still editable and defaults to `<program_root>/resource`.
 
-Then click **Build genome index**. **Expected:** the job builds a `.ggi` index
+Then click **Build genome index**. **Expected:** the run builds a `.ggi` index
 and, when it finishes, back-fills the Designer's **Index Prefix** (the hint
 reads `Loaded: index_path`). Pre-building the index is optional: the search
 builds the same index on demand if you skip this step.
@@ -130,7 +130,8 @@ builds the same index on demand if you skip this step.
 
 ### Step 2 - describe the pattern
 
-In the Designer, set **Design Pattern** to **Single target design** and fill the
+In the Designer, set **Design Pattern** to **Single target design** (the
+`Single-anchor pattern`; desktop UI: Basic) and fill the
 **Target selection** column:
 
 | Field | Value |
@@ -159,9 +160,9 @@ In **Common Inputs**:
 > **Why are there two different FASTA files?** **Search FASTA** is the region
 > guides are designed from; the off-target search itself runs over
 > **Genome FASTA**. Setting **Mask FASTA** to the same 200 kb file reproduces
-> `demo_batch.json`, whose scope sets `mask_same_as_target: true`: hits inside
+> `demo_batch.json`, whose scope sets `mask_same_as_target: true`: off-target hits inside
 > the target region are excluded from off-target counting (which is why
-> `valid_matches` is `0` for the candidates that sit in it), while hits
+> `valid_matches` is `0` for the candidates that sit in it), while off-target hits
 > elsewhere in the genome are counted and land in `top_offtargets.tsv`.
 > Masking the *whole* genome instead leaves that table with nothing but its
 > header, and clearing **Mask FASTA** additionally counts the on-target loci as
@@ -220,7 +221,7 @@ Reading it: the candidate starts at `chr1` position `3` on the `plus` strand,
 its 23 nt query window is the `NGG` motif (`AGG`) followed by the 20 nt target,
 GC is `56.52%` (`pass`), the predicted on-target activity is `0.857` and the
 off-target specificity is `1.0`. `valid_matches` is `0` because the mask of
-Step 3 removes every hit. Section 6.2 of `index.md` explains every column, and
+Step 3 removes every off-target hit. Section 6.2 of `index.md` explains every column, and
 `sample_output/` holds the first rows of this table in full.
 
 ### Step 8 - export
@@ -228,7 +229,7 @@ Step 3 removes every hit. Section 6.2 of `index.md` explains every column, and
 Choose a **Table** view (**Full** or **Concise**), a **Format** (`CSV`, `TSV`,
 `FASTA`, `BED`, `XLSX`, `unique_guides` or `library`), optionally a file name,
 and click **Export Selected** (or **Export All**). **Expected:** the file is
-written next to the job and offered as a download. The full table can be
+written next to the run and offered as a download. The full table can be
 exported as CSV, TSV or XLSX; the remaining formats reinterpret candidate rows
 and are therefore offered for the concise view.
 
@@ -295,7 +296,7 @@ no resume):
 | Warnings | 1: `Warning: no mm=0 flanking sequence found for chr1; skipped` |
 
 **The single warning is expected here.** The scope covers only `chr1`, and the
-mask of Step 3 removes the zero-mismatch hits inside it, so no off-target flank
+mask of Step 3 removes the zero-mismatch off-target hits inside it, so no off-target flank
 file is written for that contig. With the mask cleared the warning disappears.
 `top_offtargets.tsv` is *not* affected: this run reports **180** ranked
 off-target rows (10 at two mismatches and 170 at three) spread over all four
@@ -315,7 +316,7 @@ output/20261008-0114/
     query_scores_sorted.tsv     the deliverable table
     top_offtargets.tsv          ranked off-target loci
     query_scores.bed            candidate intervals
-    blast_results.tsv           raw search hits (intermediate)
+    blast_results.tsv           raw search off-target hits (intermediate)
     genome_index/               the built .ggi index and its metadata
 ```
 
@@ -347,7 +348,7 @@ come from.
 | --- | --- |
 | `Extracted 0 positions` and an empty result table | The motif does not occur in the scope, or **Search FASTA** is not the file you think. Check the `motif (+)/(-) regex:` lines in the Run Log. |
 | A very large `MM0` | Repeats or low-complexity sequence, `Require PAM` turned off, or a search result file left over from an earlier run. |
-| `top_offtargets.tsv` empty | No hit survived masking. A mask that covers the whole search scope excludes everything; see the note in Step 3. |
-| `no mm=0 flanking sequence found for chrN; skipped` | Normal when the mask removes every zero-mismatch hit of a contig; see Section 5. |
+| `top_offtargets.tsv` empty | No off-target hit survived masking. A mask that covers the whole search scope excludes everything; see the note in Step 3. |
+| `no mm=0 flanking sequence found for chrN; skipped` | Normal when the mask removes every zero-mismatch off-target hit of a contig; see Section 5. |
 | The search is very slow | The cost scales with the number of candidates and the mismatch budget; narrow the scope, lower **Max Mismatch**, or run on a multi-core host. |
 | `engine not available` or a fallback message | The requested engine is not usable here (for example `blast` without BLAST+ installed, or a missing native engine). `auto` selects a working engine; see the engine documentation under `docs/`. |

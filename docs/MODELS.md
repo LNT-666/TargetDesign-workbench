@@ -1,13 +1,17 @@
 # 模型目录与格式清单
 
-检查日期：2026-09-12。目录：`models/`。
+检查日期：2026-10-27。目录：`models/`。
 
 | 模型键 | 文件 | 格式 | 大小 | SHA256 | 注册表状态 | 真实可用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | crispr_m | `tcrispr_model.h5` | Keras HDF5 权重 | 20,828,208 B | `9D6C307C26930E10CEC38D5508069311F2E868716F9A027CE8DA47CF564A7E3E` | ready | **可用**：纯 NumPy 前向已验证，样例输出 0.6321092247962952 |
-| deepcrispr | `deepcrispr_offtar_pt_cnn_reg.tar.gz` | TensorFlow 1.x checkpoint（tar.gz） | 29,160,245 B（解压 data 44,228,628 B） | `88A272791B72E915632B815FCE0118F7A6140AFBA99CFC458E51DB778395398C` | ready（仅文件） | 原始 checkpoint 需要 TF，已转成下面的可移植文件 |
-| deepcrispr | `deepcrispr_offtar_pt_cnn_reg.portable.npz` | NumPy 权重（67 个张量） | 14,778,336 B | `468A2B00F94A8A099EC2D4D91D23C7B03380F382F29209DF925D990AA95AEAA4` | - | **可用**：NumPy 前向与 TensorFlow 参考输出最大误差 3e-7 |
+| deepcrispr | `deepcrispr_offtar_pt_cnn_reg.tar.gz` | TensorFlow 1.x checkpoint（tar.gz） | 29,160,245 B（解压 data 44,228,628 B） | `88A272791B72E915632B815FCE0118F7A6140AFBA99CFC458E51DB778395398C` | 下载源 | 下载后由运行时自动转换为下一行的 portable npz，不需要 TensorFlow |
+| deepcrispr | `deepcrispr_offtar_pt_cnn_reg.portable.npz` | NumPy 权重（67 个张量） | 14,778,336 B | `468A2B00F94A8A099EC2D4D91D23C7B03380F382F29209DF925D990AA95AEAA4` | ready（存在且大小匹配时） | **可用**：NumPy 前向与 TensorFlow 参考输出最大误差 3e-7 |
 | teep | 无本地文件 | 在线 HTTP API | - | - | web_api | **可用但依赖网络**：调用 `https://www.tnpb.app/` 的 TEEP CNN/RNN 预测；没有本地权重、缓存或版本锁定 |
+
+crispAI 不在上述本地文件清单中：checkpoint 和上游代码均被 git 忽略，必须按
+`docs/CRISPAI.md` 的来源与顺序单独准备。它是 aggregate off-target model，
+不是 per-hit activity 模型。
 
 ## 选用对比
 
@@ -15,8 +19,9 @@ On-target 模型：
 
 | 模型 | 用途 | 特点 | 优点 | 缺点 |
 | --- | --- | --- | --- | --- |
-| CROPSR | Cas9 on-target | 已发表的 Doench/CROPSR 逻辑回归系数；对 30mer 窗口计算，长窗口取最佳 30mer | 纯数值计算，速度快、无外部依赖、结果可复现 | 只面向 Cas9/30mer 结构，非标准窗口会退回启发式 |
+| CROPSR | Cas9 on-target | Doench 2016 Rule Set 2 的固定系数 + sigmoid（系数经 CROPSR 分发，Müller Paul et al., BMC Bioinformatics 2022;23:74）；对 30mer 窗口计算，长窗口取最佳 30mer | 纯数值计算，速度快、无外部依赖、结果可复现 | 只面向 Cas9/30mer 结构，非标准窗口会退回启发式 |
 | DeepCpf1 | Cas12a/Cpf1 on-target | 序列 CNN 模型，HDF5 权重 | 面向 Cas12a/Cpf1 的专项模型 | 需显式选择；输入不足 34 bp 时回退启发式 |
+| DeepCas12a | Cas12a/Cpf1 on-target | CNN-Transformer 混合模型，PyTorch checkpoint `deepcas12a_fold1.pth`，fold 1（Shi et al., BMC Genomics 2026;27:648） | AsCas12a 专项模型，带表观通道 | 需要 PyTorch 运行时；需显式选择，未就绪时回退启发式 |
 | TEEP | ISDra2 TnpBmax on-target | 在线 CNN + Bi-LSTM API，预测 20 nt 引导序列 | 针对 ISDra2/TnpBmax 的专项预测 | 需要网络、逐条查询较慢；失败时退回通用启发式，不会退回 omegaRNA 规则 |
 | omegaRNA 规则 | TnpB on-target 编辑效率 | 本地确定性规则：长度、GC、发夹、repeat | 离线可用、快速、稳定 | 是简化规则，不是训练模型；属 on-target 效率规则，不是特异性评分 |
 | Cas13 RNA 规则 | Cas13a/b/d on-target | 有 ViennaRNA 时计算 accessibility、MFE、DR-spacer、靶 RNA 扰动；无则用 U/A 富集启发式 | 可解释、离线可用、包含 RNA 结构信息 | 质量依赖 ViennaRNA 是否安装，启发式部分较粗 |
@@ -30,7 +35,7 @@ Off-target 模型：
 | CFD | Cas9 off-target | 位置特异错配表 + PAM 权重 | 极快、无需模型文件、稳定 | 非学习模型，主要面向 SpCas9 |
 | CRISPR-M | Cas9 off-target | 多头注意力 + 卷积 + 双向 LSTM，NumPy 前向 | 对 off-target 排序能力通常优于 CFD；无需 TensorFlow | 需要约 20MB 模型文件；推理比 CFD 慢 |
 | DeepCRISPR | Cas9 off-target | CNN 模型，已转为 portable NumPy | 免 TensorFlow，权重转换已验证 | 需要 portable 模型文件；推理较慢 |
-| crispAI | Cas9 off-target | uncertainty-aware 聚合模型，外部适配器调用上游 agg-score | 输出保留后验不确定性信息 | 需要 R/NuPoP、Cas-OFFinder、GRCh38；见 `docs/CRISPAI.md` |
+| crispAI | Cas9 off-target aggregate | uncertainty-aware 批量聚合模型（Özden & Minary, Nucleic Acids Res 2024;52:e87），外部适配器调用上游 agg-score | 输出保留后验不确定性信息 | 默认仅 SpCas9/NGG；需要 checkpoint、vendored 代码、R/NuPoP、Cas-OFFinder、UCSC chroms 与可解析的 GRCh38/genomepy 资源；不提供 per-hit activity。见 `docs/CRISPAI.md` |
 | identity/preset 启发式 | 非 Cas9 off-target | 序列相似度 + seed 惩罚 | 无需模型，快速覆盖 Cas12/Cas13/TnpB | 近似评分，缺少学习模型精度 |
 | TIGER | Cas13d off-target | 对每个 off-target spacer 用 TIGER 打分并按 `1/(1+sum)` 聚合；模型不可用时回退 PFS 规则 | 23 nt Cas13d 专项 off-target 活性评估 | 只适用于 23 nt spacer；需要 TensorFlow 运行时 |
 
@@ -60,18 +65,22 @@ offtar_pt_cnn_reg/
   model.ckpt-ptreg.data-00000-of-00001
 ```
 
-`checkpoint` 内容为 `model_checkpoint_path: "model.ckpt-ptreg"`。该格式需要
-TensorFlow 1.x（或 TensorFlow 2.x 的 `tf.compat.v1`）读取。当前主环境没有
-TensorFlow，因此状态是“文件已下载但运行时不可用”。
+`checkpoint` 内容为 `model_checkpoint_path: "model.ckpt-ptreg"`。原始格式需要
+TensorFlow 1.x（或 TensorFlow 2.x 的 `tf.compat.v1`）读取，但工作台下载模型时
+会用 `shared/scoring/deepcrispr_convert.py` 直接解析 checkpoint，并在本地生成
+portable npz；整个下载链路不需要安装 TensorFlow。若目录里只有原始 tar.gz 而
+没有 portable npz，模型状态会显示 `needs_conversion`，再次执行下载即可补做转换。
 
 `deepcrispr_offtar_pt_cnn_reg.portable.npz` 是从 checkpoint 导出的 NumPy 权重。
 `shared/scoring/deepcrispr_forward.py` 实现了 23 nt 序列编码、8 通道特征（4 个 one-hot +
 4 个可选的表观通道）和完整 CNN 前向；与 TensorFlow 参考图在 100 条官方示例上的
 最大输出误差为 `2.98e-7`。
 
-portable npz 由转换脚本生成。zip/npz 容器中的时间戳和压缩参数会让重新生成文件的
-SHA256 发生变化，因此不能只凭 SHA256 判断权重是否损坏；完整性应同时核对预期字节数、
-转换是否成功以及参考输出误差检查。
+portable npz 由运行时转换器生成；`tools/convert_deepcrispr.py` 保留为可选的人工
+转换与 TensorFlow 参考校验路径。zip/npz 容器中的时间戳和压缩参数会让重新生成文件的
+文件级 SHA256 发生变化，因此转换器改为校验“键名 + dtype + shape + 张量字节”的规范
+内容摘要：`30953303affa7b01489d59c0620bb92fe65e8d52515a578b6c4d5b1d170f52b6`。
+完整性同时核对 67 个张量、预期字节数 `14,778,336` 和参考输出误差。
 
 ## DeepCpf1
 
@@ -137,7 +146,7 @@ Cas13d 靶点的评分精度。
 选择 `tiger` 会同时用于 `on_target_score` 与 `off_target_specificity`，并把
 原始 TIGER 分数写入 `tiger_on_target` / `tiger_off_target` 两列。
 
-模型下载走 Hugging Face 的 `resolve` 接口并通过国内镜像 `hf-mirror.com`
+模型设置中的文件下载走 Hugging Face 的 `resolve` 接口并通过国内镜像 `hf-mirror.com`
 逐文件下载（不使用 `git clone` / `git lfs pull`），见
 `shared/scoring/model_registry.py` 的 `_download_model_dir`。
 
@@ -178,23 +187,34 @@ off-target 用 `cas13_pfs_off_target_specificity`（按
 紧邻 protospacer 的碱基；符合 preset 的 `H`（A/C/U 非 G）得 1.0，`G` 被强
 惩罚，未知则中性 0.5。
 
+## 模型设置（Model setup）
+
+Web 和桌面端的模型页统一使用 `Model setup` 语义：设置一个模型会下载注册表中的
+文件、按模型需要执行本地格式转换（目前是 DeepCRISPR），并重新检查本地状态。
+它不会自动安装 Python 或外部运行时依赖；缺少 TensorFlow、Torch、R/NuPoP、
+Cas-OFFinder 等依赖时，状态仍会明确显示为 `dependency_missing`。
+
+Web API 的主入口是 `POST /api/models/<key>/setup`；旧的
+`POST /api/models/<key>/download` 保留为兼容别名。模型文件仍写入固定的
+`models/` 目录，不提供任意本地路径覆盖。
+
 ## 状态定义
 
 以下词表与当前注册表和 Web 模型服务的实现一致：
 
 | 状态 | 含义 |
 | --- | --- |
-| `ready` | 所需文件存在且运行时依赖可用；Web 可立即使用 |
+| `ready` | 模型文件存在，且该模型声明的完整运行时 preflight 通过；Web 可立即调用。crispAI 额外要求全部 vendored 入口、Python 依赖、R+NuPoP、Cas-OFFinder、UCSC FASTA 和可解析 genomepy 资源全部通过，不能只凭权重与 `torch` 判定 |
 | `ready_loaded` | 模型已加载到当前评分进程；Web 可立即使用 |
-| `ready_unavailable` | 文件已就绪但当前进程无法加载；不能立即用于 Web 评分 |
-| `ready_runtime_missing` | UI 中表示“已下载但运行时缺失”的别名；不能立即使用 |
-| `dependency_missing` | 模型文件存在，但所需 Python/外部运行时缺失 |
+| `ready_unavailable` | 模型已设置但当前进程无法加载；不能立即用于 Web 评分 |
+| `ready_runtime_missing` | 模型已设置但运行时缺失的 UI 别名；不能立即使用 |
+| `dependency_missing` | 模型文件存在，但所需 Python 或外部运行时缺失；具体缺失项由 `status_detail.errors`（crispAI）或对应模型状态检查提供 |
 | `needs_conversion` | 原始 checkpoint 存在，仍需转换为可移植格式 |
-| `not_downloaded` | 模型文件或目录不完整 |
+| `not_downloaded` | 模型尚未设置，或文件/目录不完整；crispAI checkpoint 缺失时优先使用此状态，即使其他外部依赖也缺失 |
 | `size_mismatch` | 文件大小超出注册表容差 |
 | `web_api` | 仅通过在线 API 提供，无本地权重 |
 | `external` | 位于外部仓库，需要手工环境准备 |
 | `load_error` | 文件存在但加载过程中报错 |
 
-只有 `ready` 与 `ready_loaded` 表示 Web 可立即使用；其余状态都需要下载、转换、
-安装运行时、修复文件或依赖网络。
+只有 `ready` 与 `ready_loaded` 表示 Web 可立即使用；其余状态都需要完成模型设置
+（下载/转换）、安装运行时、修复文件或依赖网络。

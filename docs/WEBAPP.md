@@ -1,8 +1,8 @@
 # 本地网页版（Web 工作台）
 
 网页版默认监听 `0.0.0.0:5000`（局域网内其他机器也能访问），不依赖
-CDN 或前端框架。它把桌面的 **Data prep / Models / Pattern Designer** 收进同一个
-单页工作区（Designer 是常驻主区，Data prep / Models 是左侧滑出的**近满屏面板**），
+CDN 或前端框架。它把桌面的 **Data prep / Model setup / Pattern Designer** 收进同一个
+单页工作区（Designer 是常驻主区，Data prep / Model setup 是左侧滑出的**近满屏面板**），
 并且与桌面端、命令行复用同一套 `shared/` 实现：
 
 - 表单 → `PatternSpec` / `RunnerConfig`：`shared/design/workbench_form.py`
@@ -69,13 +69,13 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5000/api/<新路由>
 
 ## 单页工作区
 
-页面只有一个常驻主工作区（Designer），`Data prep` 与 `Models` 收进左侧的**近满屏
+页面只有一个常驻主工作区（Designer），`Data prep` 与 `Model setup` 收进左侧的**近满屏
 面板**（默认宽度 `min(1800px, 视口宽 − 48px)`），不再是同级页签，也没有左右双面板：
 
 ```text
 面板收起（默认）——Designer 占满整屏
 ┌─ 顶部固定条（sticky）───────────────────────────────────────────────────┐
-│ [准备数据/模型] Design Pattern [模式下拉] [Find Targets] [Score & Off-target]│
+│ [准备数据/模型] Design Pattern [pattern 下拉] [Find Targets] [Score & Off-target]│
 │ 就绪状态 Ready / Missing: …   进度条   最近作业 <kind> · <status> · <耗时>  │
 ├───────────────┬──────────────────────────────┬──────────────────────────┤
 │ 公共输入       │ Middle（min/max gap 或        │ Right TAM                │
@@ -90,11 +90,11 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5000/api/<新路由>
 
 面板展开——几乎盖住主区，右侧只留 48px 缝（缝里那块仍可点击，回到 Designer）
 ┌──────────────────────────────────────────────────────┐ ┌────┐
-│ Data prep & Models                              Close│ │ 48 │
+│ Data prep & Model setup                         Close│ │ 48 │
 │ ── Data prep ─────────────────────────────────────── │ │ px │
 │  Download / Genome+annotation / Search scope /        │ │ 主 │
 │  Mask gene / Prepare（字段标签在上、控件在下，多列自适应）│ │ 区 │
-│ ── Models ─────────────────────────────────────────── │ │    │
+│ ── Model setup ────────────────────────────────────── │ │    │
 │  分组状态与下载/删除                                   │ │    │
 │                                    ┌ 拖动条（面板右缘）│ │    │
 └──────────────────────────────────────────────────────┘ └────┘
@@ -111,7 +111,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5000/api/<新路由>
   `repeat(auto-fit, minmax(330px, 1fr))`，每对“标签在上、控件在下”，面板收窄到
   380px 时自动退化成单列。
 
-- 顶部固定条不随滚动消失：模式下拉（三个 `MODE_LABELS`）、`Find Targets`、
+- 顶部固定条不随滚动消失：pattern 下拉（三个 `MODE_LABELS`）、`Find Targets`、
   `Score & Off-target`、就绪状态、进度条，以及进度条右侧的
   “最近一次作业”摘要（`<kind> · <status> · <耗时>`，点击跳到下部 Run Log）。
 - 顶部条另有两个入口（NAR `:138` / `:139`）：`Load sample data` 调 `GET /api/sample`，
@@ -121,16 +121,16 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5000/api/<新路由>
   Preview；右 = Right TAM。
 - 下部常驻：Run Settings、Run Log、结果表与导出控件、`Results / Output`
   的内容（作业列表、作业详情、输出目录文件列表）都在页面下部，不折叠掉。
-- 模式切换导致的字段显隐规则与桌面端一致（`designer_workbench.py:737-880` 的三种
-  布局），切换模式**不清空**已填字段。
+- pattern 切换导致的字段显隐规则与桌面端一致（`designer_workbench.py:737-880` 的三种
+  布局），切换 pattern **不清空**已填字段。
 - 响应式：视口 < `1400px` 时三列纵向堆叠（顺序：公共输入/Left → Middle+预览 →
   Right）。所有视口上面板都是同一套行为（宽度 = 视口宽 − 48，最小 380px），不再是「宽屏并排 / 窄屏覆盖」的二分；面板不是模态弹窗，关闭后 Designer 的状态不变。
 
 Designer 的三种 pattern 与桌面端一致：
 
-- `SINGLE_MOTIF_FLANK`：Single target design，
-- `MOTIF_GAP_MOTIF`：Paired-target design Pattern A: Target-xbp-Target，
-- `Y_CENTERED_MOTIFS`：Paired-target design Pattern B: Target-xbp-Motif-ybp-Target。
+- `SINGLE_MOTIF_FLANK`：`Single-anchor pattern`（Basic；网页标签 Single target design），
+- `MOTIF_GAP_MOTIF`：`Gap-anchored pair`（Pattern A，界面 `Complex`；网页标签 Paired-target design Pattern A: Target-xbp-Target），
+- `Y_CENTERED_MOTIFS`：`Centered-anchor pair`（Pattern B，界面 `Y/ZBP`；网页标签 Paired-target design Pattern B: Target-xbp-Motif-ybp-Target）。
 
 - 每侧的 On-target / Off-target 模型控件是**多选**（Ctrl/Cmd-click 多选，第一个选中项是
   primary）：选项文本用 `shared/design/workbench_form.py:model_display_name` 的显示名
@@ -162,15 +162,15 @@ payload 字段（`POST /api/batch/preview` 与 `POST /api/batch/jobs` 共用）�
 
 units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G_<pattern_id>`，顺序同 `patterns`），所以 UI 路径下是 **pattern 主序 → scope 次序**（与 CLI 示例的 scope 主序不同）。
 
-产物与取消：批次根目录仍是 `output/<YYYYMMDD>-<ID>/（提交时分配运行编号，规则见 `docs/BATCH.md`「运行编号」）`；作业结束后把 `manifest.tsv` 与 `batch_scores.tsv`（来自 `summary/batch_scores.tsv`）复制到 `<job_dir>/export/`（含 `manifest.tsv`、`batch_scores.tsv`、`run.log`、`run.json`） 供下载。`Cancel job` 调 `BatchRunner.stop()`：当前 unit 的 `PatternRunner` 被停、整批返回 130。
+产物与取消：批次根目录仍是 `output/<YYYYMMDD>-<ID>/（提交时分配运行编号，规则见 `docs/BATCH.md`「运行编号」）`；本次 run 结束后把 `manifest.tsv` 与 `batch_scores.tsv`（来自 `summary/batch_scores.tsv`）复制到 `<job_dir>/export/`（含 `manifest.tsv`、`batch_scores.tsv`、`run.log`、`run.json`） 供下载。`Cancel job` 调 `BatchRunner.stop()`：当前 unit 的 `PatternRunner` 被停、整批返回 130。
 
 页面 Batch 区块顶部新增「Task code (Run id)」小组：跑完一次 batch 会显示并填入本次任务码（一次 batch 共享同一个码），可点 `Copy` 复制；输入任意任务码（`20261006-0114` 或四位 `0114`）点 `View` 查看那一次运行的 batch label、路径、unit 状态统计与可下载文件；查看时会像刚跑完一样把结果表（按 manifest 填 `unit_id`/`scope_id`/`pattern_id`/`status`/`returncode`）和下方导出按钮按该次运行重新填满，点 `Recent runs` 列出最近 20 次运行。
 
-## 面板：Data prep / Models
+## 面板：Data prep / Model setup
 
 - 面板默认收起；展开时从左侧滑入并覆盖主区（几何与 4 种关闭方式见上）。
 - 内容顺序与桌面端一致：先 `Data prep`（下载、基因组/注释、Search scope、
-  Mask gene、Prepare/BLAST/索引），后 `Models`（分组状态与下载/删除）。
+  Mask gene、Prepare/BLAST/索引），后 `Model setup`（分组状态与设置/删除）。
 - Data prep 不再提供 `Output directory` / `Index prefix` 输入：基因组/注释准备、
   Target/Mask 抽取、BLAST 库落点由服务端固定为 `<program_root>/output`，索引落点
   固定为 `<program_root>/resource`（面板内以只读说明 `#dp-fixed-dirs-hint` 显示）；
@@ -190,7 +190,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   `webapp/static/app.js` 的同一段拼串生成，不存在第二份规则。
 - 面板内的字段排布：每组 `.grid` 用 `repeat(auto-fit, minmax(330px, 1fr))`，
   每对「标签在上、控件在下」，面板收窄到 380px 时自动退化成单列。
-- Models 面板每行在 `Path` 之后显示该模型的 `description`，文本直接来自
+- Model setup 面板每行在 `Path` 之后显示该模型的 `description`，文本直接来自
   `shared/scoring/model_registry.py` 的 `MODELS[key]["description"]`（唯一来源，网页不翻译、
   不另存）；没有本地文件的模型（如 `teep`）在 `Path` 列显示其 `url`
   （对齐 `main.py:1170-1173`）。
@@ -220,13 +220,15 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   路径，被跳过的字段以 `· kept your values: …` 标出。
 - 字段对应关系与判定逻辑只有一份实现（`webapp/static/app.js` 的
   `backfillPlan()`）。
-## 作业模型
+## Run 与作业模型
 
-- 作业目录：`webapp/jobs/<job_id>/`（`job_id` 形如 `^[a-z0-9-]{12}$`），包含
+领域术语用 run 表示一次执行；`job` 仅保留在 API、目录名和固定 UI 文案中。
+
+- `job` 目录：`webapp/jobs/<job_id>/`（`job_id` 形如 `^[a-z0-9-]{12}$`），包含
   `params.json`、`status.json`、`job.log`、`out/`、导出时的 `export/`。
 - 全局最多 1 个重作业运行，其余排队（基因组级搜索/建索引内存占用大）。
 - 状态：`queued` → `running` → `succeeded` / `failed` / `cancelled`；
-  服务重启后遗留的 `queued` / `running` 作业会被标为 `interrupted`（并显示
+  服务重启后遗留的 `queued` / `running` run 会被标为 `interrupted`（并显示
   “已中断”文案），不会谎报仍在运行；`webapp/jobs/87499fe93868/` 这类旧实现留下
   的目录（`status.json` 缺 `kind`）被新实现忽略，也不会被改写。
 - `CONFIRM_REQUIRED` 请求默认自动同意，并在日志中写 `[auto-confirm] <kind>|<reason>`。
@@ -246,10 +248,10 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   （没有 `scores` 产物）时自动回落到 `Concise` 并在表上方说明。
   用户手动改过 `Table` 后按用户选择，不再自动切换。
 - `status.json` 带 `"outputs": {<键>: <绝对路径>}`（无产物时为 `{}`），
-  `GET /api/jobs` 与 `GET /api/jobs/<id>` 都会返回该字段；旧作业目录缺这个键时
-  读接口按 `{}` 补上，不写回文件。各作业写入的键：
+  `GET /api/jobs` 与 `GET /api/jobs/<id>` 都会返回该字段；旧 run 目录缺这个键时
+  读接口按 `{}` 补上，不写回文件。各 run 写入的键：
 
-  | 作业 | `outputs` |
+  | Run | `outputs` |
   | --- | --- |
   | `dataprep.download` | `genome_fasta`、`annotation`、`output_dir`（固定 `resource`）、`download_output`（download 实际落点） |
   | `dataprep.prepare` | `genome_fasta`、`annotation`、`target_fasta`、`mask_fasta`、`output_dir`（固定 `output`），有则加 `blastdb` |
@@ -273,12 +275,12 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `GET` | `/help`、`/help/tutorial` | 把 `docs/help_en/index.md` / `tutorial.md` 渲染成 HTML（标准库最小 Markdown，不引外部依赖）；文件缺失返回 404 |
 | `GET` | `/help/sample_output/<file>` | 以 `text/plain` 返回 `docs/help_en/sample_output/` 下已存在的文件（只放行该目录） |
 | `GET` | `/api/schema` | 表单选项：pattern、预设、引擎、模型分组、模型显示名 `model_labels`、Data prep 选项（含固定目录 `output_dir` / `resource_dir`）等（全部来自 `shared/`） |
-| `GET` | `/api/jobs` | 作业列表（新的在前，含 `outputs`） |
-| `GET` | `/api/jobs/<id>` | 作业状态、进度、`log_tail`、`result`、`outputs` |
+| `GET` | `/api/jobs` | run 列表（新的在前，含 `outputs`） |
+| `GET` | `/api/jobs/<id>` | run 状态、进度、`log_tail`、`result`、`outputs` |
 | `GET` | `/api/jobs/<id>/log?offset=N` | 从第 N 个字符起的日志增量 |
 | `GET` | `/api/jobs/<id>/candidates` | Designer 候选表（隐藏 `query_seq` / `gap_seq`） |
 | `GET` | `/api/jobs/<id>/results` | 本次运行的交付表（`outputs.scores`，即 `output/<label>_scores.tsv`）：`{columns, rows, total, available, file}`；无产物时 `available=false` |
-| `GET` | `/api/jobs/<id>/download?file=export/...\|out/...` | 下载作业内的白名单文件 |
+| `GET` | `/api/jobs/<id>/download?file=export/...\|out/...` | 下载 run 内的白名单文件 |
 | `GET` | `/api/models` | 模型分组、状态、路径、`description`、`url` |
 | `GET` | `/api/outputs?dir=<绝对路径>` | 列出目录内允许扩展名的文件 |
 | `GET` | `/api/fs/list?dir=<绝对路径>&kind=<kind>&hidden=1` | 只读列目录（kind 过滤、strip 剥离表、roots 根模式；`hidden=1` 才列隐藏项） |
@@ -288,7 +290,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `POST` | `/api/designer/active-side` | `Use for Run`：切换生效侧并返回规则更新 |
 | `POST` | `/api/designer/jobs` | 提交 Designer 阶段（`stage`: `find` / `score`） |
 | `POST` | `/api/batch/preview` | 预览批量：返回 `batch_label`、`batch_root`（预览时为输出目录，提交后为当次运行目录）、`units`、`errors`、`warnings`（缺文件降级为 warning） |
-| `POST` | `/api/batch/jobs`（响应含 `run_id`） | 提交批量作业（kind=`batch`）；校验失败返回 400 |
+| `POST` | `/api/batch/jobs`（响应含 `run_id`） | 提交 batch run（kind=`batch`）；校验失败返回 400 |
 | `GET` | `/api/batch/runs?limit=&day=` | 最近的批量运行（一次 batch = 一个任务码），每条含 `run_id`、`batch_label`、`unit_count`、`units`、`created`、`path`、`files` |
 | `GET` | `/api/batch/runs/<run_id>` | 按任务码查看一次运行；`<run_id>` 可用 `20261006-0114`，也可用四位 `0114`（跨天取最近一天）；返回 `units` 统计、`columns`+`rows`（manifest 结果表）与 `files`；找不到返回 404 |
 | `GET` | `/api/batch/runs/<run_id>/download?file=<相对路径>` | 下载该运行目录内的文件（`manifest.tsv`、`summary/batch_scores.tsv`、`run.log`、`run.json` 等）；路径越界或非法返回 400 |
@@ -299,9 +301,10 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
 | `POST` | `/api/dataprep/build-blastdb` | 构建 BLAST 库 |
 | `POST` | `/api/dataprep/build-index` | 构建基因组索引 |
 | `GET` | `/api/dataprep/genes?annotation=&id_type=&q=&limit=` | 只读候选：返回该注释在 `id_type` 下去重后的标识符（`total`/`matched`/`truncated`/`genes`，`genes` 已排序，默认最多 50 条）；缺 `annotation` 或路径不存在返回 400，其余一律 200 |
-| `POST` | `/api/models/<key>/download` | 下载模型权重 |
+| `POST` | `/api/models/<key>/setup` | 设置模型：下载权重、按需本地转换并检查状态；DeepCRISPR 会在同一作业内生成 portable npz（无需 TensorFlow） |
+| `POST` | `/api/models/<key>/download` | `/setup` 的兼容别名，行为相同 |
 | `POST` | `/api/models/<key>/delete` | 删除模型本地文件 |
-| `POST` | `/api/jobs/<id>/cancel` | 取消作业 |
+| `POST` | `/api/jobs/<id>/cancel` | 取消 run |
 | `POST` | `/api/jobs/<id>/export` | 导出选中行（`format`、`rows`、`filename`、`columns`）；`columns=concise` 为候选列（历史行为），`columns=full` 写出 `results` 交付表，仅支持 `csv` / `tsv` / `xlsx` |
 
 分发器把异常直接映射成状态码：`ValueError` → `400` + `{"error": "..."}`（表单校验

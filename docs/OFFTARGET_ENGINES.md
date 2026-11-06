@@ -1,12 +1,14 @@
 # Off-target 引擎层
 
 所有脱靶搜索引擎都通过 `shared/search/offtarget_backend.py` 的统一接口调用。
-评分、GUI 和 Library 流程只读取统一的命中记录，因此新增或切换引擎不需要改
+评分、GUI 和 Library 流程只读取统一的 off-target hit 记录，因此新增或切换引擎不需要改
 评分代码。
 
-## 统一命中记录
+本文按 `GLOSSARY.md` 区分 search engine（产生 off-target hit）与 scoring model（产生分数）。
 
-每个命中包含：
+## 统一 off-target hit 记录
+
+每个 off-target hit 包含：
 
 ```text
 qid, guide, target, start, strand, mismatch, indel, pam, bitscore, engine,
@@ -54,7 +56,7 @@ PAM 检查一律使用 alignment 的 `target_start` / `target_end`，不再用
 
 ## 能力矩阵
 
-每个 backend 通过 `engine_capability_matrix()` 暴露能力；`auto` 和
+每个 search engine 通过 `engine_capability_matrix()` 暴露能力；`auto` 和
 `validate_search_params()` 会在运行前拒绝不兼容参数。
 
 | engine | substitutions | indels | unknown_gap_type | PAM sides |
@@ -130,7 +132,7 @@ GUI 和网页版可以直接显示当前搜索到第几条 guide。
 它仍然是同一个公开 engine，不会新增 `native-indexed` 名称。native 二进制
 缺失或不兼容时继续使用 Python fallback；`auto` 在可用时优先 native
 `indexed`，大型基因组仍优先 BLAST。native search 的 `--threads` 会并行
-处理 guides；各 worker 独立使用 FASTA/cache，最终 hit 按输入顺序确定性合并。
+处理 guides；各 worker 独立使用 FASTA/cache，最终 off-target hit 按输入顺序确定性合并。
 各引擎的当前性能可用 `tools/benchmark_all_engines.py` 与
 `tools/benchmark_search.py` 自行测量。
 
@@ -147,7 +149,7 @@ $env:PROGRAMFILE_MAX_MEMORY_MB = "32768"
 - `PROGRAMFILE_NATIVE_INDEXED`：`auto`（默认）、`0` 或 `1`。
 - `PROGRAMFILE_OFFTARGET_NATIVE`：显式 binary 路径；为空时查找
   `native/bin/offtarget-engine[.exe]` 和 `PATH`。
-- `PROGRAMFILE_NATIVE_INDEXED_FALLBACK`：native 在输出 hit 前失败时，
+- `PROGRAMFILE_NATIVE_INDEXED_FALLBACK`：native 在输出 off-target hit 前失败时，
   默认 `1` 允许回退 Python；设为 `0` 则直接报错。binary 缺失或不兼容时
   始终使用 Python。
 - `--max-memory-mb N`：`search` / `build-index` 的显式进程 RSS 上限；
@@ -168,7 +170,7 @@ $env:PROGRAMFILE_MAX_MEMORY_MB = "32768"
   时的顺序是 blast → indexed，因此原生索引不可用就会落到 blast。
 - 链中的 indexed 候选强制 `python_fallback=deny`：auto 只会切换到真正的引擎，不会退化
   成纯 Python 索引；内存超限（`MEMORY_LIMIT_EXCEEDED`）直接终止链，不会切换到绕过该上限
-  的引擎。命中由实际使用的引擎产生，`last_report` 记录 `engine_used`、`fallback_from`、
+  的引擎。off-target hit 由实际使用的 search engine 产生，`last_report` 记录 `engine_used`、`fallback_from`、
   `fallback_reason`、`fallback_attempts`。显式指定 `--engine indexed` 等仍保持原行为。
 native search 在启动前按 `fixed + workers × cache_per_worker + workspace`
 估算峰值；`cache-genome=auto` 超出预算时先关闭 worker 序列缓存，
@@ -206,9 +208,9 @@ native 读取 Python 生成的索引；Python `load_index` 也可以读取 nativ
 manifest；manifest 缺失或 FASTA 中间内容改变时会自动重建。只有显式传
 `--trust-existing-blastdb` 才会跳过校验，并打印警告。
 
-## 其他入口的 rich hit 传递
+## 其他入口的 rich off-target hit 传递
 
-basic、complex 和 Y-ZBP 流程保留 backend 返回的完整 hit 字典；写入
+各设计流程保留 search engine 返回的完整 off-target hit 字典；写入
 `blast_results.tsv` 时使用 JSON 保存 alignment、CIGAR、RNA/DNA bulge 和
 真实坐标。评分端兼容旧 tuple 记录，但旧 tuple 按 mismatch-only 语义处理，
 不会在评分阶段补造 bulge。
@@ -235,4 +237,4 @@ result = compare_engines(
 print(result["summary"])
 ```
 
-`summary` 按 guide 输出各引擎命中数，以及相对参考引擎（默认 exact）的召回率。
+`summary` 按 guide 输出各 search engine 的 off-target hit 数，以及相对参考引擎（默认 exact）的召回率。

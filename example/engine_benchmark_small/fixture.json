@@ -5,5 +5,12 @@
   "contigs": 4,
   "guides_count": 12,
   "guide_length": 20,
+  "generator": "tools/benchmark_all_engines.py",
+  "seed": 20260914,
+  "command": "python tools/benchmark_all_engines.py --fixture-dir example/engine_benchmark_small --genome-mb 1 --contigs 4 --guides 12 --seed 20260914 --generate-only",
+  "genome_sha256": "b9196a5857dbc12dab4c032b445c8602b006c0c984b6aa189b0e096dc2093299",
+  "guides_sha256": "5728148559dbddfed66b5f32a08e3780dd1e1d61cda880dfa43ffee700693531",
+  "genome_size_bytes": 1012524,
+  "guides_size_bytes": 327,
   "planted_layout": "one sampled exact target plus one reverse-complement exact target plus one one-mismatch target per guide"
 }

@@ -7,13 +7,15 @@
 本文替代此前分散在多处的输出描述：`docs/TNPB.md` 第四章、
 `docs/SCORING_GUIDE.md` 的字段章节、`docs/PAIR_RANKING.md` 的输出小节、
 `docs/GUI.md` 的文件清单、`docs/CRISPAI.md` 的回填列说明。
+pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
+（Pattern A）与 `Centered-anchor pair`（Pattern B）。
 
 ## 一、通用规则
 
 1. **每次评分流程都会写三类主表**
    - `query_scores_sorted.tsv`：每个候选一行，按该流程的主排序排列；
    - `unique_guides.tsv`：按唯一序列去重后的同一批列，需开启 `--unique-guides`；
-   - `top_offtargets.tsv`：每个 query 排名靠前的命中位点，不含模型评分列。
+   - `top_offtargets.tsv`：每个 search query 排名靠前的 off-target hit，不含模型评分列。
 2. **全空列自动隐藏**：写出前逐列检查，整列全空（`None`、空串、纯空格）的列不写出；
    数值 `0` 不算空。因此同一次运行的实际列集合取决于勾选的模型、是否提供
    direct repeat、是否运行 `--unique-guides` 或注释。
@@ -21,17 +23,17 @@
    `off_target_specificity_<model>`（例如 `on_target_score_cropsr`、
    `off_target_specificity_cfd`）。模型名称不单独占列：
    `on_target_model_<model>`、`off_target_model_<model>`、`rna_model`、
-   `omega_model` 等只存在于内部评分结果，单 motif / 双靶候选表不再输出。
+   `omega_model` 等只存在于内部评分结果，`Single-anchor pattern` / paired pattern 候选表不再输出。
    调用方没有显式给模型（`auto`，批处理/CLI 省略模型时）按该核酸酶的默认
    模型落列，不会写成 `on_target_score_auto`：cas9 → `cropsr` / `cfd`，
    tnpb → `omega` / `identity`，cas12a / cas12b → `rules` / `rules`，
    cas13 → `rna_rules` / `pfs`。
-4. **主分列**：单 motif 与 unique guide 表保留不带后缀的 `off_target_specificity`，
+4. **主分列**：`Single-anchor pattern` 与 unique guide 表保留不带后缀的 `off_target_specificity`，
    含义是第一个勾选 off-target 模型的主分，也是这两张表的排序依据。
-   Pattern A 主表没有该列，排序由 PairRank 列表达。
+   `Gap-anchored pair`（Pattern A）主表没有该列，排序由 PairRank 列表达。
 5. **MM 列随预算变化**：`max_mismatch=N` 时输出 `MM0` 到 `MMN`，最后一列是合并桶，
    表示错配数 `>= N`。预算 0/1/2 分别只输出 `MM0`、`MM0-MM1`、`MM0-MM2`。
-   单 motif 用大写 `MMn`；Pattern A 的左右侧列使用小写 `left_mm0` / `right_mm0`。
+   `Single-anchor pattern` 用大写 `MMn`；`Gap-anchored pair` 的左右侧列使用小写 `left_mm0` / `right_mm0`。
 6. **BED / XLSX**：BED 给出候选区间，XLSX 由对应 TSV 转换，需显式开启 `--xlsx`。
 7. **运行标签与参数**：GUI 的 Run label 会把本次运行的中间产物写入
    `<output_dir>/<run_label>/`（含 `params.json`），并把主表重命名为
@@ -39,6 +41,9 @@
    列内容不变；完整参数另复制为 `<output_dir>/<label>_params.json`。
    交付文件仍保留在 `<output_dir>/`，短名映射不变；Run label 为空时
    中间产物仍直接写 `<output_dir>/`。
+8. **数值精度**：最终结果表和 GUI/Web 结果表的浮点数列默认保留两位小数
+   （例如 `0.21`、`44.45`）；排名、计数、坐标、序列和 ID 列保持原样。
+   排序仍在格式化前使用完整精度完成，显示精度不影响名次。
 
 ## 二、输出文件清单
 
@@ -46,18 +51,18 @@
 `params.json`；`<run_label>_params.json` 是同一参数的顶层副本，与
 `<run_label>_scores.tsv` 等交付文件并列。
 
-### 2.1 单 motif（`basic/`）
+### 2.1 Single-anchor pattern（`basic/`）
 
 | 文件 | 内容 |
 | --- | --- |
 | 提取结果 TSV | 三列 `qid` / `sequence` / `positions`，首行为 `# motif=... flanking_len=... side=...` 注释 |
-| `blast_results.tsv` | 搜索层命中（中间文件；MM 统计与评分只接受覆盖完整 query 的比对） |
+| `blast_results.tsv` | 搜索层 off-target hit（中间文件；MM 统计与评分只接受覆盖完整 query 的比对） |
 | `query_scores_sorted.tsv` | 每个候选一行；含 `pos_id`、`seq_id`、`strand`、`motif_pos`、`qid`、`query_seq` 与全套评分列 |
 | `unique_guides.tsv` | 按 `qid` 去重；用 `position_count` 取代 `pos_id` |
 | `top_offtargets.tsv` | `qid, position_count, rank, target, start, mismatch, annotation` |
 | `query_scores.bed` | `seq_id, motif_pos, motif_pos+len(query_seq), pos_id, 分数, strand`；分数为 `1/off_target_specificity`，越高表示风险越大 |
 
-### 2.2 Pattern A（`Target_xbp_Target/`，motif-gap-motif）
+### 2.2 Gap-anchored pair（Pattern A，`Target_xbp_Target/`，`motif_gap_motif`）
 
 | 文件 | 内容 |
 | --- | --- |
@@ -67,12 +72,12 @@
 | `query_scores.bed` | `seq_id, compound_start, compound_end, pos_id, 1/(1+pair_offtarget_burden), strand`；越高表示 pair 风险越低 |
 | `<主表名>.queries.fa` | 内部查询序列（完整拼接序列）；TSV 不再输出 `query_seq` 和 `gap_seq` |
 
-Pattern A 的坐标列：`left_target_start` / `left_target_end` /
+`Gap-anchored pair`（Pattern A）的坐标列：`left_target_start` / `left_target_end` /
 `right_target_start` / `right_target_end`（0-based 半开区间）、`left_pos`、
 `right_pos`、`gap`、`compound_start`、`compound_end`、`left_strand`、
 `right_strand`。不再输出旧的 `left_rank` / `right_rank`。
 
-### 2.3 Y-ZBP（`Target_xbp_Y_zbp_Target/`）
+### 2.3 Centered-anchor pair（Pattern B，`Target_xbp_Y_zbp_Target/`，`y_centered_motifs`）
 
 | 文件 | 内容 |
 | --- | --- |
@@ -93,22 +98,27 @@ Pattern A 的坐标列：`left_target_start` / `left_target_end` /
 | `download_info.json` | 数据准备阶段的下载记录 |
 | Target / Mask FASTA | 数据准备阶段提取的靶序列与屏蔽序列 |
 
+`index_report.json` 中所有 `*_mb` 字段（`memory_peak_mb`、`memory_limit_mb`、
+`estimated_peak_mb`、`observed_peak_mb`、`search_memory_peak_mb`）存的是
+**MiB**（来源 `shared/search/genome_index.py:_current_rss_mb()` 与
+`shared/utils/system_memory.py` 的 `MIB = 1024*1024`）；字段名为兼容性保留。
+
 ## 三、结果列说明
 
 ### 3.1 公共统计列
 
 | 列 | 含义 |
 | --- | --- |
-| `rank` | 写出器自己的行序：单 motif / unique guide 表按 `off_target_specificity` 降序；Pattern A 是 PairRank 分组后的行序号；Y-ZBP 取 `pair_rank` 或 `conditional_rank` |
+| `rank` | 写出器自己的行序：`Single-anchor pattern` / unique guide 表按 `off_target_specificity` 降序；`Gap-anchored pair` 是 PairRank 分组后的行序号；`Centered-anchor pair` 取 `pair_rank` 或 `conditional_rank` |
 | `nuclease` | 本次评分的核酸酶类型（TnpB 为 `tnpb`） |
-| `total_matches` | 搜索后端返回的当前 query 命中数 |
-| `valid_matches` | 排除屏蔽/重复区域后参与统计与评分的命中数 |
-| `sum_mismatch` | 有效命中的错配总数 |
+| `total_matches` | search engine 返回的当前 search query off-target hit 数 |
+| `valid_matches` | 排除屏蔽/重复区域后参与统计与评分的 off-target hit 数 |
+| `sum_mismatch` | 有效 off-target hit 的错配总数 |
 | `MM0` … `MMn` | 各错配桶；最后一列为 `>= n` 的合并桶，`n = max_mismatch` |
 | `GC-content`、`GC-hint` | query 的 GC 百分比与程序内的低/通过/高提示 |
 | `Self-complementarity`、`Self-comp-hint` | 最长反向互补长度及提示；计算范围可能覆盖完整 query window，与 TnpB 的 `guide_structure_penalty` 不是同一个量 |
 | `legacy_total_score` | 旧版匹配压力分（`10*MM0 + 1*(MM0+MM1) + 0.1*...`）；不是 0-1 分数，不能与 `off_target_specificity` 直接比较，不建议用于最终排序 |
-| `pos_id`、`seq_id`、`strand`、`motif_pos`、`qid`、`query_seq` | 单 motif 的位置与序列列；Pattern A 用 `left_*` / `right_*` 替代 `query_seq` |
+| `pos_id`、`seq_id`、`strand`、`motif_pos`、`qid`、`query_seq` | `Single-anchor pattern` 的位置与序列列；`Gap-anchored pair` 用 `left_*` / `right_*` 替代 `query_seq` |
 | `Annotation`、`Nearest-TSS`、`Isoforms`、`Downstream-ATG` | 传入注释 GFF/GTF 时的注释列：设计器填 `Annotation GFF3`（等价 `--annotation`，批处理里是 `shared.annotation`）。无注释时整列隐藏；注释文件里没有该 `seq_id`（例如自定义 target FASTA 的 `tyr-exon1`）时同样留空，并打印 `Warning: the annotation describes none of the ...` |
 
 `MM0` 统计的是覆盖完整 query 长度的匹配位点，不是 BLAST 的任意局部短匹配：只比对上
@@ -121,11 +131,11 @@ Pattern A 的坐标列：`left_target_start` / `left_target_end` /
 | --- | --- |
 | `off_target_specificity` | 主分，值越大越特异；1 表示除预期位点外没有额外相似位点 |
 | `off_target_specificity_<model>` | 每个勾选 off-target 模型的独立结果；`crispai` 作为第一个模型时其值同时覆盖主分 |
-| `on_target_score_<model>` | 每个勾选 on-target 模型的独立结果；单 motif 表没有不带后缀的 `on_target_score` 列 |
+| `on_target_score_<model>` | 每个勾选 on-target 模型的独立结果；`Single-anchor pattern` 表没有不带后缀的 `on_target_score` 列 |
 | `crispai_aggregate_score` | crispAI 上游原始聚合值，用于核对；换算关系为 `off_target_specificity_crispai = 1/(1+aggregate)` |
 
-特异性聚合统一为 GuideScan2 风格 `1 / (1 + sum(模型分数))`；存在 1 个主要目标位点时
-先减掉完全匹配位点的贡献，因此分数反映除目标位点外的额外风险。CFD 使用位置特异错配
+特异性聚合统一为 GuideScan2 风格 `1 / (1 + sum(模型分数))`；存在 1 个 on-target site 时
+先减掉完全匹配位点的贡献，因此分数反映除该 site 外的额外风险。CFD 使用位置特异错配
 权重乘积再乘 PAM 权重，实际传入的是靠近 spacer 的 2 nt（`NGG` 用 `GG`、`NAG` 用
 `AG`），因此 `guidescan2_nrg` 不会把 NAG 当成 NGG。
 
@@ -134,10 +144,10 @@ Pattern A 的坐标列：`left_target_start` / `left_target_end` /
 | 列 | 含义 |
 | --- | --- |
 | `input_offtargets`、`substitution_offtargets` | 进入评分的位点数，以及其中替换型位点数 |
-| `bulge_hits`、`scored_bulge_hits`、`unscored_bulge_hits` | 带 gap 的命中数；恒有 `bulge_hits == scored_bulge_hits + unscored_bulge_hits` |
+| `bulge_hits`、`scored_bulge_hits`、`unscored_bulge_hits` | 带 gap 的 off-target hit 数；恒有 `bulge_hits == scored_bulge_hits + unscored_bulge_hits` |
 | `bulge_risk_sum` | bulge 风险的保守累加值 |
 | `bulge_score_method` | bulge 评分方法标识，当前为保守 penalty `conservative_bulge_v1` |
-| `calibration_status` | 校准状态；`cfd` 等模型只处理 substitution-only hit，bulge、Cas12a/TnpB 路径与通用启发式（`identity_heuristic` / `nuc_features`，如 `custom` 下的 `rules`）标记为 `uncalibrated` |
+| `calibration_status` | 校准状态；`cfd` 等模型只处理 substitution-only off-target hit，bulge、Cas12a/TnpB 路径与通用启发式（`identity_heuristic` / `nuc_features`，如 `custom` 下的 `rules`）标记为 `uncalibrated` |
 
 ### 3.4 TnpB 与 RNA 子特征列
 
@@ -151,14 +161,14 @@ Pattern A 的坐标列：`left_target_start` / `left_target_end` /
 | `spacer_len_score` | guide 长度规则分（14-18 nt 为 1，12-20 nt 为 0.75，其余 `1-abs(L-16)/16`） |
 | `guide_structure_penalty` | guide 自身发夹/反向互补惩罚，越低越好 |
 | `repeat_hairpin_score` | direct repeat 发夹分；没有 direct repeat 时为空并可能整列隐藏 |
-| `AT_score` | 仅当该侧 preset 为 `tnpb` 时输出；单 motif 用 `AT_score`，Pattern A 用 `left_AT_score` / `right_AT_score` |
+| `AT_score` | 仅当该侧 preset 为 `tnpb` 时输出；`Single-anchor pattern` 用 `AT_score`，`Gap-anchored pair` 用 `left_AT_score` / `right_AT_score` |
 | `guide_mfe`、`guide_accessibility`、`target_accessibility`、`dr_spacer_duplex_mfe`、`dr_spacer_penalty`、`perturbation_mfe`、`dr_source` | Cas13 RNA 子特征，仅随 RNA on-target 模型出现；有 ViennaRNA 时用结构计算，否则用启发式 |
 
 公式与适用边界见 `docs/TNPB.md` 第二章与 `docs/MODELS.md`。
 
-### 3.5 PairRank 列（双靶）
+### 3.5 PairRank 列（paired pattern）
 
-Pattern A 主表与 Y-ZBP 的 `scores.sorted.tsv` 会写入以下列：
+`Gap-anchored pair` 主表与 `Centered-anchor pair` 的 `scores.sorted.tsv` 会写入以下列：
 
 | 列 | 含义 |
 | --- | --- |
@@ -184,7 +194,7 @@ Pattern A 主表与 Y-ZBP 的 `scores.sorted.tsv` 会写入以下列：
 
 ### 3.6 旧列与不再输出的内容
 
-以下列不会再出现在单 motif / Pattern A / Y-ZBP 候选表中，看到它们说明是旧结果文件：
+以下列不会再出现在 `Single-anchor pattern` / paired pattern 候选表中，看到它们说明是旧结果文件：
 
 - `combined_score`、`left_rank` / `right_rank`
 - `on_target_model_<model>`、`off_target_model_<model>`、`on_target_model`、
@@ -211,14 +221,14 @@ Pattern A 主表与 Y-ZBP 的 `scores.sorted.tsv` 会写入以下列：
 3. 检查 `MM0`：开启 PAM 过滤时普通 unique guide 通常为 1；明显偏高时先排查重复
    序列、PAM 设置，以及搜索是否重新运行过。
 4. 在特异性相近的候选中，再比较 `on_target_score_<model>`。
-5. 单 motif 按 `off_target_specificity` 查看；双靶按 `pair_rank_status`、`pair_rank`
+5. `Single-anchor pattern` 按 `off_target_specificity` 查看；paired pattern 按 `pair_rank_status`、`pair_rank`
    与风险字段查看，并人工抽查 `top_offtargets.tsv`。
 6. 所有启发式与 AI 分数只用于相对排序，不能当作绝对编辑效率。
 
 影响 MM 统计的参数：`Require PAM`（关闭时无 PAM 的相似序列也计入）、
-`max_mismatch`（决定保留范围与 `MMn` 档位）、`Mask FASTA`（屏蔽区域命中不计入
-`valid_matches`，双靶下作为 forbidden hit 拒绝该 pair）、`Repeat FASTA`（不参与普通
-风险聚合，但同样作为 forbidden hit 传入 PairRank）。
+`max_mismatch`（决定保留范围与 `MMn` 档位）、`Mask FASTA`（屏蔽区域 off-target hit 不计入
+`valid_matches`，双靶下作为 forbidden off-target hit 拒绝该 pair）、`Repeat FASTA`（不参与普通
+风险聚合，但同样作为 forbidden off-target hit 传入 PairRank）。
 
 ## 五、相关文档
 

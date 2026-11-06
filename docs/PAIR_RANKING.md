@@ -1,8 +1,8 @@
 # PairRank 双靶点排序规范
 
 本文定义“两个非冗余靶点都必须使用、且两侧都必须成功编辑”时的候选
-pair 排序规则。该规范用于 Pattern A（Target-xbp-Target）和 Pattern B
-（Target-xbp-Motif-ybp-Target）的 pair 级排序。
+pair 排序规则。该规范用于 `Gap-anchored pair`（Pattern A）和
+`Centered-anchor pair`（Pattern B）的 pair 级排序。
 
 当前规范有两个模式：
 
