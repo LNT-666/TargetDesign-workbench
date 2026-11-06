@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(ROOT, "shared"))
 from design.system_presets import get_preset, preset_choices, rule_summary  # noqa: E402
 from scoring.model_registry import get_all_statuses  # noqa: E402
 from design.library_preflight import ENGINE_CHOICES  # noqa: E402
+from output.output_columns import format_display_value  # noqa: E402
 import gui.gui_common as gui_common  # noqa: E402
 from utils.log_utils import parse_progress_line  # noqa: E402
 from utils.open_path import open_path  # noqa: E402
@@ -138,7 +139,7 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
         self._create_log(outer)
 
         common_tab = ttk.Frame(self.main_notebook, padding="0")
-        self.main_notebook.add(common_tab, text="Data prep / Models")
+        self.main_notebook.add(common_tab, text="Data prep / Model setup")
         self._create_legacy_panel(common_tab)
 
         motif_tab = ttk.Frame(self.main_notebook, padding="0")
@@ -811,7 +812,10 @@ class UnifiedGUI(gui_common.CommonGUIMixin):
                 for row in rows:
                     self.candidate_tree.insert(
                         "", tk.END,
-                        values=[str(row.get(col, "")) for col in columns],
+                        values=[
+                            format_display_value(row.get(col, ""))
+                            for col in columns
+                        ],
                     )
 
     def _open_output(self):

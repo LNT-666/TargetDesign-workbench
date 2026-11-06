@@ -653,7 +653,7 @@ class MainApp(gui_common.CommonGUIMixin):
         except Exception as e:
             messagebox.showerror("Launch error", f"Could not launch {name}: {e}")
 
-    # ---------- Model download management ----------
+    # ---------- Model setup management ----------
     def create_library_tab(self, notebook):
         tab = ttk.Frame(notebook, padding="10")
         notebook.add(tab, text="Library")
@@ -1083,11 +1083,11 @@ class MainApp(gui_common.CommonGUIMixin):
             if button is not None:
                 button.config(state=tk.NORMAL)
 
-    def create_models_tab(self, notebook):
+    def create_model_setup_tab(self, notebook):
         tab = ttk.Frame(notebook, padding="10")
-        notebook.add(tab, text="Models")
+        notebook.add(tab, text="Model setup")
 
-        ttk.Label(tab, text="Local model downloads", font=('Arial', 11, 'bold'))\
+        ttk.Label(tab, text="Local model setup", font=('Arial', 11, 'bold'))\
             .pack(anchor=tk.W, pady=(0, 8))
 
         # Group registered models by their effector protein and render each
@@ -1177,8 +1177,8 @@ class MainApp(gui_common.CommonGUIMixin):
             progressbar.pack(side=tk.LEFT, padx=4)
             self.model_progress_vars[key] = progress_var
             self.model_progress[key] = progressbar
-            btn_download = ttk.Button(actions, text="Download",
-                                      command=lambda k=key: self.download_model_gui(k))
+            btn_download = ttk.Button(actions, text="Set up",
+                                      command=lambda k=key: self.setup_model_gui(k))
             btn_download.pack(side=tk.LEFT, padx=4)
             btn_delete = ttk.Button(actions, text="Delete",
                                     command=lambda k=key: self.delete_model_gui(k))
@@ -1194,7 +1194,7 @@ class MainApp(gui_common.CommonGUIMixin):
     def refresh_models(self):
         style = ttk.Style()
         style.configure("Ready.TLabel", foreground="#1a7f37")
-        style.configure("Downloading.TLabel", foreground="#b26a00")
+        style.configure("SettingUp.TLabel", foreground="#b26a00")
         style.configure("Error.TLabel", foreground="#b42318")
         style.configure("ModelStatus.TLabel", foreground="#555555")
 
@@ -1203,17 +1203,17 @@ class MainApp(gui_common.CommonGUIMixin):
             status = statuses[key]
             status = deep_models.adjust_model_status(key, status)
             if key in self.model_downloading:
-                text = "Downloading..."
-                label_style = "Downloading.TLabel"
+                text = "Setting up..."
+                label_style = "SettingUp.TLabel"
             else:
                 text = {
                     "ready": "✓ Ready",
                     "ready_loaded": "Ready (scoring)",
-                    "ready_unavailable": "Ready (not loadable)",
-                    "ready_runtime_missing": "Downloaded (runtime missing)",
-                    "dependency_missing": "Downloaded (runtime missing)",
-                    "needs_conversion": "Downloaded (needs conversion)",
-                    "not_downloaded": "Not downloaded",
+                    "ready_unavailable": "Set up (not loadable)",
+                    "ready_runtime_missing": "Runtime missing",
+                    "dependency_missing": "Runtime missing",
+                    "needs_conversion": "Needs conversion",
+                    "not_downloaded": "Not set up",
                     "size_mismatch": "⚠ Size mismatch",
                     "web_api": "Online API",
                 }.get(status, status)
@@ -1238,13 +1238,17 @@ class MainApp(gui_common.CommonGUIMixin):
                 is_file = model_registry.MODELS[key].get("type") == "file"
                 if is_file:
                     if key in self.model_downloading:
-                        download_btn.config(state=tk.DISABLED, text="Download")
-                    elif status in ("ready", "ready_loaded", "ready_unavailable",
-                                    "ready_runtime_missing", "dependency_missing",
-                                    "needs_conversion"):
-                        download_btn.config(state=tk.DISABLED, text="Downloaded")
+                        download_btn.config(state=tk.DISABLED, text="Set up")
+                    elif status in ("ready_runtime_missing", "dependency_missing"):
+                        download_btn.config(state=tk.DISABLED, text="Set up")
+                    elif status in ("ready", "ready_loaded", "ready_unavailable"):
+                        download_btn.config(state=tk.NORMAL, text="Re-run setup")
+                    elif status == "needs_conversion":
+                        download_btn.config(state=tk.NORMAL, text="Finish setup")
+                    elif status == "size_mismatch":
+                        download_btn.config(state=tk.NORMAL, text="Repair setup")
                     else:
-                        download_btn.config(state=tk.NORMAL, text="Download")
+                        download_btn.config(state=tk.NORMAL, text="Set up")
             if delete_btn:
                 has_file = model_registry.get_model_path(key) and os.path.isfile(model_registry.get_model_path(key))
                 delete_btn.config(state=tk.NORMAL if has_file and key not in self.model_downloading else tk.DISABLED)
@@ -1258,15 +1262,14 @@ class MainApp(gui_common.CommonGUIMixin):
                     progress_var.set(
                         100.0 if status in (
                             "ready", "ready_loaded", "ready_unavailable",
-                            "ready_runtime_missing", "dependency_missing",
-                            "needs_conversion") else 0.0)
+                            "ready_runtime_missing", "dependency_missing") else 0.0)
 
-    def download_model_gui(self, key):
+    def setup_model_gui(self, key):
         if key in self.model_downloading:
             return
         self.model_downloading.add(key)
         self.refresh_models()
-        self.log(f"Downloading model: {key}")
+        self.log(f"Setting up model: {key}")
         self.model_vars[key].set("Connecting...")
         if key in self.model_progress_vars:
             self.model_progress_vars[key].set(0)
@@ -1279,7 +1282,7 @@ class MainApp(gui_common.CommonGUIMixin):
             percent = int(downloaded / max(total, 1) * 100)
             mb_done = downloaded / 1048576.0
             mb_total = total / 1048576.0
-            text = f"Downloading {mb_done:.1f}/{mb_total:.1f} MB ({percent}%)"
+            text = f"Setting up {mb_done:.1f}/{mb_total:.1f} MB ({percent}%)"
             self.run_on_ui(self._set_model_progress, key, percent, text)
 
         def status_callback(status, downloaded, total):
@@ -1288,6 +1291,8 @@ class MainApp(gui_common.CommonGUIMixin):
             elif status == "downloading":
                 text = ""
                 return
+            elif status == "converting":
+                text = "Converting..."
             elif status == "retrying":
                 mb_done = downloaded / 1048576.0
                 text = f"Retrying... {mb_done:.1f} MB downloaded"
@@ -1296,15 +1301,15 @@ class MainApp(gui_common.CommonGUIMixin):
             elif status == "mirror":
                 text = "Trying GitHub mirror..."
             elif status == "done":
-                text = "Downloaded"
+                text = "Set up complete"
             else:
-                text = "Downloading..."
+                text = "Setting up..."
             self.run_on_ui(
                 lambda k=key, text=text: self.model_vars[k].set(text))
             if key in self.model_progress_vars:
                 if status == "done":
                     self.run_on_ui(self._finish_model_progress, key)
-                elif status == "connecting":
+                elif status in ("connecting", "converting"):
                     bar = self.model_progress.get(key)
                     if bar:
                         self.run_on_ui(
@@ -1313,18 +1318,18 @@ class MainApp(gui_common.CommonGUIMixin):
 
         def worker():
             try:
-                path = model_registry.download_model(
+                path = model_registry.setup_model(
                     key,
                     progress_callback=progress_callback,
                     status_callback=status_callback)
                 self.run_on_ui(
-                    self.log, f"Model downloaded: {key} -> {path}")
+                    self.log, f"Model set up: {key} -> {path}")
             except Exception as e:
                 self.run_on_ui(
-                    self.log, f"Model download failed ({key}): {e}")
+                    self.log, f"Model setup failed ({key}): {e}")
                 self.run_on_ui(
-                    messagebox.showerror, "Download failed",
-                    f"Failed to download {key}: {e}")
+                    messagebox.showerror, "Setup failed",
+                    f"Failed to set up {key}: {e}")
             finally:
                 self.model_downloading.discard(key)
                 self.run_on_ui(self.refresh_models)
@@ -1358,7 +1363,7 @@ class MainApp(gui_common.CommonGUIMixin):
             mb_done = size / 1048576.0
             mb_total = expected / 1048576.0
             self.model_vars[key].set(
-                "Downloading %.1f/%.1f MB (%d%%)" % (mb_done, mb_total, percent))
+                "Setting up %.1f/%.1f MB (%d%%)" % (mb_done, mb_total, percent))
         self.root.after(500, self._poll_model_progress, key)
 
     def _finish_model_progress(self, key):
@@ -1602,8 +1607,8 @@ class MainApp(gui_common.CommonGUIMixin):
         # the web/CLI entry points; uncomment to restore the BED tab here.
         # self.create_library_tab(notebook)
 
-        # --- Model downloads ---
-        self.create_models_tab(notebook)
+        # --- Model setup ---
+        self.create_model_setup_tab(notebook)
 
         # 进度条
         self.progress_frame = ttk.Frame(main_frame)

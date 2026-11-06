@@ -34,6 +34,7 @@ from data.candidate_annotation import (
     find_downstream_atg, format_annotation, format_tss,
 )
 from output.output_columns import (
+    format_output_value,
     mismatch_bucket_columns,
     mismatch_bucket_values,
     nonempty_indices,
@@ -67,7 +68,8 @@ def guide_spacer(guide_seq, motif_len, side):
 
 
 def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
-                         samples=200, gpu=-1, as_primary=True):
+                         samples=200, gpu=-1, as_primary=True,
+                         fallback_model="cfd"):
     """Run crispAI aggregate over all candidates and backfill crispAI columns.
 
     crispAI is a batch external scorer, so it runs once over the unique sgRNAs
@@ -77,14 +79,14 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
     otherwise it only fills the crispAI columns.
     """
     if nuclease not in ("cas9", "custom"):
-        print("crispAI applies only to SpCas9 (current nucleicase=%s; ignored)" % nuclease)
-        return False
-    try:
-        from scoring.crispai_runtime import (
-            run_crispai_aggregate, make_sgrna, specificity_from_aggregate)
-    except Exception as exc:
-        print("crispAI dependency import failed: %s" % exc)
-        return False
+        reason = "crispAI applies only to SpCas9 (current nuclease=%s)" % nuclease
+        print(reason)
+        from scoring.crispai_runtime import CrispAIRunResult
+        return CrispAIRunResult(
+            {}, "crispai", fallback_model, reason, "aggregate")
+    from scoring.crispai_runtime import (
+        CrispAIRunResult, run_crispai_aggregate, make_sgrna,
+        specificity_from_aggregate)
     motif_len = len(motif_plus)
     sgrna_rows = {}
     for i, row in enumerate(query_rows):
@@ -95,15 +97,18 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
         if sgrna:
             sgrna_rows.setdefault(sgrna, []).append(i)
     if not sgrna_rows:
-        print("No usable 20 nt Cas9 spacer available for crispAI scoring")
-        return False
-    mapping = run_crispai_aggregate(
-        sgrna_rows.keys(), output_dir, n_samples=samples, gpu=gpu)
-    if not mapping:
-        return False
+        reason = "no usable 20 nt Cas9 spacer was available for crispAI scoring"
+        print(reason)
+        return CrispAIRunResult(
+            {}, "crispai", fallback_model, reason, "aggregate")
+    result = run_crispai_aggregate(
+        sgrna_rows.keys(), output_dir, n_samples=samples, gpu=gpu,
+        fallback_model=fallback_model)
+    if not result.scores:
+        return result
     filled = 0
     for sgrna, indexes in sgrna_rows.items():
-        aggregate = mapping.get(sgrna)
+        aggregate = result.scores.get(sgrna)
         if aggregate is None:
             continue
         specificity = specificity_from_aggregate(aggregate)
@@ -119,7 +124,7 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
             filled += 1
     print("crispAI backfilled %d/%d candidates (%s)"
           % (filled, len(query_rows), "as primary score" if as_primary else "additional columns only"))
-    return True
+    return result
 
 
 def split_position(entry):
@@ -478,13 +483,21 @@ def main():
         if model.strip()
     ]
     primary_off_model = off_models[0] if off_models else "rules"
+    crispai_result = None
     if "crispai" in off_models or args.crispai:
-        apply_crispai_scores(
+        crispai_result = apply_crispai_scores(
             query_rows, motif_plus, side, args.nuclease, output_dir,
             samples=args.crispai_samples, gpu=args.crispai_gpu,
             as_primary=(
                 primary_off_model == "crispai"
-                or (primary_off_model in ("rules", "auto") and args.crispai)))
+                or (primary_off_model in ("rules", "auto") and args.crispai)),
+            fallback_model=(
+                query_rows[0].get("off_target_model")
+                if query_rows else primary_off_model))
+        with open(os.path.join(output_dir, "crispai_run.json"),
+                  "w", encoding="utf-8") as handle:
+            json.dump(crispai_result.metadata(), handle,
+                      indent=2, ensure_ascii=False)
 
     rank_rows(query_rows)
 
@@ -507,14 +520,15 @@ def main():
     ]
 
     def _cell(value):
-        return "" if value is None else str(value)
+        return format_output_value(value)
 
     def query_cells(row):
         mm_out = mismatch_bucket_values(
             row["mm_counts"], args.max_mismatch)
         values = [
             str(row["rank"]), args.nuclease,
-            f"{row['off_target_specificity']:.6f}", f"{row['total_score']:.2f}",
+            format_output_value(row["off_target_specificity"]),
+            format_output_value(row["total_score"]),
             _cell(row["pos_id"]), _cell(row["seq_id"]), _cell(row["strand"]),
             _cell(row["motif_pos"]), _cell(row["qid"]), _cell(row["query_seq"]),
             _cell(row["total_matches"]), _cell(row["valid_matches"]),
@@ -546,8 +560,9 @@ def main():
     print(f"\nSorted scores written to: {out_file}")
     print("Top 5 highest-scoring results:")
     for row in query_rows[:5]:
-        print(f"  {row['pos_id']}: spec={row['off_target_specificity']:.4f}, "
-              f"on={row['on_target_score']:.4f}, query={row['query_seq']}")
+        print(f"  {row['pos_id']}: "
+              f"spec={row['off_target_specificity']:.2f}, "
+              f"on={row['on_target_score']:.2f}, query={row['query_seq']}")
 
     qid_position_count = {qid: len(pos_list) for qid, pos_list in qid_to_positions.items()}
 
@@ -582,7 +597,8 @@ def main():
                 row["mm_counts"], args.max_mismatch)
             values = [
                 str(row["rank"]), args.nuclease,
-                f"{row['off_target_specificity']:.6f}", f"{row['total_score']:.2f}",
+                format_output_value(row["off_target_specificity"]),
+                format_output_value(row["total_score"]),
                 _cell(row["qid"]), _cell(row["position_count"]), _cell(row["query_seq"]),
                 _cell(row["total_matches"]), _cell(row["valid_matches"]),
                 _cell(row["sum_mismatch"]),

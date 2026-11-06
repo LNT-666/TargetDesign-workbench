@@ -643,7 +643,9 @@ class NativeBackendIntegrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(search.returncode, 6)
-            self.assertIn("MEMORY_LIMIT_EXCEEDED", search.stderr)
+            self.assertEqual(
+                search.stderr.count("[MEMORY_LIMIT_EXCEEDED]"), 1,
+                search.stderr)
             self.assertFalse(os.path.exists(output))
 
             failed_prefix = os.path.join(tmp, "failed_index")

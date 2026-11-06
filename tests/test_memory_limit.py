@@ -143,6 +143,30 @@ class GenomeIndexMemoryReadingTests(unittest.TestCase):
 
 
 class NativeMemoryPropagationTests(unittest.TestCase):
+    def test_memory_limit_messages_are_normalized_once(self):
+        sentinel = native_offtarget.MEMORY_LIMIT_SENTINEL
+        message = (
+            "native prefix %s middle %s tail"
+            % (sentinel, sentinel)
+        )
+        normalized = native_offtarget.normalize_memory_limit_message(message)
+        self.assertTrue(normalized.startswith(sentinel))
+        self.assertEqual(normalized.count(sentinel), 1)
+        self.assertIn("native prefix", normalized)
+        self.assertIn("middle", normalized)
+        self.assertIn("tail", normalized)
+        self.assertEqual(
+            native_offtarget.normalize_memory_limit_message(normalized),
+            normalized,
+        )
+
+        native_error = native_offtarget.MemoryLimitExceededError(message)
+        python_error = genome_index.MemoryLimitExceededError(message)
+        for error in (native_error, python_error):
+            self.assertEqual(error.error_code, "MEMORY_LIMIT_EXCEEDED")
+            self.assertEqual(str(error).count(sentinel), 1)
+            self.assertTrue(str(error).startswith(sentinel))
+
     def test_native_adapter_adds_build_and_search_flags(self):
         def fake_build_streaming(command, on_line, **kwargs):
             on_line('{"ok":true}')
@@ -191,7 +215,8 @@ class NativeMemoryPropagationTests(unittest.TestCase):
         backend = IndexedBackend()
         error = native_offtarget.NativeEngineError(
             ["offtarget-engine", "search"], 6,
-            "[MEMORY_LIMIT_EXCEEDED] injected memory failure")
+            "[MEMORY_LIMIT_EXCEEDED] injected memory failure "
+            "[MEMORY_LIMIT_EXCEEDED]")
         with mock.patch(
                 "search.native_offtarget.native_enabled",
                 return_value=True), mock.patch(
@@ -201,13 +226,22 @@ class NativeMemoryPropagationTests(unittest.TestCase):
                 return_value=1000), mock.patch.object(
                 backend, "_search_native", side_effect=error), mock.patch.object(
                 backend, "_search_python") as python_search:
-            with self.assertRaises(native_offtarget.MemoryLimitExceededError):
+            with self.assertRaises(
+                    native_offtarget.MemoryLimitExceededError) as caught:
                 backend.search(
                     [{"qid": "g0", "guide_seq": "ACGT"}],
                     "genome.fa",
                     params,
                 )
         python_search.assert_not_called()
+        wrapped = caught.exception
+        self.assertIs(wrapped.__cause__, error)
+        self.assertEqual(wrapped.error_code, "MEMORY_LIMIT_EXCEEDED")
+        self.assertEqual(
+            str(wrapped).count(
+                native_offtarget.MEMORY_LIMIT_SENTINEL),
+            1,
+        )
 
 
 class PatternRunnerMemoryTests(unittest.TestCase):

@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import random
@@ -14,6 +15,10 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "shared"))
+
+DEFAULT_FIXTURE_SEED = 20260914
+DEFAULT_FIXTURE_CONTIGS = 4
+DEFAULT_FIXTURE_GUIDES = 24
 
 from search.blast_utils import build_blastdb  # noqa: E402
 from search.offtarget_backend import (  # noqa: E402
@@ -37,14 +42,49 @@ def choose_position(rng, length, reserved, width=20):
     raise RuntimeError("Could not place synthetic sequence")
 
 
-def generate_fixture(fixture_dir, total_bases=5000000, contig_count=4,
-                     guide_count=24):
+def format_number(value):
+    value = float(value)
+    if value.is_integer():
+        return str(int(value))
+    return "%g" % value
+
+
+def fixture_reproduction_command(fixture_dir, total_bases, contig_count,
+                                 guide_count, seed):
+    fixture_path = os.path.abspath(fixture_dir)
+    try:
+        fixture_path = os.path.relpath(fixture_path, ROOT)
+    except ValueError:
+        pass
+    fixture_path = fixture_path.replace(os.sep, "/")
+    if any(character.isspace() for character in fixture_path):
+        fixture_path = '"%s"' % fixture_path.replace('"', '\\"')
+    return (
+        "python tools/benchmark_all_engines.py --fixture-dir %s "
+        "--genome-mb %s --contigs %d --guides %d --seed %d --generate-only"
+        % (fixture_path, format_number(total_bases / 1000000), contig_count,
+           guide_count, seed)
+    )
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def generate_fixture(fixture_dir, total_bases=5000000,
+                     contig_count=DEFAULT_FIXTURE_CONTIGS,
+                     guide_count=DEFAULT_FIXTURE_GUIDES,
+                     seed=DEFAULT_FIXTURE_SEED):
     os.makedirs(fixture_dir, exist_ok=True)
     genome_path = os.path.join(fixture_dir, "synthetic_genome.fa")
     guides_path = os.path.join(fixture_dir, "guides.tsv")
     metadata_path = os.path.join(fixture_dir, "fixture.json")
 
-    rng = random.Random(20260914)
+    rng = random.Random(seed)
     contig_length = total_bases // contig_count
     sequences = [
         "".join(rng.choice("ACGT") for _ in range(contig_length))
@@ -113,6 +153,15 @@ def generate_fixture(fixture_dir, total_bases=5000000, contig_count=4,
         "contigs": contig_count,
         "guides_count": len(guides),
         "guide_length": 20,
+        "generator": os.path.relpath(os.path.abspath(__file__), ROOT).replace(
+            os.sep, "/"),
+        "seed": seed,
+        "command": fixture_reproduction_command(
+            fixture_dir, total_bases, contig_count, guide_count, seed),
+        "genome_sha256": sha256_file(genome_path),
+        "guides_sha256": sha256_file(guides_path),
+        "genome_size_bytes": os.path.getsize(genome_path),
+        "guides_size_bytes": os.path.getsize(guides_path),
         "planted_layout": (
             "one sampled exact target plus one reverse-complement exact "
             "target plus one one-mismatch target per guide"
@@ -277,13 +326,18 @@ def benchmark_blast(guides, genome_path, workdir, threads,
     }
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--fixture-dir",
         default=os.path.join(ROOT, "example", "engine_benchmark"))
     parser.add_argument("--genome-mb", type=float, default=5.0)
-    parser.add_argument("--guides", type=int, default=24)
+    parser.add_argument("--contigs", type=int, default=DEFAULT_FIXTURE_CONTIGS)
+    parser.add_argument("--guides", type=int, default=DEFAULT_FIXTURE_GUIDES)
+    parser.add_argument("--seed", type=int, default=DEFAULT_FIXTURE_SEED)
+    parser.add_argument(
+        "--generate-only", action="store_true",
+        help="write the fixture files and metadata, then exit without benchmarks")
     parser.add_argument("--max-mismatch", type=int, default=2)
     parser.add_argument("--max-bulge", type=int, choices=[0, 1], default=0)
     parser.add_argument(
@@ -294,13 +348,18 @@ def main():
     parser.add_argument("--output", default=None)
     parser.add_argument(
         "--engines", default="exact,indexed,native-indexed,blast")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     genome_path, guides_path = generate_fixture(
         args.fixture_dir,
         total_bases=int(args.genome_mb * 1000000),
+        contig_count=args.contigs,
         guide_count=args.guides,
+        seed=args.seed,
     )
+    if args.generate_only:
+        print("generated fixture in %s" % args.fixture_dir)
+        return 0
     guides = load_guides(guides_path)
     os.environ.setdefault("SEARCH_NUM_THREADS", str(args.threads))
 
@@ -368,7 +427,8 @@ def main():
         with open(args.output, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

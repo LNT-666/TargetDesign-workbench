@@ -34,6 +34,7 @@ from output.candidate_export import (  # noqa: E402
     SUPPORTED_FORMATS,
     export_selected,
 )
+from output.output_columns import format_display_value  # noqa: E402
 from utils.log_utils import LogWriter, install_excepthook  # noqa: E402
 from utils import system_memory  # noqa: E402
 from utils.paths import default_output_dir  # noqa: E402
@@ -2178,7 +2179,9 @@ class PatternDesignerWorkbench:
             self.result_tree.insert(
                 "",
                 tk.END,
-                values=[str(row.get(col, "")) for col in columns],
+                values=[
+                    format_display_value(row.get(col, "")) for col in columns
+                ],
             )
         self.export_button.config(state=tk.NORMAL)
 

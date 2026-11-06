@@ -43,6 +43,7 @@ from data.candidate_annotation import (
     find_downstream_atg, format_annotation, format_tss,
 )
 from output.output_columns import (
+    format_output_row,
     mismatch_bucket_columns,
     mismatch_bucket_values,
     nonempty_columns,
@@ -687,9 +688,9 @@ def main():
                 separators=(",", ":"),
             ),
             'guide_seq': guide_seq,
-            'off_target_specificity': f"{guide_scores['off_target_specificity']:.6f}",
+            'off_target_specificity': f"{guide_scores['off_target_specificity']:.2f}",
             'off_target_model': guide_scores['off_target_model'],
-            'on_target_score': f"{guide_scores['on_target_score']:.6f}",
+            'on_target_score': f"{guide_scores['on_target_score']:.2f}",
             'on_target_model': guide_scores['on_target_model'],
             'reference_only': str(guide_scores['reference_only']),
             'reference_note': guide_scores['reference_note'],
@@ -758,9 +759,11 @@ def main():
                         side_rows.setdefault(sgrna, []).append(idx)
                 if not side_rows:
                     continue
-                mapping = run_crispai_aggregate(
+                result = run_crispai_aggregate(
                     side_rows.keys(), out_dir,
-                    n_samples=args.crispai_samples, gpu=args.crispai_gpu)
+                    n_samples=args.crispai_samples, gpu=args.crispai_gpu,
+                    fallback_model=side_models[0] if side_models else "rules")
+                mapping = result.scores
                 if not mapping:
                     continue
                 filled = 0
@@ -776,7 +779,7 @@ def main():
                         row["off_target_specificity_crispai"] = specificity
                         row["off_target_model_crispai"] = "crispai"
                         if as_primary:
-                            row["off_target_specificity"] = f"{specificity:.6f}"
+                            row["off_target_specificity"] = f"{specificity:.2f}"
                             row["off_target_model"] = "crispai"
                         filled += 1
                 print("crispAI backfilled %s-side %d/%d candidates (%s)"
@@ -787,7 +790,7 @@ def main():
     with open(args.output, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=out_fieldnames, delimiter='\t', extrasaction='ignore')
         writer.writeheader()
-        writer.writerows(out_rows)
+        writer.writerows(format_output_row(row) for row in out_rows)
 
     print(f"Wrote {len(out_rows)} rows to {args.output}")
     print("PROGRESS: done 100", flush=True)
@@ -821,7 +824,7 @@ def main():
         with open(unique_path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=unique_fields, delimiter='\t', extrasaction='ignore')
             writer.writeheader()
-            writer.writerows(unique_rows)
+            writer.writerows(format_output_row(row) for row in unique_rows)
         print(f"Unique guides written to {unique_path}")
 
     top_rows = []

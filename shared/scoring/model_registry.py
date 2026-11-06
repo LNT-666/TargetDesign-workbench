@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Local model registry used by the main GUI's model download tab."""
+"""Local model setup registry used by the desktop and web workbenches."""
 
 import os
 import importlib.util
@@ -53,7 +53,8 @@ MODELS = {
         "file": "deepcrispr_offtar_pt_cnn_reg.tar.gz",
         "url": "https://raw.githubusercontent.com/bm2-lab/DeepCRISPR/master/trained_models/offtar_pt_cnn_reg.tar.gz",
         "expected_bytes": 29160245,
-        "description": "Cas9 off-target CNN model (~28 MB, TensorFlow 1.x)",
+        "portable_expected_bytes": 14778336,
+        "description": "Cas9 off-target CNN model (~28 MB archive; converted locally)",
     },
     "crispai": {
         "name": "crispAI-aggregate",
@@ -150,9 +151,60 @@ def get_model_path(key):
     info = MODELS[key]
     if info["type"] in ("web", "external"):
         return None
+    if key == "crispai":
+        try:
+            from scoring import crispai_runtime
+        except ImportError:
+            from . import crispai_runtime
+        return str(crispai_runtime.checkpoint_path())
     if info["type"] == "savedmodel_dir":
         return os.path.join(MODEL_DIR, info["dir"])
     return os.path.join(MODEL_DIR, info["file"])
+
+
+def _deepcrispr_portable_path():
+    return os.path.join(
+        MODEL_DIR, "deepcrispr_offtar_pt_cnn_reg.portable.npz")
+
+
+def _file_size_matches(path, expected):
+    if not path or not expected or not os.path.isfile(path):
+        return False
+    return abs(os.path.getsize(path) - expected) <= max(1, expected * 0.01)
+
+
+def _ensure_deepcrispr_portable(raw_path, status_callback=None):
+    """Convert the downloaded TF checkpoint into the portable NumPy weights.
+
+    Returns the portable path when it is ready, or ``None`` when the raw
+    archive has not been downloaded yet (or is incomplete and must be fetched
+    again).  A conversion failure raises so the model job reports the real
+    reason instead of claiming the model is ready.
+    """
+    info = MODELS["deepcrispr"]
+    portable = _deepcrispr_portable_path()
+    expected = info.get("portable_expected_bytes")
+    if _file_size_matches(portable, expected):
+        return portable
+    if not _file_size_matches(raw_path, info.get("expected_bytes")):
+        return None
+
+    if status_callback:
+        status_callback("converting", 0, expected or 0)
+    if os.path.isfile(portable):
+        os.remove(portable)
+    try:
+        from scoring import deepcrispr_convert
+    except ImportError:
+        from . import deepcrispr_convert
+    deepcrispr_convert.convert_tar_gz(raw_path, portable)
+    if not _file_size_matches(portable, expected):
+        raise RuntimeError(
+            "DeepCRISPR portable model is incomplete after conversion: %s"
+            % portable)
+    if status_callback:
+        status_callback("done", os.path.getsize(portable), expected)
+    return portable
 
 
 def is_downloadable(info):
@@ -229,8 +281,63 @@ def get_model_status(key):
     return "ready"
 
 
+def get_model_status_details(key):
+    """Return status plus preflight evidence, with crispAI using its adapter."""
+    info = MODELS[key]
+    if key == "crispai":
+        try:
+            from scoring import crispai_runtime
+        except ImportError:
+            from . import crispai_runtime
+        path = get_model_path(key)
+        expected = info.get("expected_bytes")
+        if path and os.path.isfile(path) and expected:
+            if abs(os.path.getsize(path) - expected) > max(1, expected * 0.01):
+                return {
+                    "status": "size_mismatch",
+                    "errors": ["crispAI checkpoint size does not match registry"],
+                    "warnings": [],
+                    "paths": {"checkpoint": path},
+                }
+        return crispai_runtime.model_status_details()
+    if key == "deepcrispr":
+        portable = _deepcrispr_portable_path()
+        expected = info.get("portable_expected_bytes")
+        if _file_size_matches(portable, expected):
+            status = "ready" if runtime_available(key) else "dependency_missing"
+        else:
+            status = get_model_status(key)
+            if status == "ready":
+                status = "needs_conversion"
+        return {
+            "status": status,
+            "errors": [],
+            "warnings": (
+                ["portable NumPy weights are missing; download again to convert"]
+                if status == "needs_conversion" else []
+            ),
+            "paths": {
+                "model": get_model_path(key) or "",
+                "portable": portable,
+            },
+        }
+    return {
+        "status": get_model_status(key),
+        "errors": [],
+        "warnings": [],
+        "paths": {"model": get_model_path(key) or ""},
+    }
+
+
+def get_all_status_details():
+    return {key: get_model_status_details(key) for key in MODELS}
+
+
 def get_all_statuses():
-    return {key: get_model_status(key) for key in MODELS}
+    return {
+        key: detail["status"]
+        for key, detail in get_all_status_details().items()
+    }
 
 
 def models_by_role(role=None, visible_only=False):
@@ -256,6 +363,12 @@ def models_by_protein(visible_only=False):
 
 def runtime_available(key):
     """Return True when the optional runtime for a registered model is present."""
+    if key == "crispai":
+        try:
+            from scoring import crispai_runtime
+        except ImportError:
+            from . import crispai_runtime
+        return crispai_runtime.model_status() == "ready"
     runtime = (MODELS.get(key) or {}).get("runtime", "")
     modules = {
         "numpy": ("numpy",),
@@ -474,20 +587,30 @@ def _download_from_url(url, temp_path, expected, progress_callback, status_callb
         raise RuntimeError("curl download failed: %s" % result.stderr)
 
 
-def download_model(key, progress_callback=None, status_callback=None):
+def setup_model(key, progress_callback=None, status_callback=None):
+    """Download a model and run any local setup steps.
+
+    Most models only need their registered file.  DeepCRISPR additionally
+    converts the TensorFlow checkpoint into the portable NumPy archive used by
+    the scoring runtime, so callers should use this function when preparing a
+    model rather than treating the action as a plain file download.
+    """
     info = MODELS[key]
     if info["type"] == "web":
-        raise ValueError("%s is an online service and does not need downloading" % key)
+        raise ValueError("%s is an online service and does not need local setup" % key)
     if info["type"] == "external":
-        raise ValueError("%s is an external model repository and requires manual setup" % key)
+        raise ValueError("%s requires manual setup outside the workbench" % key)
     if info["type"] == "savedmodel_dir":
         return _download_model_dir(key, info, progress_callback, status_callback)
 
     path = get_model_path(key)
-    os.makedirs(MODEL_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     temp_path = path + ".part"
     lock_path = path + ".lock"
     expected = info.get("expected_bytes")
+
+    if key == "deepcrispr":
+        _ensure_deepcrispr_portable(path, status_callback)
 
     if get_model_status(key) == "ready":
         if status_callback:
@@ -498,6 +621,8 @@ def download_model(key, progress_callback=None, status_callback=None):
         part_size = os.path.getsize(temp_path)
         if part_size >= expected:
             os.replace(temp_path, path)
+            if key == "deepcrispr":
+                _ensure_deepcrispr_portable(path, status_callback)
             if status_callback:
                 status_callback("done", part_size, expected)
             return path
@@ -538,6 +663,8 @@ def download_model(key, progress_callback=None, status_callback=None):
         if os.path.exists(path):
             os.remove(path)
         os.replace(temp_path, path)
+        if key == "deepcrispr":
+            _ensure_deepcrispr_portable(path, status_callback)
         if status_callback:
             status_callback("done", final_size, expected or final_size)
         return path
@@ -547,6 +674,11 @@ def download_model(key, progress_callback=None, status_callback=None):
                 os.remove(lock_path)
             except OSError:
                 pass
+
+
+def download_model(key, progress_callback=None, status_callback=None):
+    """Backward-compatible alias for :func:`setup_model`."""
+    return setup_model(key, progress_callback, status_callback)
 
 
 def delete_model(key):
@@ -564,6 +696,13 @@ def delete_model(key):
         if os.path.isfile(target):
             try:
                 os.remove(target)
+            except OSError:
+                pass
+    if key == "deepcrispr":
+        portable = _deepcrispr_portable_path()
+        if os.path.isfile(portable):
+            try:
+                os.remove(portable)
             except OSError:
                 pass
 

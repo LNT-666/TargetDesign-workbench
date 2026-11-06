@@ -28,12 +28,24 @@ SUPPORTED_VERSION_PREFIX = "offtarget-engine 0.1.0"
 # whole-genome bulge search can legitimately run for hours.
 TIMEOUT_ENV = "PROGRAMFILE_OFFTARGET_TIMEOUT_S"
 
+MEMORY_LIMIT_SENTINEL = "[MEMORY_LIMIT_EXCEEDED]"
+_MEMORY_LIMIT_SENTINEL_RE = re.compile(re.escape(MEMORY_LIMIT_SENTINEL))
+
 # ``build-index`` prints nothing until it finishes, so the adapter emits its
 # own heartbeat while a build runs.
 BUILD_HEARTBEAT_S = 60.0
 
 # How often the streaming loop wakes up to check the clock.
 POLL_INTERVAL_S = 0.25
+
+
+def normalize_memory_limit_message(message):
+    """Return one prefixed memory-limit sentinel without losing the reason."""
+    reason = _MEMORY_LIMIT_SENTINEL_RE.sub("", str(message or "")).strip()
+    reason = re.sub(r"[ \t]{2,}", " ", reason)
+    if not reason:
+        reason = "Memory limit exceeded"
+    return "%s %s" % (MEMORY_LIMIT_SENTINEL, reason)
 
 
 class NativeEngineError(RuntimeError):
@@ -87,6 +99,9 @@ class MemoryLimitExceededError(RuntimeError):
     """Raised when a native memory limit must not trigger Python fallback."""
 
     error_code = "MEMORY_LIMIT_EXCEEDED"
+
+    def __init__(self, message="Memory limit exceeded"):
+        super().__init__(normalize_memory_limit_message(message))
 
 
 def _root_dir():

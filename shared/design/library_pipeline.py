@@ -31,7 +31,7 @@ from design.library_utils import (load_regions, extract_region_sequences,
 from design.system_presets import (
     get_preset, normalize_pam_mode, pam_motif_for_mode, resolve_run_nuclease,
 )
-from output.output_columns import nonempty_columns
+from output.output_columns import format_output_row, nonempty_columns
 from scoring.scoring import (
     MODEL_SCORE_COLUMNS,
     compute_guide_scores,
@@ -548,7 +548,9 @@ def main():
             log=_search_log)
     except Exception as exc:
         if getattr(exc, "error_code", "") == "MEMORY_LIMIT_EXCEEDED":
-            print("Error: %s" % exc)
+            from search.native_offtarget import normalize_memory_limit_message
+
+            print(normalize_memory_limit_message(str(exc)), file=sys.stderr)
             sys.exit(6)
         raise
     run_report = params.extra.get("engine_run_report") or {}
@@ -662,51 +664,57 @@ def main():
         if model.strip()
     ]
     primary_off_model = off_models[0] if off_models else "rules"
+    crispai_result = None
     if (("crispai" in off_models or args.crispai)
             and str(args.nuclease or "").lower() in ("cas9", "custom")):
         as_primary = (
             primary_off_model == "crispai"
             or (args.crispai and primary_off_model in ("rules", "auto"))
         )
-        try:
-            from scoring.crispai_runtime import (
-                run_crispai_aggregate, make_sgrna, specificity_from_aggregate)
-        except Exception as exc:
-            print("crispAI dependency import failed: %s" % exc)
+        from scoring.crispai_runtime import (
+            CrispAIRunResult, run_crispai_aggregate, make_sgrna,
+            specificity_from_aggregate)
+        sgrna_rows = {}
+        for i, guide in enumerate(scored):
+            sgrna = make_sgrna(
+                (guide.get("guide_seq") or "").strip(),
+                guide.get("pam_seq", "NGG"),
+            )
+            if sgrna:
+                sgrna_rows.setdefault(sgrna, []).append(i)
+        if sgrna_rows:
+            crispai_result = run_crispai_aggregate(
+                sgrna_rows.keys(), args.output_dir,
+                fallback_model=(
+                    scored[0].get("off_target_model")
+                    if scored else primary_off_model))
+            if crispai_result.scores:
+                filled = 0
+                for sgrna, indexes in sgrna_rows.items():
+                    aggregate = crispai_result.scores.get(sgrna)
+                    if aggregate is None:
+                        continue
+                    specificity = specificity_from_aggregate(aggregate)
+                    for i in indexes:
+                        guide = scored[i]
+                        guide["crispai_off_target"] = specificity
+                        guide["crispai_aggregate_score"] = aggregate
+                        guide["off_target_specificity_crispai"] = specificity
+                        guide["off_target_model_crispai"] = "crispai"
+                        if as_primary:
+                            guide["off_target_specificity"] = specificity
+                            guide["off_target_model"] = "crispai"
+                        filled += 1
+                print("crispAI backfilled %d/%d guides (%s)"
+                      % (filled, len(scored),
+                         "as primary score" if as_primary else "additional columns only"))
         else:
-            sgrna_rows = {}
-            for i, guide in enumerate(scored):
-                sgrna = make_sgrna(
-                    (guide.get("guide_seq") or "").strip(),
-                    guide.get("pam_seq", "NGG"),
-                )
-                if sgrna:
-                    sgrna_rows.setdefault(sgrna, []).append(i)
-            if sgrna_rows:
-                mapping = run_crispai_aggregate(
-                    sgrna_rows.keys(), args.output_dir)
-                if mapping:
-                    filled = 0
-                    for sgrna, indexes in sgrna_rows.items():
-                        aggregate = mapping.get(sgrna)
-                        if aggregate is None:
-                            continue
-                        specificity = specificity_from_aggregate(aggregate)
-                        for i in indexes:
-                            guide = scored[i]
-                            guide["crispai_off_target"] = specificity
-                            guide["crispai_aggregate_score"] = aggregate
-                            guide["off_target_specificity_crispai"] = specificity
-                            guide["off_target_model_crispai"] = "crispai"
-                            if as_primary:
-                                guide["off_target_specificity"] = specificity
-                                guide["off_target_model"] = "crispai"
-                            filled += 1
-                    print("crispAI backfilled %d/%d guides (%s)"
-                          % (filled, len(scored),
-                             "as primary score" if as_primary else "additional columns only"))
-            else:
-                print("No usable 20 nt Cas9 spacer available for crispAI scoring")
+            reason = "no usable 20 nt Cas9 spacer was available for crispAI scoring"
+            print(reason)
+            crispai_result = CrispAIRunResult(
+                {}, "crispai",
+                scored[0].get("off_target_model") if scored else primary_off_model,
+                reason, "aggregate")
 
     rank_rows(scored)
     fields = ["rank", "qid", "region", "seq_id", "strand", "guide_seq",
@@ -743,11 +751,13 @@ def main():
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t",
                                 extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(scored)
+        writer.writerows(format_output_row(row) for row in scored)
 
     summary = library_summary(scored)
     summary["region_count"] = len(regions)
     summary["off_target_model"] = scored[0]["off_target_model"] if scored else "none"
+    if crispai_result is not None:
+        summary["crispai"] = crispai_result.metadata()
     summary["off_target_model_note"] = (
         scored[0].get("off_target_model_note", "") if scored else "")
     summary["rule_source"] = scored[0].get("rule_source", "") if scored else ""

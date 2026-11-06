@@ -23,7 +23,9 @@ except ImportError:
     Fasta = None
 
 from search.iupac import IUPAC_REGEX, iupac_to_regex
-from search.alignment import cigar_from_operations
+from search.alignment import (
+    align_global, cigar_from_operations, reverse_complement_gapped,
+)
 from data.annotation_utils import ensure_plain_fasta, is_gzip_file
 
 
@@ -333,37 +335,6 @@ def pam_span_in_window(sequence, motif, pam, side="downstream"):
     return None
 
 
-def _pam_ok_window(genome, seqid, target_start, target_end, strand, qstart,
-                   span, expected):
-    """Check a PAM that is embedded in the query window itself.
-
-    ``span`` is the PAM span in query coordinates and ``qstart`` is the
-    1-based query coordinate the alignment starts at, so the span can be
-    located on the genome in the alignment strand orientation.
-    """
-    if genome is None:
-        return False
-    span_start, span_end = span
-    span_len = span_end - span_start
-    if span_len <= 0:
-        return False
-    # Ungapped HSPs map query coordinates onto the genome linearly, so the
-    # span can be resolved even when blastn trimmed it off the alignment.
-    # Only reject when the contig edge truncates the fetched span.
-    offset = span_start - (qstart - 1)
-    if strand == "+":
-        start = target_start + offset
-        end = start + span_len
-        pattern = expected
-    else:
-        end = target_end - offset
-        start = end - span_len
-        pattern = reverse_complement(expected)
-    sequence = fetch_sequence(genome, seqid, start, end)
-    return (bool(sequence) and len(sequence) == span_len
-            and _pam_matches(sequence, pattern))
-
-
 def _pam_ok_blast(genome, seqid, target_start, target_end, strand, pam,
                   pam_side):
     """Check PAM against a BLAST hit in its reported strand orientation."""
@@ -391,8 +362,8 @@ def _pam_ok_blast(genome, seqid, target_start, target_end, strand, pam,
     return _pam_matches(seq, pam)
 
 
-def _parse_blast_alignment(query_aligned, target_aligned):
-    """Return CIGAR operations and mismatch/bulge counts from BLAST strings."""
+def _alignment_fields(query_aligned, target_aligned):
+    """Derive CIGAR, substitutions, and bulge classes from one alignment."""
     query_aligned = str(query_aligned or "").upper()
     target_aligned = str(target_aligned or "").upper()
     if not query_aligned or len(query_aligned) != len(target_aligned):
@@ -411,23 +382,156 @@ def _parse_blast_alignment(query_aligned, target_aligned):
         else:
             operations.append("X")
             mismatches += 1
-    return operations, mismatches
+    rna_bulges = operations.count("I")
+    dna_bulges = operations.count("D")
+    return {
+        "mismatch": mismatches,
+        "indel": rna_bulges + dna_bulges,
+        "rna_bulges": rna_bulges,
+        "dna_bulges": dna_bulges,
+        "cigar": cigar_from_operations(operations),
+    }
 
 
-def _count_seed_mismatches_aligned(query_aligned, target_aligned, seed_len):
-    """Count mismatches in the PAM-proximal seed of a gapped alignment."""
+def _oriented_alignment_strings(alignment, strand):
+    """Return one rebuilt alignment in the original query orientation."""
+    query_aligned = alignment.query_aligned
+    target_aligned = alignment.target_aligned
+    if strand == "-":
+        query_aligned = reverse_complement_gapped(query_aligned)
+        target_aligned = reverse_complement_gapped(target_aligned)
+    return query_aligned, target_aligned
+
+
+def _seed_interval(query_len, seed_len, pam_side, pam_anchor=None):
+    """Return the PAM-proximal query interval used by the seed filter."""
+    query_len = int(query_len)
+    seed_len = max(0, min(int(seed_len or 0), query_len))
+    if seed_len == 0:
+        return 0, 0
+    if pam_anchor is not None:
+        pam_start, pam_end = pam_anchor[0]
+        if pam_start <= 0:
+            return pam_end, min(query_len, pam_end + seed_len)
+        if pam_end >= query_len:
+            return max(0, pam_start - seed_len), pam_start
+    if pam_side == "5prime":
+        return 0, seed_len
+    return query_len - seed_len, query_len
+
+
+def _count_seed_mismatches_aligned(
+        query_aligned, target_aligned, seed_len, seed_start=None):
+    """Count seed edits, counting RNA gaps as mismatches in seed budget."""
+    query_aligned = str(query_aligned or "").upper()
+    target_aligned = str(target_aligned or "").upper()
+    query_len = len(query_aligned.replace("-", ""))
+    if seed_start is None:
+        seed_start = max(0, query_len - int(seed_len or 0))
+    seed_end = min(query_len, int(seed_start) + int(seed_len or 0))
     mismatches = 0
-    query_bases = 0
-    for query_base, target_base in zip(
-            reversed(query_aligned), reversed(target_aligned)):
+    query_pos = 0
+    for query_base, target_base in zip(query_aligned, target_aligned):
         if query_base == "-":
             continue
-        query_bases += 1
-        if target_base == "-" or query_base != target_base:
-            mismatches += 1
-        if query_bases >= int(seed_len):
-            break
+        if seed_start <= query_pos < seed_end:
+            if target_base == "-" or query_base != target_base:
+                mismatches += 1
+        query_pos += 1
     return mismatches
+
+
+def _pam_ok_rebuilt(query_aligned, target_aligned, span, expected):
+    """Check an embedded PAM against a contiguous target mapping."""
+    query_aligned = str(query_aligned or "").upper()
+    target_aligned = str(target_aligned or "").upper()
+    if (not span or not expected
+            or len(query_aligned) != len(target_aligned)):
+        return False
+    span_start, span_end = (int(span[0]), int(span[1]))
+    query_len = len(query_aligned.replace("-", ""))
+    if span_start < 0 or span_end <= span_start or span_end > query_len:
+        return False
+    query_pos = 0
+    target_pos = 0
+    target_bases = []
+    target_positions = []
+    for query_base, target_base in zip(query_aligned, target_aligned):
+        if query_base == "-" and target_base == "-":
+            return False
+        if query_base == "-":
+            if span_start <= query_pos < span_end:
+                return False
+            if target_base != "-":
+                target_pos += 1
+            continue
+        if span_start <= query_pos < span_end:
+            if target_base == "-":
+                return False
+            target_bases.append(target_base)
+            target_positions.append(target_pos)
+        query_pos += 1
+        if target_base != "-":
+            target_pos += 1
+    if (len(target_positions) != span_end - span_start
+            or not target_positions):
+        return False
+    first_target_pos = target_positions[0]
+    if any(pos != first_target_pos + offset
+           for offset, pos in enumerate(target_positions)):
+        return False
+    return (len(target_bases) == span_end - span_start
+            and _pam_matches("".join(target_bases), expected))
+
+
+def _rebuilt_candidates(genome, seqid, probe, center, max_bulge):
+    """Yield every full-query target interval in one HSP neighborhood."""
+    probe = str(probe or "").upper().replace("U", "T")
+    query_len = len(probe)
+    if query_len == 0 or genome is None:
+        return
+    try:
+        chrom_len = len(genome[seqid])
+    except KeyError:
+        return
+    max_bulge = max(0, int(max_bulge))
+    center = int(center)
+    start_lo = max(0, center - max_bulge)
+    start_hi = min(chrom_len, center + max_bulge)
+    min_len = max(1, query_len - max_bulge)
+    max_len = query_len + max_bulge
+    window_start = max(0, start_lo)
+    window_end = min(chrom_len, start_hi + max_len)
+    window = fetch_sequence(genome, seqid, window_start, window_end)
+    if not window:
+        return
+    for target_start in range(start_lo, start_hi + 1):
+        for target_len in range(min_len, max_len + 1):
+            target_end = target_start + target_len
+            if target_end > chrom_len:
+                break
+            local_start = target_start - window_start
+            local_end = target_end - window_start
+            target = window[local_start:local_end]
+            if len(target) != target_len:
+                continue
+            alignment = align_global(probe, target)
+            yield target_start, target_end, alignment
+
+
+def _candidate_center(query_len, qstart, qend, sstart, send, strand):
+    """Estimate the full-query target start from both HSP end offsets."""
+    hsp_start = min(sstart, send) - 1
+    hsp_end = max(sstart, send)
+    if strand == "+":
+        probe_qstart = qstart - 1
+        probe_qend = qend
+    else:
+        probe_qstart = query_len - qend
+        probe_qend = query_len - (qstart - 1)
+    start_from_left = hsp_start - probe_qstart
+    start_from_right = hsp_end - probe_qend
+    return int(round((start_from_left + start_from_right) / 2.0))
 
 
 def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
@@ -435,21 +539,26 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                require_pam=False, pam_motif="GG", pam_offset=0,
                seed_mismatch_max=None, seed_len=12, genome=None,
                repeat_intervals=None, pam_side="3prime",
-               num_threads=None, perc_identity=None, max_bulge=0,
+               num_threads=None, max_bulge=0,
                window_motif=None, window_side="downstream"):
     """Run blastn and return matches.
 
-    Returns rich hit dictionaries including target span, mismatch, bulge type,
-    CIGAR, and aligned sequences. ``max_bulge=0`` runs ungapped BLAST;
-    ``max_bulge>0`` enables gapped alignments and filters their actual indels.
+    BLAST is only a candidate generator. Every hit is rebuilt from the actual
+    reference with ``align_global`` using the full query; coordinates, counts,
+    CIGAR, and aligned strings all come from that rebuilt alignment.
+    ``max_bulge=0`` runs ungapped BLAST; ``max_bulge>0`` enables gapped
+    candidate generation and constrains the rebuilt alignments.
     If best_only=True, only the single best match (by bitscore desc) per qid is kept.
-    PAM/seed filters need a pyfaidx genome index and are only applied when requested.
+    PAM/seed filters use the rebuilt alignment and require a pyfaidx genome.
 
     ``window_motif`` names the extraction motif that anchors each query
     window. When it is given, a PAM that sits at that motif edge is checked
     against the aligned target site itself instead of the sequence beyond the
     window, which is what a window that already carries its PAM requires.
     """
+    if genome is None:
+        raise RuntimeError(
+            "BLAST full-length realignment requires a reference FASTA/genome")
     if num_threads is None:
         num_threads = default_blast_threads()
     cmd = [
@@ -468,8 +577,6 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
     max_bulge = max(0, int(0 if max_bulge is None else max_bulge))
     if max_bulge == 0:
         cmd.append("-ungapped")
-    if perc_identity is not None:
-        cmd += ["-perc_identity", "%.4f" % float(perc_identity)]
     print("Running blastn ...")
     out_tmp = tempfile.NamedTemporaryFile(
         mode="w+", suffix=".tsv", delete=False, encoding="utf-8")
@@ -496,15 +603,17 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
             sys.exit(4)
 
         query_seqs = _query_sequences_from_fasta(query_fasta)
+        if not query_seqs:
+            raise RuntimeError("BLAST query FASTA could not be read")
         repeat_intervals = repeat_intervals or {}
-        warned_context_filter = False
         pam_anchors = {}
-        if require_pam and window_motif and pam_motif:
+        if window_motif and pam_motif:
             for query_seq in query_seqs.values():
                 pam_anchors[query_seq] = pam_span_in_window(
                     query_seq, window_motif, pam_motif, window_side)
         dropped_by_pam = 0
         matches = {}
+        seen_hsps = set()
         with open(out_path, "r", encoding="utf-8") as blast_out:
             for line in blast_out:
                 line = line.rstrip("\n")
@@ -513,115 +622,111 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                 fields = line.split("\t")
                 if len(fields) < 12:
                     continue
-                qseqid, sseqid, pident, length, mismatch, gapopen, qstart, qend, sstart, send, evalue, bitscore = fields[:12]
-                length = int(length)
-                mismatch = int(mismatch)
+                (qseqid, sseqid, pident, length, hsp_mismatch,
+                 gapopen, qstart, qend, sstart, send, evalue,
+                 bitscore) = fields[:12]
+                hsp_length = int(length)
+                hsp_mismatch = int(hsp_mismatch)
                 gapopen = int(gapopen)
                 qstart = int(qstart)
                 qend = int(qend)
                 sstart = int(sstart)
                 send = int(send)
+                pident = float(pident)
+                evalue = float(evalue)
                 bitscore = float(bitscore)
-                query_aligned = fields[12] if len(fields) > 12 else ""
-                target_aligned = fields[13] if len(fields) > 13 else ""
-                parsed_alignment = _parse_blast_alignment(
-                    query_aligned, target_aligned)
-                indel = 0
-                rna_bulges = 0
-                dna_bulges = 0
-                cigar = ""
-                if parsed_alignment is not None:
-                    operations, mismatch = parsed_alignment
-                    rna_bulges = operations.count("I")
-                    dna_bulges = operations.count("D")
-                    indel = rna_bulges + dna_bulges
-                    cigar = cigar_from_operations(operations)
-                elif gapopen != 0:
-                    continue
+                hsp_query_aligned = fields[12] if len(fields) > 12 else ""
+                hsp_target_aligned = fields[13] if len(fields) > 13 else ""
                 query_seq = query_seqs.get(qseqid, "")
                 query_len = len(query_seq)
                 if query_len <= 0:
                     continue
-                # blastn-short trims mismatching ends off an otherwise good
-                # local hit. Count every unaligned query base as a mismatch
-                # instead of demanding a full-length HSP, so substitution
-                # off-targets are reported here exactly like they are by the
-                # exhaustive engines.
-                trimmed = (qstart - 1) + (query_len - qend)
-                if trimmed < 0:
-                    continue
-                effective_mismatch = mismatch + trimmed
                 strand = "+" if sstart <= send else "-"
-                start = min(sstart, send) - 1
-                target_end = max(sstart, send)
-                if (max_mismatch is not None
-                        and effective_mismatch > max_mismatch):
+                hsp_key = (
+                    qseqid, sseqid, strand, qstart, qend, sstart, send,
+                )
+                if hsp_key in seen_hsps:
                     continue
-                if indel > max_bulge:
-                    continue
-                if repeat_intervals and is_in_excluded(
-                        sseqid, start, repeat_intervals):
-                    continue
+                seen_hsps.add(hsp_key)
+                probe = (query_seq if strand == "+"
+                         else reverse_complement(query_seq))
+                center = _candidate_center(
+                    query_len, qstart, qend, sstart, send, strand)
+                for start, target_end, alignment in _rebuilt_candidates(
+                        genome, sseqid, probe, center, max_bulge):
+                    query_aligned, target_aligned = \
+                        _oriented_alignment_strings(alignment, strand)
+                    rebuilt = _alignment_fields(
+                        query_aligned, target_aligned)
+                    if rebuilt is None:
+                        continue
+                    if (max_mismatch is not None
+                            and rebuilt["mismatch"] > max_mismatch):
+                        continue
+                    if rebuilt["indel"] > max_bulge:
+                        continue
+                    if repeat_intervals and is_in_excluded(
+                            sseqid, start, repeat_intervals):
+                        continue
 
-                if require_pam or seed_mismatch_max is not None:
-                    if genome is None:
-                        if not warned_context_filter:
-                            print(
-                                "Warning: PAM/seed filtering requires a "
-                                "genome index; filters skipped.")
-                            warned_context_filter = True
-                    else:
-                        if require_pam:
-                            anchor = pam_anchors.get(query_seq)
-                            if anchor is not None:
-                                pam_ok = _pam_ok_window(
-                                    genome, sseqid, start, target_end,
-                                    strand, qstart, anchor[0], anchor[1])
-                            else:
-                                pam_ok = _pam_ok_blast(
-                                    genome, sseqid,
-                                    start + pam_offset,
-                                    target_end + pam_offset,
-                                    strand, pam_motif, pam_side)
-                            if not pam_ok:
-                                dropped_by_pam += 1
-                                continue
-                        if seed_mismatch_max is not None:
-                            if parsed_alignment is not None:
-                                seed_mm = _count_seed_mismatches_aligned(
-                                    query_aligned, target_aligned, seed_len)
-                            else:
-                                off = fetch_sequence(
-                                    genome, sseqid, start, target_end)
-                                if off is None or len(off) < len(query_seq):
-                                    continue
-                                comparison = (
-                                    query_seq if strand == "+"
-                                    else reverse_complement(query_seq))
-                                seed_mm = _count_seed_mismatches(
-                                    comparison, off, seed_len)
-                            if seed_mm > seed_mismatch_max:
-                                continue
+                    anchor = pam_anchors.get(query_seq)
+                    if require_pam:
+                        if anchor is not None:
+                            pam_ok = _pam_ok_rebuilt(
+                                query_aligned, target_aligned,
+                                anchor[0], anchor[1])
+                        else:
+                            pam_ok = _pam_ok_blast(
+                                genome, sseqid,
+                                start + pam_offset,
+                                target_end + pam_offset,
+                                strand, pam_motif, pam_side)
+                        if not pam_ok:
+                            dropped_by_pam += 1
+                            continue
 
-                if qseqid not in matches:
-                    matches[qseqid] = []
-                matches[qseqid].append({
-                    "target": sseqid,
-                    "start": start,
-                    "target_start": start,
-                    "target_end": target_end,
-                    "query_start": qstart - 1,
-                    "query_end": qend,
-                    "mismatch": effective_mismatch,
-                    "indel": indel,
-                    "rna_bulges": rna_bulges,
-                    "dna_bulges": dna_bulges,
-                    "cigar": cigar,
-                    "aligned_guide": query_aligned,
-                    "aligned_target": target_aligned,
-                    "bitscore": bitscore,
-                    "strand": strand,
-                })
+                    if seed_mismatch_max is not None:
+                        seed_start, seed_end = _seed_interval(
+                            query_len, seed_len, pam_side, anchor)
+                        seed_mm = _count_seed_mismatches_aligned(
+                            query_aligned, target_aligned,
+                            seed_end - seed_start, seed_start)
+                        if seed_mm > seed_mismatch_max:
+                            continue
+
+                    if qseqid not in matches:
+                        matches[qseqid] = []
+                    matches[qseqid].append({
+                        "target": sseqid,
+                        "start": start,
+                        "target_start": start,
+                        "target_end": target_end,
+                        "query_start": 0,
+                        "query_end": query_len,
+                        "mismatch": rebuilt["mismatch"],
+                        "indel": rebuilt["indel"],
+                        "rna_bulges": rebuilt["rna_bulges"],
+                        "dna_bulges": rebuilt["dna_bulges"],
+                        "cigar": rebuilt["cigar"],
+                        "aligned_guide": query_aligned,
+                        "aligned_target": target_aligned,
+                        "bitscore": bitscore,
+                        "strand": strand,
+                        "hsp": {
+                            "pident": pident,
+                            "length": hsp_length,
+                            "mismatch": hsp_mismatch,
+                            "gapopen": gapopen,
+                            "qstart": qstart,
+                            "qend": qend,
+                            "sstart": sstart,
+                            "send": send,
+                            "evalue": evalue,
+                            "bitscore": bitscore,
+                            "query_aligned": hsp_query_aligned,
+                            "target_aligned": hsp_target_aligned,
+                        },
+                    })
     finally:
         try:
             os.unlink(out_path)
@@ -640,11 +745,26 @@ def run_blastn(query_fasta, db_name, task="blastn-short", word_size=4,
                 m["target"], m.get("target_start", m["start"]),
                 m.get("target_end", m["start"]), m.get("strand", "+"),
             )
-            rank = (m["mismatch"], m.get("indel", 0))
+            rank = (
+                m["mismatch"], m.get("indel", 0),
+                2 * m["mismatch"] + 3 * m.get("indel", 0),
+                m.get("cigar", ""),
+            )
             old = unique.get(key)
-            if old is None or rank < (old["mismatch"], old.get("indel", 0)):
+            old_rank = None if old is None else (
+                old["mismatch"], old.get("indel", 0),
+                2 * old["mismatch"] + 3 * old.get("indel", 0),
+                old.get("cigar", ""),
+            )
+            if old is None or rank < old_rank:
                 unique[key] = m
         deduped = list(unique.values())
+        deduped.sort(key=lambda x: (
+            x["mismatch"], x.get("indel", 0),
+            2 * x["mismatch"] + 3 * x.get("indel", 0),
+            x.get("cigar", ""), x["target"], x["start"],
+            x.get("target_end", 0), x.get("strand", "+"),
+        ))
         if best_only:
             deduped.sort(key=lambda x: x["bitscore"], reverse=True)
             matches[qid] = deduped[:1]
@@ -827,8 +947,8 @@ def _sibling_fasta_for_annotation(annotation_path):
     return None
 
 
-def load_genome_and_prepare_fasta(genome_file):
-    """Return (pyfaidx Fasta index, FASTA path, temp file object)."""
+def prepare_genome_fasta(genome_file):
+    """Return ``(FASTA path, temporary file object)`` for reference access."""
     if Fasta is None:
         _log("Error: pyfaidx required for indexed genome access.")
         sys.exit(6)
@@ -843,7 +963,7 @@ def load_genome_and_prepare_fasta(genome_file):
             sys.exit(6)
         genome_file = prepared
     if _looks_like_fasta(genome_file):
-        return Fasta(genome_file), genome_file, None
+        return genome_file, None
 
     if _is_annotation_path(genome_file):
         sibling = _sibling_fasta_for_annotation(genome_file)
@@ -852,7 +972,7 @@ def load_genome_and_prepare_fasta(genome_file):
                 "Annotation file given; using matching genome FASTA: %s"
                 % sibling
             )
-            return Fasta(sibling), sibling, None
+            return sibling, None
         _log(
             "The genome file looks like an annotation file (%s). "
             "Provide the genome FASTA (.fna) used for BLAST search."
@@ -873,4 +993,10 @@ def load_genome_and_prepare_fasta(genome_file):
         _log(f"Cannot read genome file {genome_file}, check format.")
         sys.exit(6)
     temp_fasta.close()
-    return Fasta(temp_fasta.name), temp_fasta.name, temp_fasta
+    return temp_fasta.name, temp_fasta
+
+
+def load_genome_and_prepare_fasta(genome_file):
+    """Return (pyfaidx Fasta index, FASTA path, temp file object)."""
+    prepared_fasta, temp_file = prepare_genome_fasta(genome_file)
+    return Fasta(prepared_fasta), prepared_fasta, temp_file

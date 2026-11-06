@@ -103,6 +103,8 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
             self.assertEqual(scored[0]["valid_matches"], "1")
             self.assertEqual(scored[0]["bulge_hits"], "1")
             self.assertEqual(scored[0]["scored_bulge_hits"], "1")
+            self.assertRegex(
+                scored[0]["off_target_specificity"], r"^-?\d+\.\d{2}$")
 
     def test_four_field_position_records_are_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -308,7 +310,8 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
         spacer20 = "CAGTCAGTCAGTCAGTCAGT"
         sgrna = spacer20 + "NGG"
         aggregate = 2.0
-        cr.run_crispai_aggregate = lambda *a, **k: {sgrna: aggregate}
+        cr.run_crispai_aggregate = lambda *a, **k: cr.CrispAIRunResult(
+            {sgrna: aggregate}, "crispai", "crispai", "", "aggregate")
         expected_spec = 1.0 / (1.0 + aggregate)
         for nuclease in ("cas9", "custom"):
             with self.subTest(nuclease=nuclease):
@@ -320,10 +323,11 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
                     "off_target_model": "cfd",
                     "crispai_off_target": "",
                 }]
-                ok = mod.apply_crispai_scores(
+                result = mod.apply_crispai_scores(
                     rows, "NGG", "upstream", nuclease,
                     tempfile.mkdtemp())
-                self.assertTrue(ok)
+                self.assertTrue(result.succeeded)
+                self.assertEqual(result.score_scope, "aggregate")
                 self.assertAlmostEqual(
                     rows[0]["off_target_specificity"], expected_spec)
                 self.assertEqual(rows[0]["off_target_model"], "crispai")

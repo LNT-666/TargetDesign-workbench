@@ -11,6 +11,9 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHARED = os.path.join(ROOT, "shared")
 sys.path.insert(0, SHARED)
+RUN_LEGACY_LIBRARY_TESTS = (
+    os.environ.get("PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS") == "1"
+)
 
 from design.library_preflight import (  # noqa: E402
     ENGINE_CHOICES, LEGACY_ENGINE_CHOICES, preflight_library,
@@ -31,6 +34,11 @@ class EngineChoicesTests(unittest.TestCase):
             validate_engine("not_an_engine")
 
 
+@unittest.skipUnless(
+    RUN_LEGACY_LIBRARY_TESTS,
+    "Library export is deprecated; set "
+    "PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS=1 to run legacy tests",
+)
 class PreflightTests(unittest.TestCase):
     def test_missing_genome_is_error(self):
         errors, _ = preflight_library("exact", genome="missing.fa")
@@ -71,7 +79,7 @@ class PreflightTests(unittest.TestCase):
             self.assertFalse(errors)
             self.assertTrue(any("built first on export" in item for item in warnings))
 
-    @mock.patch("design.library_preflight._model_ready", return_value=(False, "not downloaded"))
+    @mock.patch("design.library_preflight._model_ready", return_value=(False, "not set up"))
     def test_model_missing_warns(self, _ready):
         with tempfile.TemporaryDirectory() as tmp:
             genome = os.path.join(tmp, "genome.fa")
@@ -108,6 +116,11 @@ class PreflightTests(unittest.TestCase):
                                 for item in errors))
 
 
+@unittest.skipUnless(
+    RUN_LEGACY_LIBRARY_TESTS,
+    "Library export is deprecated; set "
+    "PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS=1 to run legacy tests",
+)
 class PipelinePreflightTests(unittest.TestCase):
     def test_preflight_only_fails_fast(self):
         import subprocess

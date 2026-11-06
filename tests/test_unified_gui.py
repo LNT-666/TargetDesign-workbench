@@ -51,11 +51,11 @@ class UnifiedGuiTests(unittest.TestCase):
         self.assertEqual(
             [app.main_notebook.tab(t, "text")
              for t in app.main_notebook.tabs()],
-            ["Data prep / Models", "Target design",
+            ["Data prep / Model setup", "Target design",
              "Results / Output"])
         self.assertEqual(
             app.main_notebook.tab(app.main_notebook.select(), "text"),
-            "Data prep / Models")
+            "Data prep / Model setup")
         self.assertFalse(hasattr(app, "analysis_type_var"))
         self.assertEqual(
             [app.motif_notebook.tab(t, "text")

@@ -61,6 +61,7 @@ from data.candidate_annotation import (
     find_downstream_atg, format_annotation, format_tss,
 )
 from output.output_columns import (
+    format_output_value,
     mismatch_bucket_columns,
     mismatch_bucket_values,
     nonempty_indices,
@@ -1036,9 +1037,11 @@ def main():
                         side_rows.setdefault(sgrna, []).append(idx)
                 if not side_rows:
                     continue
-                mapping = run_crispai_aggregate(
+                result = run_crispai_aggregate(
                     side_rows.keys(), output_dir,
-                    n_samples=args.crispai_samples, gpu=args.crispai_gpu)
+                    n_samples=args.crispai_samples, gpu=args.crispai_gpu,
+                    fallback_model=side_models[0] if side_models else "rules")
+                mapping = result.scores
                 if not mapping:
                     continue
                 filled = 0
@@ -1132,10 +1135,10 @@ def main():
             pos_id, item["seq_id"], item["strand"],
             item["left_strand"], item["right_strand"],
             *[
-                item.get(field, "")
+                format_output_value(item.get(field, ""))
                 for field in PREDICTION_ONLY_OUTPUT_FIELDS
             ],
-            item.get("conditional_rank", ""),
+            format_output_value(item.get("conditional_rank", "")),
             str(item["left_pos"]), str(item["right_pos"]), str(item["gap"]),
             str(item["compound_start"]), str(item["compound_end"]),
             str(item["left_target_start"]), str(item["left_target_end"]),
@@ -1147,25 +1150,25 @@ def main():
             f"{item['left_legacy_score']:.2f}",
             str(item["left_total_matches"]), str(item["left_valid_matches"]),
             str(item["left_sum_mismatch"]),
-            "" if item["left_at_score"] is None else str(item["left_at_score"]),
+            format_output_value(item["left_at_score"]),
             f"{item['left_gc_content']:.2f}",
             str(item["left_self_complementarity"]),
             item["left_gc_hint"], item["left_self_comp_hint"],
             *(str(cnt) for cnt in left_mm_out),
             *[
-                item.get("left_%s" % key, "")
+                format_output_value(item.get("left_%s" % key, ""))
                 for key in OUTPUT_GUIDE_FEATURE_COLUMNS
             ],
             f"{item['right_legacy_score']:.2f}",
             str(item["right_total_matches"]), str(item["right_valid_matches"]),
             str(item["right_sum_mismatch"]),
-            "" if item["right_at_score"] is None else str(item["right_at_score"]),
+            format_output_value(item["right_at_score"]),
             f"{item['right_gc_content']:.2f}",
             str(item["right_self_complementarity"]),
             item["right_gc_hint"], item["right_self_comp_hint"],
             *(str(cnt) for cnt in right_mm_out),
             *[
-                item.get("right_%s" % key, "")
+                format_output_value(item.get("right_%s" % key, ""))
                 for key in OUTPUT_GUIDE_FEATURE_COLUMNS
             ],
             f"{item['legacy_score']:.2f}",
@@ -1254,14 +1257,14 @@ def main():
                 item["strand"], str(item["target_start"]), str(item["target_end"]),
                 item["flank_seq"], str(item["total_matches"]),
                 str(item["valid_matches"]), str(item["sum_mismatch"]),
-                "" if item["at_score"] is None else str(item["at_score"]),
+                format_output_value(item["at_score"]),
                 f"{item['gc_content']:.2f}",
                 item["self_complementarity"], item["gc_hint"],
                 item["self_comp_hint"], item["annotation"],
                 item["nearest_tss"], item["isoforms"],
                 item["downstream_atg"],
                 *[
-                    item.get(key, "")
+                    format_output_value(item.get(key, ""))
                     for key in OUTPUT_GUIDE_FEATURE_COLUMNS
                 ],
                 *(str(x) for x in item["mm_out"]),

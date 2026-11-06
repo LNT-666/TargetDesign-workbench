@@ -167,37 +167,6 @@ class PamWindowAnchorTests(unittest.TestCase):
         self.assertIsNone(pam_span_in_window("A" * 20, None, "TTGAT"))
         self.assertIsNone(pam_span_in_window("A" * 20, "TTGAT", "TTGAT"))
 
-    def test_embedded_pam_is_read_from_the_aligned_strand(self):
-        from search.blast_utils import _pam_ok_window, reverse_complement
-
-        sequence = list("C" * 400)
-        sequence[100:105] = list("TTGAT")
-        sequence[200:205] = list("TTGAC")
-        sequence[300:305] = list(reverse_complement("TTGAT"))
-        genome = _fake_genome({"chr1": "".join(sequence)})
-
-        self.assertTrue(_pam_ok_window(
-            genome, "chr1", 100, 105, "+", 1, (0, 5), "TTGAT"))
-        self.assertFalse(_pam_ok_window(
-            genome, "chr1", 200, 205, "+", 1, (0, 5), "TTGAT"))
-        self.assertTrue(_pam_ok_window(
-            genome, "chr1", 300, 305, "-", 1, (0, 5), "TTGAT"))
-        self.assertFalse(_pam_ok_window(
-            genome, "chr1", 100, 105, "-", 1, (0, 5), "TTGAT"))
-
-    def test_embedded_pam_is_resolved_when_blast_trims_its_end(self):
-        from search.blast_utils import _pam_ok_window
-
-        genome = _fake_genome(
-            {"chr1": "C" * 100 + "TTGAT" + "C" * 95 + "TTGAC" + "C" * 100})
-        # The alignment starts at query position 3, but the PAM span (0, 5)
-        # still maps onto the genome and has to be checked there.
-        self.assertTrue(_pam_ok_window(
-            genome, "chr1", 102, 105, "+", 3, (0, 5), "TTGAT"))
-        self.assertFalse(_pam_ok_window(
-            genome, "chr1", 197, 200, "+", 3, (0, 5), "TTGAT"))
-
-
 class BackendTests(unittest.TestCase):
     def test_find_existing_blastdb(self):
         from search.blast_utils import find_existing_blastdb
@@ -549,7 +518,7 @@ class BackendTests(unittest.TestCase):
                 backend.search([{"qid": "g0", "guide_seq": GUIDE}],
                                "genome.fa", SearchParams())
 
-    def test_compare_engines_recall(self):
+    def test_compare_engines_recall_with_mocked_blast_backend(self):
         with tempfile.NamedTemporaryFile(
                 "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
             _write_genome(handle.name)
@@ -569,11 +538,34 @@ class BackendTests(unittest.TestCase):
         finally:
             os.unlink(fasta)
 
+    def test_compare_engines_recall_uses_target_end_in_hit_identity(self):
+        guides = [{"qid": "g0", "guide_seq": GUIDE}]
+        params = SearchParams(max_mismatch=1, max_bulge=0)
+
+        def fake_run_backend(name, guides_arg, genome_fasta, params_arg,
+                             genome=None, **kwargs):
+            target_end = 120 if name == "exact" else 121
+            return {
+                "g0": [{
+                    "target": "chr1", "start": 100,
+                    "target_end": target_end, "strand": "+",
+                }]
+            }
+
+        with mock.patch("search.offtarget_backend.run_backend",
+                        side_effect=fake_run_backend):
+            result = compare_engines(
+                guides, "unused.fa", params,
+                engine_names=["exact", "blast"], reference="exact")
+
+        self.assertEqual(result["summary"]["g0"]["blast_recall"], 0.0)
+
     def test_blast_backend_reports_chunk_progress(self):
         guides = [
             {"qid": "g%d" % i, "guide_seq": GUIDE}
             for i in range(25)
         ]
+        genome = _fake_genome({"chr1": "A" * 100})
         progress = []
         with mock.patch.object(
                 BlastBackend, "available",
@@ -581,19 +573,79 @@ class BackendTests(unittest.TestCase):
                     "search.blast_utils._blastdb_files_exist",
                     return_value=True), mock.patch(
                     "search.blast_utils.blastdb_is_current",
-                    return_value=True):
+                    return_value=True), mock.patch(
+                    "search.blast_utils.prepare_genome_fasta",
+                    return_value=("genome.fa", None)):
             with mock.patch(
                     "search.blast_utils.run_blastn",
                     return_value={}) as run_blastn:
                 BlastBackend().search(
                     guides, "genome.fa",
                     SearchParams(blastdb="db", max_bulge=0),
+                    genome=genome,
                     progress_callback=lambda done, total: progress.append(
                         (done, total)
                     ),
                 )
         self.assertEqual(run_blastn.call_count, 3)
+        self.assertIs(run_blastn.call_args.kwargs["genome"], genome)
         self.assertEqual(progress, [(10, 25), (20, 25), (25, 25)])
+
+    def test_blast_backend_lazy_loads_effective_reference(self):
+        genome = _fake_genome({"chr1": "A" * 100})
+        genome.close = mock.Mock()
+        params = SearchParams(blastdb="db", max_bulge=0)
+        with mock.patch.object(
+                BlastBackend, "available", return_value=(True, "")), \
+                mock.patch(
+                    "search.blast_utils.load_genome_and_prepare_fasta",
+                    return_value=(genome, "prepared.fa", None)) as loader, \
+                mock.patch(
+                    "search.blast_utils._blastdb_files_exist",
+                    return_value=True), mock.patch(
+                    "search.blast_utils.blastdb_is_current",
+                    return_value=True) as is_current, mock.patch(
+                    "search.blast_utils.run_blastn",
+                    return_value={}) as run_blastn:
+            BlastBackend().search(
+                [{"qid": "g0", "guide_seq": GUIDE}],
+                "source.fa.gz", params)
+        loader.assert_called_once_with("source.fa.gz")
+        is_current.assert_called_once_with("prepared.fa", "db")
+        self.assertIs(run_blastn.call_args.kwargs["genome"], genome)
+        genome.close.assert_called_once_with()
+
+    def test_blast_backend_does_not_close_caller_reference(self):
+        genome = _fake_genome({"chr1": "A" * 100})
+        genome.close = mock.Mock()
+        params = SearchParams(blastdb="db", max_bulge=0)
+        with mock.patch.object(
+                BlastBackend, "available", return_value=(True, "")), \
+                mock.patch(
+                    "search.blast_utils.prepare_genome_fasta",
+                    return_value=("prepared.fa", None)), mock.patch(
+                    "search.blast_utils._blastdb_files_exist",
+                    return_value=True), mock.patch(
+                    "search.blast_utils.blastdb_is_current",
+                    return_value=True), mock.patch(
+                    "search.blast_utils.run_blastn",
+                    return_value={}):
+            BlastBackend().search(
+                [{"qid": "g0", "guide_seq": GUIDE}],
+                "source.fa.gz", params, genome=genome)
+        genome.close.assert_not_called()
+
+    def test_blast_backend_missing_reference_fails_explicitly(self):
+        with mock.patch.object(
+                BlastBackend, "available", return_value=(True, "")), \
+                mock.patch(
+                    "search.blast_utils.load_genome_and_prepare_fasta",
+                    side_effect=SystemExit(6)):
+            with self.assertRaisesRegex(
+                    RuntimeError, "readable reference FASTA/genome"):
+                BlastBackend().search(
+                    [{"qid": "g0", "guide_seq": GUIDE}],
+                    "missing.fa", SearchParams(max_bulge=0))
 
 
 class GGGGenomeTests(unittest.TestCase):
@@ -684,6 +736,7 @@ class BlastThreadTests(unittest.TestCase):
         proc.returncode = 0
         proc.stdout = FakeStream()
         proc.stderr = FakeStream()
+        genome = _fake_genome({"chr1": "A" * 100})
 
         def fake_popen(cmd, **kwargs):
             out_path = cmd[cmd.index("-out") + 1]
@@ -695,35 +748,40 @@ class BlastThreadTests(unittest.TestCase):
             with mock.patch(
                     "subprocess.Popen", side_effect=fake_popen) as popen:
                 run_blastn(query_fasta, "test_db", num_threads=8,
-                           perc_identity=80.0)
+                           genome=genome)
             cmd = popen.call_args[0][0]
             self.assertIn("-num_threads", cmd)
             self.assertEqual(cmd[cmd.index("-num_threads") + 1], "8")
-            self.assertIn("-perc_identity", cmd)
-            self.assertEqual(cmd[cmd.index("-perc_identity") + 1], "80.0000")
+            self.assertNotIn("-perc_identity", cmd)
             self.assertIn("-ungapped", cmd)
             self.assertIn("qseq sseq", cmd[cmd.index("-outfmt") + 1])
         finally:
             os.unlink(query_fasta)
 
     def test_blastn_gapped_mode_and_alignment_parsing(self):
-        from search.blast_utils import run_blastn
+        from search.blast_utils import reverse_complement, run_blastn
 
         with tempfile.NamedTemporaryFile(
                 "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
             handle.write(">g0\n%s\n" % GUIDE)
             query_fasta = handle.name
 
+        target_plus = GUIDE[:10] + "T" + GUIDE[10:]
+        target_minus = reverse_complement(target_plus)
+        sequence = list("A" * 320)
+        sequence[100:121] = list(target_plus)
+        sequence[200:221] = list(target_minus)
+        genome = _fake_genome({"chr1": "".join(sequence)})
+
         def fake_popen(cmd, **kwargs):
             out_path = cmd[cmd.index("-out") + 1]
             with open(out_path, "w", encoding="utf-8") as blast_out:
-                for sstart, send in ((101, 121), (121, 101)):
+                for sstart, send in ((101, 121), (221, 201)):
                     blast_out.write(
                         "g0\tchr1\t95.238\t21\t0\t1\t1\t20\t"
                         "%d\t%d\t0.001\t30\t"
-                        "ACGTTGCAAG-TCCTAGGATC\t"
-                        "ACGTTGCAAGTTCCTAGGATC\n"
-                        % (sstart, send)
+                        "%s\t%s\n"
+                        % (sstart, send, GUIDE, target_plus)
                     )
             proc = mock.Mock()
             proc.returncode = 0
@@ -734,22 +792,46 @@ class BlastThreadTests(unittest.TestCase):
                     "subprocess.Popen", side_effect=fake_popen) as popen:
                 matches = run_blastn(
                     query_fasta, "test_db", num_threads=2,
-                    max_mismatch=0, max_bulge=1)
+                    max_mismatch=0, max_bulge=1, genome=genome)
             cmd = popen.call_args[0][0]
             self.assertNotIn("-ungapped", cmd)
             self.assertEqual(len(matches["g0"]), 2)
+            expected_starts = {"+": 100, "-": 200}
             for hit in matches["g0"]:
                 self.assertEqual(hit["mismatch"], 0)
                 self.assertEqual(hit["indel"], 1)
                 self.assertEqual(hit["rna_bulges"], 0)
                 self.assertEqual(hit["dna_bulges"], 1)
                 self.assertEqual(hit["cigar"], "10M1D10M")
-                self.assertEqual(hit["target_start"], 100)
-                self.assertEqual(hit["target_end"], 121)
+                expected_start = expected_starts[hit["strand"]]
+                self.assertEqual(hit["target_start"], expected_start)
+                self.assertEqual(hit["target_end"], expected_start + 21)
+                self.assertEqual(hit["query_start"], 0)
+                self.assertEqual(hit["query_end"], len(GUIDE))
+                self.assertEqual(
+                    hit["aligned_guide"].replace("-", ""), GUIDE)
+                self.assertEqual(hit["aligned_target"], target_plus)
+                self.assertEqual(set(hit["hsp"]), {
+                    "pident", "length", "mismatch", "gapopen",
+                    "qstart", "qend", "sstart", "send", "evalue",
+                    "bitscore", "query_aligned", "target_aligned",
+                })
         finally:
             os.unlink(query_fasta)
 
-    def test_blastn_counts_trimmed_query_bases_as_mismatches(self):
+    def test_pam_rebuilt_rejects_gaps_inside_the_pam_span(self):
+        from search.blast_utils import _pam_ok_rebuilt
+
+        self.assertFalse(_pam_ok_rebuilt(
+            "TT-GAT", "TTTGAT", (0, 5), "TTGAT"))
+        self.assertFalse(_pam_ok_rebuilt(
+            "TTGAT", "TT-AT", (0, 5), "TTGAT"))
+        self.assertTrue(_pam_ok_rebuilt(
+            "TTGAT", "TTGAT", (0, 5), "TTGAT"))
+        self.assertTrue(_pam_ok_rebuilt(
+            "TTGAT-C", "TTGATCC", (0, 5), "TTGAT"))
+
+    def test_blastn_rebuilds_trimmed_hsp_using_the_full_query(self):
         from search.blast_utils import run_blastn
 
         with tempfile.NamedTemporaryFile(
@@ -774,22 +856,332 @@ class BlastThreadTests(unittest.TestCase):
             proc.returncode = 0
             return proc
 
+        mutated = list(GUIDE)
+        mutated[16:] = list("AAAA")
+        sequence = list("A" * 220)
+        sequence[0:20] = list(GUIDE)
+        sequence[100:120] = mutated
+        genome = _fake_genome({"chr1": "".join(sequence)})
         try:
             with mock.patch(
                     "subprocess.Popen", side_effect=fake_popen):
                 matches = run_blastn(
-                    query_fasta, "test_db", num_threads=2, max_mismatch=4)
+                    query_fasta, "test_db", num_threads=2, max_mismatch=4,
+                    genome=genome)
             by_start = {hit["start"]: hit for hit in matches["g0"]}
             self.assertEqual(sorted(by_start), [0, 100])
             self.assertEqual(by_start[0]["mismatch"], 0)
             self.assertEqual(by_start[100]["mismatch"], 4)
+            self.assertEqual(by_start[100]["target_start"], 100)
+            self.assertEqual(by_start[100]["target_end"], 120)
+            self.assertEqual(by_start[100]["cigar"], "16M4X")
+            self.assertEqual(by_start[100]["aligned_guide"], GUIDE)
+            self.assertEqual(by_start[100]["hsp"]["qend"], 16)
 
             with mock.patch(
                     "subprocess.Popen", side_effect=fake_popen):
                 strict = run_blastn(
-                    query_fasta, "test_db", num_threads=2, max_mismatch=3)
+                    query_fasta, "test_db", num_threads=2, max_mismatch=3,
+                    genome=genome)
             self.assertEqual(len(strict["g0"]), 1)
             self.assertEqual(strict["g0"][0]["start"], 0)
+        finally:
+            os.unlink(query_fasta)
+
+    def test_blastn_requires_a_reference_for_realignment(self):
+        from search.blast_utils import run_blastn
+
+        with self.assertRaisesRegex(
+                RuntimeError, "requires a reference FASTA/genome"):
+            run_blastn("query.fa", "test_db")
+
+    def test_blastn_repeat_interval_filters_hit_at_rebuilt_start(self):
+        from pyfaidx import Fasta
+        from search.blast_utils import run_blastn
+
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as query:
+            query.write(">g0\n%s\n" % GUIDE)
+            query_fasta = query.name
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as genome_file:
+            genome_file.write(
+                ">chr1\n%s%s%s\n" % ("A" * 100, GUIDE, "A" * 100))
+            genome_path = genome_file.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                blast_out.write(
+                    "g0\tchr1\t100.0\t20\t0\t0\t1\t20\t"
+                    "101\t120\t0.0\t40\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        genome = Fasta(genome_path)
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                hits = run_blastn(
+                    query_fasta, "test_db", max_mismatch=0, max_bulge=0,
+                    genome=genome,
+                    repeat_intervals={"chr1": [(100, 120)]})
+            self.assertEqual(hits.get("g0", []), [])
+        finally:
+            genome.close()
+            os.unlink(query_fasta)
+            os.unlink(genome_path)
+
+    def test_blastn_repeat_interval_outside_rebuilt_start_is_retained(self):
+        from pyfaidx import Fasta
+        from search.blast_utils import run_blastn
+
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as query:
+            query.write(">g0\n%s\n" % GUIDE)
+            query_fasta = query.name
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as genome_file:
+            genome_file.write(
+                ">chr1\n%s%s%s\n" % ("A" * 100, GUIDE, "A" * 100))
+            genome_path = genome_file.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                blast_out.write(
+                    "g0\tchr1\t100.0\t20\t0\t0\t1\t20\t"
+                    "101\t120\t0.0\t40\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        genome = Fasta(genome_path)
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                hits = run_blastn(
+                    query_fasta, "test_db", max_mismatch=0, max_bulge=0,
+                    genome=genome,
+                    repeat_intervals={"chr1": [(90, 100)]})
+            self.assertEqual(
+                [hit["start"] for hit in hits["g0"]], [100])
+        finally:
+            genome.close()
+            os.unlink(query_fasta)
+            os.unlink(genome_path)
+
+    def test_blastn_seed_uses_the_rebuilt_pam_proximal_interval(self):
+        from search.blast_utils import run_blastn
+
+        first_mutated = list(GUIDE)
+        first_mutated[0] = "A" if first_mutated[0] != "A" else "C"
+        last_mutated = list(GUIDE)
+        last_mutated[-1] = "A" if last_mutated[-1] != "A" else "C"
+        sequence = list("C" * 260)
+        sequence[100:120] = first_mutated
+        sequence[200:220] = last_mutated
+        genome = _fake_genome({"chr1": "".join(sequence)})
+
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
+            handle.write(">g0\n%s\n" % GUIDE)
+            query_fasta = handle.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                blast_out.write(
+                    "g0\tchr1\t95.0\t20\t1\t0\t1\t20\t"
+                    "101\t120\t0.0\t30\n")
+                blast_out.write(
+                    "g0\tchr1\t95.0\t20\t1\t0\t1\t20\t"
+                    "201\t220\t0.0\t30\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                three_prime = run_blastn(
+                    query_fasta, "test_db", max_mismatch=1,
+                    max_bulge=0, genome=genome,
+                    seed_mismatch_max=0, seed_len=5, pam_side="3prime")
+            self.assertEqual(
+                [hit["start"] for hit in three_prime["g0"]], [100])
+
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                five_prime = run_blastn(
+                    query_fasta, "test_db", max_mismatch=1,
+                    max_bulge=0, genome=genome,
+                    seed_mismatch_max=0, seed_len=5, pam_side="5prime")
+            self.assertEqual(
+                [hit["start"] for hit in five_prime["g0"]], [200])
+        finally:
+            os.unlink(query_fasta)
+
+    def test_seed_gap_budget_uses_query_positions(self):
+        from search.blast_utils import (
+            _count_seed_mismatches_aligned, _seed_interval,
+        )
+
+        self.assertEqual(
+            _count_seed_mismatches_aligned("ACGT", "AC-T", 2, 2), 1)
+        self.assertEqual(
+            _count_seed_mismatches_aligned("AC-GT", "ACTGA", 2, 2), 1)
+        self.assertEqual(
+            _seed_interval(25, 5, "3prime", ((0, 5), "TTGAT")),
+            (5, 10))
+
+    def test_blastn_pam_toggle_keeps_embedded_seed_interval(self):
+        from search.blast_utils import _seed_interval, run_blastn
+
+        window = "TTGAT" + GUIDE
+        sequence = list("C" * 200)
+        sequence[100:125] = list(window)
+        genome = _fake_genome({"chr1": "".join(sequence)})
+
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
+            handle.write(">g0\n%s\n" % window)
+            query_fasta = handle.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                blast_out.write(
+                    "g0\tchr1\t100.0\t25\t0\t0\t1\t25\t"
+                    "101\t125\t0.0\t40\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen), mock.patch(
+                    "search.blast_utils._seed_interval",
+                    wraps=_seed_interval) as seed_interval:
+                for require_pam in (False, True):
+                    hits = run_blastn(
+                        query_fasta, "test_db", max_mismatch=0,
+                        max_bulge=0, genome=genome,
+                        require_pam=require_pam, pam_motif="TTGAT",
+                        pam_side="5prime", window_motif="TTGAT",
+                        window_side="downstream", seed_mismatch_max=0,
+                        seed_len=5)
+                    self.assertEqual(
+                        [hit["start"] for hit in hits["g0"]], [100])
+
+            self.assertEqual(seed_interval.call_args_list, [
+                mock.call(25, 5, "5prime", ((0, 5), "TTGAT")),
+                mock.call(25, 5, "5prime", ((0, 5), "TTGAT")),
+            ])
+        finally:
+            os.unlink(query_fasta)
+
+    def test_blastn_rejects_dna_gap_inside_embedded_pam(self):
+        from search.blast_utils import run_blastn
+
+        window = "TTGAT" + GUIDE
+        sequence = list("C" * 200)
+        sequence[100:126] = list("TTTGAT" + GUIDE)
+        genome = _fake_genome({"chr1": "".join(sequence)})
+
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
+            handle.write(">g0\n%s\n" % window)
+            query_fasta = handle.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                blast_out.write(
+                    "g0\tchr1\t96.0\t25\t0\t1\t1\t25\t"
+                    "101\t126\t0.0\t38\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                hits = run_blastn(
+                    query_fasta, "test_db", max_mismatch=0,
+                    max_bulge=1, genome=genome, require_pam=True,
+                    pam_motif="TTGAT", pam_side="5prime",
+                    window_motif="TTGAT", window_side="downstream")
+            spans = {
+                (hit["target_start"], hit["target_end"])
+                for hit in hits.get("g0", [])
+            }
+            self.assertNotIn((100, 126), spans)
+        finally:
+            os.unlink(query_fasta)
+
+    def test_blastn_rebuilds_multiple_bulges_and_terminal_gaps(self):
+        from search.blast_utils import run_blastn
+
+        probe = "ACGTCAGTGCATGACTAGCT"
+        multi_bulge = probe[:4] + "G" + probe[4:14] + "G" + probe[14:]
+        five_prime_gap = probe[1:]
+        three_prime_gap = probe[:-1]
+        sequence = list("C" * 450)
+        sequence[100:122] = list(multi_bulge)
+        sequence[300:319] = list(five_prime_gap)
+        sequence[400:419] = list(three_prime_gap)
+        genome = _fake_genome({"chr1": "".join(sequence)})
+
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".fa", delete=False, encoding="utf-8") as handle:
+            handle.write(">g0\n%s\n" % probe)
+            query_fasta = handle.name
+
+        def fake_popen(cmd, **kwargs):
+            out_path = cmd[cmd.index("-out") + 1]
+            with open(out_path, "w", encoding="utf-8") as blast_out:
+                blast_out.write(
+                    "g0\tchr1\t90.0\t22\t0\t2\t1\t20\t"
+                    "101\t122\t0.0\t30\n")
+                blast_out.write(
+                    "g0\tchr1\t100.0\t19\t0\t0\t2\t20\t"
+                    "301\t319\t0.0\t28\n")
+                blast_out.write(
+                    "g0\tchr1\t100.0\t19\t0\t0\t1\t19\t"
+                    "401\t419\t0.0\t28\n")
+            proc = mock.Mock()
+            proc.returncode = 0
+            return proc
+
+        try:
+            with mock.patch(
+                    "subprocess.Popen", side_effect=fake_popen):
+                matches = run_blastn(
+                    query_fasta, "test_db", max_mismatch=0,
+                    max_bulge=2, genome=genome)
+            by_span = {
+                (hit["target_start"], hit["target_end"]): hit
+                for hit in matches["g0"]
+            }
+            canonical = {(100, 122), (300, 319), (400, 419)}
+            self.assertTrue(canonical.issubset(by_span))
+            self.assertGreaterEqual(len(by_span), 3)
+            self.assertEqual(by_span[(100, 122)]["indel"], 2)
+            self.assertEqual(by_span[(300, 319)]["indel"], 1)
+            self.assertEqual(by_span[(300, 319)]["rna_bulges"], 1)
+            self.assertTrue(
+                by_span[(300, 319)]["aligned_target"].startswith("-"))
+            self.assertEqual(by_span[(400, 419)]["indel"], 1)
+            self.assertEqual(by_span[(400, 419)]["rna_bulges"], 1)
+            self.assertTrue(
+                by_span[(400, 419)]["aligned_target"].endswith("-"))
+            for hit in matches["g0"]:
+                self.assertEqual(hit["query_start"], 0)
+                self.assertEqual(hit["query_end"], len(probe))
+                self.assertEqual(
+                    hit["aligned_guide"].replace("-", ""), probe)
         finally:
             os.unlink(query_fasta)
 
@@ -820,15 +1212,16 @@ class BlastThreadTests(unittest.TestCase):
                 # blastn trimmed the PAM end away
                 blast_out.write(
                     "g0\tchr1\t95.0\t23\t1\t0\t3\t25\t"
-                    "301\t323\t0.0\t36\n")
+                    "303\t325\t0.0\t36\n")
             proc = mock.Mock()
             proc.returncode = 0
             return proc
 
         sequence = list("C" * 600)
-        sequence[100:105] = list("TTGAT")
-        sequence[200:205] = list("TTGAC")
-        sequence[495:500] = list(reverse_complement("TTGAT"))
+        sequence[100:125] = list(window)
+        sequence[200:225] = list("TTGAC" + GUIDE)
+        sequence[300:325] = list(window)
+        sequence[475:500] = list(reverse_complement(window))
         genome = _fake_genome({"chr1": "".join(sequence)})
         try:
             with mock.patch(
@@ -838,7 +1231,8 @@ class BlastThreadTests(unittest.TestCase):
                     pam_motif="TTGAT", pam_side="5prime", genome=genome,
                     window_motif="TTGAT", window_side="downstream")
             self.assertEqual(
-                sorted(hit["start"] for hit in matches["g0"]), [100, 475])
+                sorted(hit["start"] for hit in matches["g0"]),
+                [100, 300, 475])
 
             # Without the window context the legacy outside-the-window check
             # runs instead, and the same hits are all rejected.

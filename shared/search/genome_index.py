@@ -207,6 +207,11 @@ class MemoryLimitExceededError(RuntimeError):
 
     error_code = "MEMORY_LIMIT_EXCEEDED"
 
+    def __init__(self, message="Memory limit exceeded"):
+        from search.native_offtarget import normalize_memory_limit_message
+
+        super().__init__(normalize_memory_limit_message(message))
+
 
 class _MemoryBudget:
     def __init__(self, limit_mb=None, tracker=None):

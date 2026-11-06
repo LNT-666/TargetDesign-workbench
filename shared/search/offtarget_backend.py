@@ -388,106 +388,136 @@ class BlastBackend(OffTargetBackend):
     def search(self, guides, genome_fasta, params, genome=None, **kwargs):
         from search.blast_utils import (
             _blastdb_files_exist, blastdb_is_current, build_blastdb,
-            ensure_blastdb, find_existing_blastdb, run_blastn)
+            ensure_blastdb, find_existing_blastdb,
+            load_genome_and_prepare_fasta, prepare_genome_fasta,
+            run_blastn)
 
         ok, reason = self.available()
         if not ok:
             raise RuntimeError(reason)
         validate_search_params(self.name, params)
-        trust_existing = bool(
-            params.extra.get("trust_existing_blastdb", False))
-        if params.blastdb:
-            db_name = params.blastdb
-            for extension in (".nin", ".nsq", ".nhr", ".nal", ".nog"):
-                if db_name.endswith(extension):
-                    db_name = db_name[:-len(extension)]
-                    break
-            if not _blastdb_files_exist(db_name):
-                raise RuntimeError(
-                    "BLAST database is incomplete: %s" % db_name)
-            if trust_existing:
-                print(
-                    "WARNING: trusting existing BLAST database without "
-                    "validating its source manifest: %s" % db_name,
-                    flush=True,
-                )
-            if not trust_existing and not blastdb_is_current(
-                    genome_fasta, db_name):
-                print(
-                    "WARNING: BLAST database source manifest is missing or "
-                    "stale; rebuilding %s." % db_name,
-                    flush=True,
-                )
-                build_blastdb(genome_fasta, db_name)
-        else:
-            db_name = find_existing_blastdb(
-                genome_fasta, output_dir=params.output_dir,
-                trust_existing=trust_existing, log=print)
-            if not db_name:
-                db_name = ensure_blastdb(
-                    genome_fasta, output_dir=params.output_dir)
-        progress_callback = kwargs.get("progress_callback")
-        chunk_size = (
-            _progress_chunk_size(len(guides))
-            if progress_callback else len(guides) or 1
-        )
-        min_guide_len = min(
-            (len(g.get("guide_seq") or "") for g in guides), default=0)
-        perc_identity = None
-        if params.max_mismatch is not None and min_guide_len > 0:
-            permitted_span = min_guide_len + max(0, int(params.max_bulge))
-            threshold = 100.0 * (
-                min_guide_len - params.max_mismatch) / permitted_span
-            if threshold > 0:
-                perc_identity = threshold
-        raw_results = {}
-        for start in range(0, len(guides), chunk_size):
-            chunk = guides[start:start + chunk_size]
-            query_fasta = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".fa", delete=False, encoding="utf-8")
-            for guide in chunk:
-                query_fasta.write(
-                    ">%s\n%s\n" % (guide["qid"], guide["guide_seq"])
-                )
-            query_fasta.close()
+        genome_owned = False
+        temp_reference = None
+        try:
             try:
-                raw_results.update(run_blastn(
-                    query_fasta.name, db_name,
-                    task=("blastn-short"
-                          if max(len(g["guide_seq"]) for g in chunk) <= 30
-                          else "blastn"),
-                    word_size=4,
-                    evalue=1000,
-                    max_mismatch=params.max_mismatch,
-                    max_bulge=params.max_bulge,
-                    require_pam=params.require_pam,
-                    pam_motif=params.pam or "GG",
-                    pam_side=params.pam_side,
-                    window_motif=params.window_motif,
-                    window_side=params.window_side,
-                    seed_mismatch_max=params.seed_mismatch_max,
-                    seed_len=params.seed_len,
-                    genome=genome,
-                    num_threads=params.extra.get("threads"),
-                    perc_identity=perc_identity,
-                ))
-            finally:
+                if genome is None:
+                    genome, reference_fasta, temp_reference = \
+                        load_genome_and_prepare_fasta(genome_fasta)
+                    genome_owned = True
+                else:
+                    reference_fasta, temp_reference = \
+                        prepare_genome_fasta(genome_fasta)
+            except (OSError, ValueError, SystemExit) as exc:
+                detail = str(exc).strip()
+                message = (
+                    "BLAST full-length realignment requires a readable "
+                    "reference FASTA/genome: %s" % genome_fasta
+                )
+                if detail:
+                    message += " (%s)" % detail
+                raise RuntimeError(message)
+
+            trust_existing = bool(
+                params.extra.get("trust_existing_blastdb", False))
+            if params.blastdb:
+                db_name = params.blastdb
+                for extension in (".nin", ".nsq", ".nhr", ".nal", ".nog"):
+                    if db_name.endswith(extension):
+                        db_name = db_name[:-len(extension)]
+                        break
+                if not _blastdb_files_exist(db_name):
+                    raise RuntimeError(
+                        "BLAST database is incomplete: %s" % db_name)
+                if trust_existing:
+                    print(
+                        "WARNING: trusting existing BLAST database without "
+                        "validating its source manifest: %s" % db_name,
+                        flush=True,
+                    )
+                if not trust_existing and not blastdb_is_current(
+                        reference_fasta, db_name):
+                    print(
+                        "WARNING: BLAST database source manifest is missing "
+                        "or stale; rebuilding %s." % db_name,
+                        flush=True,
+                    )
+                    build_blastdb(reference_fasta, db_name)
+            else:
+                db_name = find_existing_blastdb(
+                    reference_fasta, output_dir=params.output_dir,
+                    trust_existing=trust_existing, log=print)
+                if not db_name:
+                    db_name = ensure_blastdb(
+                        reference_fasta, output_dir=params.output_dir)
+            progress_callback = kwargs.get("progress_callback")
+            chunk_size = (
+                _progress_chunk_size(len(guides))
+                if progress_callback else len(guides) or 1
+            )
+            raw_results = {}
+            for start in range(0, len(guides), chunk_size):
+                chunk = guides[start:start + chunk_size]
+                query_fasta = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".fa", delete=False, encoding="utf-8")
+                for guide in chunk:
+                    query_fasta.write(
+                        ">%s\n%s\n" % (guide["qid"], guide["guide_seq"])
+                    )
+                query_fasta.close()
                 try:
-                    os.unlink(query_fasta.name)
+                    raw_results.update(run_blastn(
+                        query_fasta.name, db_name,
+                        task=("blastn-short"
+                              if max(len(g["guide_seq"]) for g in chunk) <= 30
+                              else "blastn"),
+                        word_size=4,
+                        evalue=1000,
+                        max_mismatch=params.max_mismatch,
+                        max_bulge=params.max_bulge,
+                        require_pam=params.require_pam,
+                        pam_motif=params.pam or "GG",
+                        pam_side=params.pam_side,
+                        window_motif=params.window_motif,
+                        window_side=params.window_side,
+                        seed_mismatch_max=params.seed_mismatch_max,
+                        seed_len=params.seed_len,
+                        genome=genome,
+                        num_threads=params.extra.get("threads"),
+                    ))
+                finally:
+                    try:
+                        os.unlink(query_fasta.name)
+                    except OSError:
+                        pass
+                if progress_callback:
+                    progress_callback(start + len(chunk), len(guides))
+            out = {}
+            guide_by_qid = {
+                guide.get("qid"): guide.get("guide_seq")
+                for guide in guides
+            }
+            for qid, hits in raw_results.items():
+                out[qid] = [normalize_hit(
+                    hit, self.name, qid=qid,
+                    guide=guide_by_qid.get(qid))
+                            for hit in hits]
+            return out
+        finally:
+            if genome_owned:
+                close = getattr(genome, "close", None)
+                if callable(close):
+                    close()
+            if temp_reference is not None:
+                try:
+                    temp_reference.close()
                 except OSError:
                     pass
-            if progress_callback:
-                progress_callback(start + len(chunk), len(guides))
-        out = {}
-        guide_by_qid = {
-            guide.get("qid"): guide.get("guide_seq")
-            for guide in guides
-        }
-        for qid, hits in raw_results.items():
-            out[qid] = [normalize_hit(
-                hit, self.name, qid=qid, guide=guide_by_qid.get(qid))
-                        for hit in hits]
-        return out
+                temp_name = getattr(temp_reference, "name", None)
+                if temp_name:
+                    try:
+                        os.unlink(temp_name)
+                    except OSError:
+                        pass
 
 
 class GGGenomeBackend(OffTargetBackend):
@@ -1334,12 +1364,16 @@ def compare_engines(guides, genome_fasta, params, engine_names,
         for qid in matches:
             all_qids.add(qid)
     for qid in sorted(all_qids):
-        ref_keys = {(h["target"], h["start"], h["strand"])
-                    for h in ref.get(qid, [])}
+        ref_keys = {
+            (h["target"], h["start"], h["target_end"], h["strand"])
+            for h in ref.get(qid, [])
+        }
         row = {"reference": len(ref_keys)}
         for name, matches in results.items():
-            keys = {(h["target"], h["start"], h["strand"])
-                    for h in matches.get(qid, [])}
+            keys = {
+                (h["target"], h["start"], h["target_end"], h["strand"])
+                for h in matches.get(qid, [])
+            }
             row[name] = len(keys)
             if ref_keys:
                 row[name + "_recall"] = len(keys & ref_keys) / len(ref_keys)

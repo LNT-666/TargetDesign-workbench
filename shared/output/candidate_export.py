@@ -6,6 +6,8 @@ import os
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Sequence
 
+from output.output_columns import format_output_row, format_output_value
+
 
 SUPPORTED_FORMATS = (
     "csv",
@@ -69,7 +71,7 @@ def _write_delimited(
             extrasaction="ignore",
         )
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(format_output_row(row) for row in rows)
     return len(rows)
 
 
@@ -135,7 +137,9 @@ def _write_xlsx(rows: Sequence[Dict[str, Any]], path: str) -> int:
     fields = _fieldnames(rows)
     sheet.append(fields)
     for row in rows:
-        sheet.append([row.get(field, "") for field in fields])
+        sheet.append([
+            format_output_value(row.get(field, "")) for field in fields
+        ])
     if sheet.max_row >= 1:
         for cell in sheet[1]:
             cell.font = Font(bold=True)

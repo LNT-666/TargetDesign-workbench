@@ -1,12 +1,72 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Helpers for dropping table columns that are empty across every row.
+"""Helpers for result-table columns and consistent numeric formatting.
 
 The score/library TSV writers include several optional columns (e.g. on-target
 or off-target model outputs, rule notes) that can be blank for the whole table
 when the relevant model is not available.  Hiding these all-empty columns keeps
 the result files readable instead of leaving an unused column behind.
 """
+
+import math
+import numbers
+import re
+
+
+DEFAULT_DECIMAL_PLACES = 2
+_DECIMAL_TEXT = re.compile(
+    r"^[+-]?(?:\d+\.\d*|\.\d+|\d+[eE][+-]?\d+|\d+\.\d*[eE][+-]?\d+)$"
+)
+
+
+def format_output_value(value, decimals=DEFAULT_DECIMAL_PLACES):
+    """Format a result-table value, keeping counts and labels unchanged.
+
+    Integral values stay integral so ranks, positions, and mismatch counts do
+    not grow a meaningless ``.00`` suffix.  Real values are rendered with a
+    fixed number of decimal places.  Text, ``None``, and non-finite values are
+    returned as their normal string form.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, numbers.Integral):
+        return str(int(value))
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isfinite(number):
+            if number == 0:
+                number = 0.0
+            return f"{number:.{decimals}f}"
+        return str(value)
+    return str(value)
+
+
+def format_display_value(value, decimals=DEFAULT_DECIMAL_PLACES):
+    """Format a value for a GUI/Web table cell.
+
+    Besides native numeric values, this also handles decimal-looking strings
+    read back from an older TSV file.  Integer-looking strings are left alone
+    so identifiers with leading zeros are not rewritten.
+    """
+    if isinstance(value, str):
+        text = value.strip()
+        if _DECIMAL_TEXT.match(text):
+            try:
+                return format_output_value(float(text), decimals)
+            except ValueError:
+                return value
+        return value
+    return format_output_value(value, decimals)
+
+
+def format_output_row(row, decimals=DEFAULT_DECIMAL_PLACES):
+    """Return a copy of a row with numeric cells formatted for output."""
+    return {
+        key: format_output_value(value, decimals)
+        for key, value in row.items()
+    }
 
 
 def is_blank(value):

@@ -62,7 +62,7 @@ def _model_ready(key):
     if status == "size_mismatch":
         return False, "file size does not match expected"
     if status == "not_downloaded":
-        return False, "model file not downloaded"
+        return False, "model not set up"
     return False, "model status: %s" % status
 
 

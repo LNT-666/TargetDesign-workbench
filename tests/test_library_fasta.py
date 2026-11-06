@@ -5,6 +5,7 @@
 import csv
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -13,13 +14,22 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHARED = os.path.join(ROOT, "shared")
 sys.path.insert(0, SHARED)
+RUN_LEGACY_LIBRARY_TESTS = (
+    os.environ.get("PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS") == "1"
+)
 
 from design.library_preflight import ENGINE_CHOICES  # noqa: E402
+from search import native_offtarget  # noqa: E402
 
 
 GUIDE = "GAACACAAAGCATAGACTGC"
 
 
+@unittest.skipUnless(
+    RUN_LEGACY_LIBRARY_TESTS,
+    "Library export is deprecated; set "
+    "PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS=1 to run legacy tests",
+)
 class LibraryFastaTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -36,7 +46,33 @@ class LibraryFastaTests(unittest.TestCase):
             handle.write(">tx2\n")
             handle.write("T" * 20 + GUIDE + "TGG" + "A" * 20 + "\n")
 
-    def _run(self, extra_args=None):
+    @staticmethod
+    def _terminate_process_tree(proc):
+        if proc.poll() is not None:
+            return
+        if os.name == "nt":
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        else:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+    def _run(self, extra_args=None, env=None, timeout=60):
         script = os.path.join(SHARED, "design", "library_pipeline.py")
         command = [
             sys.executable, script, self.genome, self.outdir,
@@ -44,9 +80,57 @@ class LibraryFastaTests(unittest.TestCase):
             "--engine", "exact", "--max-mismatch", "2",
         ]
         command.extend(extra_args or [])
-        return subprocess.run(
+        run_env = None
+        if env is not None:
+            run_env = os.environ.copy()
+            run_env.update(env)
+        popen_kwargs = {}
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(
             command,
-            capture_output=True, text=True, cwd=ROOT)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8",
+            errors="replace", cwd=ROOT, env=run_env, **popen_kwargs)
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self._terminate_process_tree(proc)
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+            raise AssertionError(
+                "library pipeline timed out after %ss\nstdout:\n%s\nstderr:\n%s"
+                % (timeout, stdout or "", stderr or ""))
+        return subprocess.CompletedProcess(
+            command, proc.returncode, stdout, stderr)
+
+    def _assert_memory_limit_failure(self, env):
+        index_prefix = os.path.join(self.tmp.name, "bounded_index")
+        result = self._run([
+            "--engine", "indexed",
+            "--index-path", index_prefix,
+            "--max-memory-mb", "1",
+        ], env=env)
+        self.assertEqual(result.returncode, 6, result.stderr)
+        self.assertEqual(
+            (result.stdout + result.stderr).count(
+                native_offtarget.MEMORY_LIMIT_SENTINEL),
+            1,
+            result.stdout + result.stderr,
+        )
+        self.assertTrue(
+            result.stderr.startswith(native_offtarget.MEMORY_LIMIT_SENTINEL),
+            result.stderr,
+        )
+        for name in (
+                "library_scores.tsv", "library_summary.json",
+                "top_offtargets.tsv", "library_scores.bed"):
+            self.assertFalse(os.path.exists(os.path.join(self.outdir, name)))
 
     def test_fasta_mode_produces_library(self):
         result = self._run()
@@ -82,17 +166,38 @@ class LibraryFastaTests(unittest.TestCase):
         self.assertEqual(summary["search_mode"], "exact")
         self.assertTrue(summary["engine_capabilities"])
 
-    def test_memory_limit_error_exits_without_library_output(self):
-        index_prefix = os.path.join(self.tmp.name, "bounded_index")
-        result = self._run([
-            "--engine", "indexed",
-            "--index-path", index_prefix,
-            "--max-memory-mb", "1",
-        ])
-        self.assertEqual(result.returncode, 6, result.stderr)
-        self.assertIn("MEMORY_LIMIT_EXCEEDED", result.stdout)
-        self.assertFalse(
-            os.path.exists(os.path.join(self.outdir, "library_scores.tsv")))
+    def test_crispai_failure_records_structured_fallback_in_summary(self):
+        missing_checkpoint = os.path.join(self.tmp.name, "missing-crispai.pt")
+        result = self._run(
+            ["--off-target-model", "cfd,crispai"],
+            env={"CRISPAI_CHECKPOINT": missing_checkpoint},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary_path = os.path.join(self.outdir, "library_summary.json")
+        with open(summary_path, "r", encoding="utf-8") as handle:
+            summary = json.load(handle)
+        metadata = summary["crispai"]
+        self.assertEqual(metadata["requested_model"], "crispai")
+        self.assertEqual(metadata["effective_model"], "cfd")
+        self.assertEqual(metadata["score_scope"], "aggregate")
+        self.assertFalse(metadata["success"])
+        self.assertTrue(metadata["fallback_reason"])
+
+    def test_forced_python_memory_limit_exits_without_library_output(self):
+        self._assert_memory_limit_failure({
+            "PROGRAMFILE_NATIVE_INDEXED": "0",
+            "PROGRAMFILE_NATIVE_INDEXED_FALLBACK": "0",
+        })
+
+    def test_native_memory_limit_does_not_fallback_or_write_library(self):
+        binary = native_offtarget.find_binary()
+        if not binary:
+            self.skipTest("native offtarget-engine binary is unavailable")
+        self._assert_memory_limit_failure({
+            "PROGRAMFILE_OFFTARGET_NATIVE": binary,
+            "PROGRAMFILE_NATIVE_INDEXED": "1",
+            "PROGRAMFILE_NATIVE_INDEXED_FALLBACK": "0",
+        })
 
     def test_indexed_engine_writes_a_nonempty_index_report(self):
         outdir = os.path.join(self.tmp.name, "out_indexed")

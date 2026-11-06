@@ -276,13 +276,30 @@ PAIR_HELPERS_PATH = os.path.join("Target_xbp_Target",
 
 
 def locate(relative_path, needle):
-    """Return the 1-based line number of the first line containing needle."""
+    """Return the 1-based line of a line or string constant containing needle."""
     path = os.path.join(ROOT, relative_path)
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         for number, line in enumerate(handle, start=1):
             if needle in line:
                 return number
-    return None
+        handle.seek(0)
+        source = handle.read()
+
+    try:
+        tree = ast.parse(source, filename=path)
+    except (SyntaxError, ValueError):
+        return None
+
+    matches = [
+        (node.lineno, node.col_offset)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and needle in node.value
+    ]
+    if not matches:
+        return None
+    return min(matches)[0]
 
 
 def load_pair_helpers():

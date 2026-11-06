@@ -1,7 +1,10 @@
+import csv
 import os
 import sys
 import tempfile
 import unittest
+
+from openpyxl import load_workbook
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,6 +44,26 @@ class CandidateExportTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(csv_path))
             self.assertTrue(os.path.isfile(tsv_path))
 
+    def test_export_rounds_real_values_to_two_decimals(self):
+        rows = [{"query_id": "uniq_0", "score": 0.207207207, "count": 3}]
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, "out.csv")
+            xlsx_path = os.path.join(tmp, "out.xlsx")
+            export_selected(rows, csv_path, "csv")
+            export_selected(rows, xlsx_path, "xlsx")
+            with open(csv_path, encoding="utf-8", newline="") as handle:
+                exported = list(csv.DictReader(handle))
+            self.assertEqual(
+                exported, [{"query_id": "uniq_0", "score": "0.21",
+                            "count": "3"}])
+            workbook = load_workbook(xlsx_path, read_only=True)
+            try:
+                sheet = workbook["Candidates"]
+                self.assertEqual(sheet["B2"].value, "0.21")
+                self.assertEqual(sheet["C2"].value, "3")
+            finally:
+                workbook.close()
+
     def test_export_fasta(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "out.fa")
@@ -64,6 +87,18 @@ class CandidateExportTests(unittest.TestCase):
             path = os.path.join(tmp, "out.xlsx")
             self.assertEqual(export_selected(ROWS, path, "xlsx"), 2)
             self.assertTrue(os.path.isfile(path))
+            workbook = load_workbook(path, read_only=True)
+            try:
+                self.assertEqual(workbook.sheetnames, ["Candidates"])
+                sheet = workbook["Candidates"]
+                self.assertEqual(
+                    [cell.value for cell in sheet[1]], list(ROWS[0].keys()))
+                self.assertEqual(sheet.max_row, 3)
+                self.assertEqual(sheet["A2"].value, "uniq_0")
+                self.assertEqual(sheet["B2"].value, "AATTTTAT")
+                self.assertEqual(sheet["D2"].value, "+")
+            finally:
+                workbook.close()
 
     def test_export_unique_guides(self):
         rows = ROWS + [
