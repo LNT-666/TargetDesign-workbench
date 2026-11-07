@@ -28,7 +28,7 @@ repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
 version: "0.3.3"
 date-released: "2026-11-07"
-doi: "10.5281/zenodo.24012944"
+doi: "10.5281/zenodo.24025587"
 # Concept DOI covering every version of this software: 10.5281/zenodo.23231712
 # The author list, the affiliations and the ORCID follow the manuscript (Ji Song,
 # Shasha Shi, Saisai Wang); keep .zenodo.json in step.
