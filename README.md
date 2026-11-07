@@ -234,10 +234,10 @@ The release bundle builder is documented in
 
 ## Citation
 
-Please cite the version-specific DOI archived for the release used in your
-study. The concept DOI covering all versions is
-<https://doi.org/10.5281/zenodo.23231712>. Citation metadata is maintained in
-[`CITATION.cff`](CITATION.cff).
+Release v0.3.4 is archived at
+<https://doi.org/10.5281/zenodo.24026181>. The concept DOI covering all
+versions is <https://doi.org/10.5281/zenodo.23231712>. Citation metadata is
+maintained in [`CITATION.cff`](CITATION.cff).
 
 ## License
 
