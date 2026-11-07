@@ -52,9 +52,6 @@ from scoring.pair_ranking_adapter import (
     apply_pair_rank_outputs, build_pair_compatibility, build_pair_input,
     load_pair_rank_policy_file, pair_id_for_row,
 )
-from scoring.at_score import (
-    compute_at_score_from_flank, should_output_at_score,
-)
 from design.system_presets import get_preset, resolve_run_nuclease
 from data.candidate_annotation import (
     build_annotation_index, annotate_interval, nearest_tss,
@@ -266,10 +263,6 @@ def main():
     right_nuclease = args.right_nuclease or nuclease
     left_tnpb = args.left_tnpb_subtype or tnpb_subtype
     right_tnpb = args.right_tnpb_subtype or tnpb_subtype
-    left_at_score_enabled = should_output_at_score(
-        args.mode, args.preset, args.left_preset)
-    right_at_score_enabled = should_output_at_score(
-        args.mode, args.preset, args.right_preset)
     left_otm = args.left_off_target_model or args.off_target_model
     right_otm = args.right_off_target_model or args.off_target_model
     left_on_otm = args.left_on_target_model or args.on_target_model
@@ -861,18 +854,6 @@ def main():
 
         left_seq = row.get("left_flank_seq", "")
         right_seq = row.get("right_flank_seq", "")
-        left_at_score = (
-            compute_at_score_from_flank(
-                left_seq, row.get("left_side", ""),
-                row.get("left_strand", "plus"))
-            if left_at_score_enabled else None
-        )
-        right_at_score = (
-            compute_at_score_from_flank(
-                right_seq, row.get("right_side", ""),
-                row.get("right_strand", "plus"))
-            if right_at_score_enabled else None
-        )
         left_gc, left_ir, left_hints = sequence_stats(left_seq)
         right_gc, right_ir, right_hints = sequence_stats(right_seq)
 
@@ -939,7 +920,6 @@ def main():
             "left_total_matches": left_total,
             "left_valid_matches": left_valid,
             "left_sum_mismatch": left_mm_sum,
-            "left_at_score": left_at_score,
             "left_off_target_specificity": left_gs["off_target_specificity"],
             "left_off_target_model": left_gs["off_target_model"],
             "left_on_target_score": left_gs["on_target_score"],
@@ -955,7 +935,6 @@ def main():
             "right_total_matches": right_total,
             "right_valid_matches": right_valid,
             "right_sum_mismatch": right_mm_sum,
-            "right_at_score": right_at_score,
             "right_off_target_specificity": right_gs["off_target_specificity"],
             "right_off_target_model": right_gs["off_target_model"],
             "right_on_target_score": right_gs["on_target_score"],
@@ -1109,13 +1088,13 @@ def main():
         "left_flank_seq", "right_flank_seq",
         "left_side", "left_len", "right_side", "right_len",
         "left_legacy_score", "left_total_matches", "left_valid_matches",
-        "left_sum_mismatch", "left_AT_score",
+        "left_sum_mismatch",
         "left_gc_content", "left_self_complementarity",
         "left_gc_hint", "left_self_comp_hint",
         *["left_%s" % column.lower() for column in mm_columns],
         *["left_%s" % key for key in OUTPUT_GUIDE_FEATURE_COLUMNS],
         "right_legacy_score", "right_total_matches", "right_valid_matches",
-        "right_sum_mismatch", "right_AT_score",
+        "right_sum_mismatch",
         "right_gc_content", "right_self_complementarity",
         "right_gc_hint", "right_self_comp_hint",
         *["right_%s" % column.lower() for column in mm_columns],
@@ -1150,7 +1129,6 @@ def main():
             f"{item['left_legacy_score']:.2f}",
             str(item["left_total_matches"]), str(item["left_valid_matches"]),
             str(item["left_sum_mismatch"]),
-            format_output_value(item["left_at_score"]),
             f"{item['left_gc_content']:.2f}",
             str(item["left_self_complementarity"]),
             item["left_gc_hint"], item["left_self_comp_hint"],
@@ -1162,7 +1140,6 @@ def main():
             f"{item['right_legacy_score']:.2f}",
             str(item["right_total_matches"]), str(item["right_valid_matches"]),
             str(item["right_sum_mismatch"]),
-            format_output_value(item["right_at_score"]),
             f"{item['right_gc_content']:.2f}",
             str(item["right_self_complementarity"]),
             item["right_gc_hint"], item["right_self_comp_hint"],
@@ -1214,7 +1191,6 @@ def main():
                     "total_matches": item[f"{side}_total_matches"],
                     "valid_matches": item[f"{side}_valid_matches"],
                     "sum_mismatch": item[f"{side}_sum_mismatch"],
-                    "at_score": item.get(f"{side}_at_score"),
                     "off_target_specificity": item[f"{side}_off_target_specificity"],
                     "off_target_model": item[f"{side}_off_target_model"],
                     "on_target_score": item[f"{side}_on_target_score"],
@@ -1242,7 +1218,6 @@ def main():
             "position_count", "seq_id", "strand", "target_start",
             "target_end", "flank_seq",
             "total_matches", "valid_matches", "sum_mismatch",
-            "AT_score",
             "gc_content", "self_complementarity", "gc_hint",
             "self_comp_hint", "Annotation", "Nearest-TSS", "Isoforms",
             "Downstream-ATG",
@@ -1257,7 +1232,6 @@ def main():
                 item["strand"], str(item["target_start"]), str(item["target_end"]),
                 item["flank_seq"], str(item["total_matches"]),
                 str(item["valid_matches"]), str(item["sum_mismatch"]),
-                format_output_value(item["at_score"]),
                 f"{item['gc_content']:.2f}",
                 item["self_complementarity"], item["gc_hint"],
                 item["self_comp_hint"], item["annotation"],

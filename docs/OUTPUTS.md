@@ -161,7 +161,6 @@ pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
 | `spacer_len_score` | guide 长度规则分（14-18 nt 为 1，12-20 nt 为 0.75，其余 `1-abs(L-16)/16`） |
 | `guide_structure_penalty` | guide 自身发夹/反向互补惩罚，越低越好 |
 | `repeat_hairpin_score` | direct repeat 发夹分；没有 direct repeat 时为空并可能整列隐藏 |
-| `AT_score` | 仅当该侧 preset 为 `tnpb` 时输出；`Single-anchor pattern` 用 `AT_score`，`Gap-anchored pair` 用 `left_AT_score` / `right_AT_score` |
 | `guide_mfe`、`guide_accessibility`、`target_accessibility`、`dr_spacer_duplex_mfe`、`dr_spacer_penalty`、`perturbation_mfe`、`dr_source` | Cas13 RNA 子特征，仅随 RNA on-target 模型出现；有 ViennaRNA 时用结构计算，否则用启发式 |
 
 公式与适用边界见 `docs/TNPB.md` 第二章与 `docs/MODELS.md`。
@@ -197,6 +196,7 @@ pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
 以下列不会再出现在 `Single-anchor pattern` / paired pattern 候选表中，看到它们说明是旧结果文件：
 
 - `combined_score`、`left_rank` / `right_rank`
+- `AT_score`，以及 paired pattern 的 `left_AT_score` / `right_AT_score`
 - `on_target_model_<model>`、`off_target_model_<model>`、`on_target_model`、
   `off_target_model`、`rna_model`、`omega_model`
 - `reference_only`、`reference_note`、`rule_source`、`rule_reference`、

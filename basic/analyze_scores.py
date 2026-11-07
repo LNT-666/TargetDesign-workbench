@@ -23,11 +23,6 @@ from scoring.scoring import (
     filter_hints, passes_filter,
     OUTPUT_GUIDE_FEATURE_COLUMNS,
 )
-from scoring.at_score import (
-    compute_at_score,
-    compute_at_score_from_flank,
-    should_output_at_score,
-)
 from design.system_presets import resolve_run_nuclease
 from data.candidate_annotation import (
     build_annotation_index, annotate_interval, nearest_tss,
@@ -241,7 +236,6 @@ def main():
     flank_len = int(meta_row['flank_len'])
     side = meta_row['side']
     rdna_intervals = json.loads(meta_row['rdna_intervals'])
-    include_at_score = should_output_at_score(args.mode, args.preset)
     if args.require_pam is None:
         args.require_pam = args.nuclease in ("cas9", "cas12", "cas12a", "cas12b")
 
@@ -415,10 +409,6 @@ def main():
         )
         pos_id = f"{seq_id}_{strand}_{idx}"
         query_seq = qid_to_seq[qid]
-        at_score = None
-        if include_at_score:
-            at_score = compute_at_score(
-                query_seq, side, strand, motif_plus, motif_minus, flank_len)
         gc_count = query_seq.count('G') + query_seq.count('C')
         gc_content = (gc_count / len(query_seq)) * 100.0
         inv_rep = max_inverted_repeat_len(query_seq, min_len=3)
@@ -459,7 +449,6 @@ def main():
             "total_matches": total,
             "valid_matches": valid,
             "sum_mismatch": sum_mismatch,
-            "at_score": at_score,
             "gc_content": gc_content,
             "inv_rep": inv_rep,
             "gc_hint": hints["gc_hint"],
@@ -508,8 +497,6 @@ def main():
         "motif_pos", "qid", "query_seq", "total_matches", "valid_matches",
         "sum_mismatch",
     ]
-    if include_at_score:
-        query_header.append("AT_score")
     query_header += [
         "GC-content", "GC-hint",
         "Self-complementarity", "Self-comp-hint", "Annotation", "Nearest-TSS",
@@ -534,8 +521,6 @@ def main():
             _cell(row["total_matches"]), _cell(row["valid_matches"]),
             _cell(row["sum_mismatch"]),
         ]
-        if include_at_score:
-            values.append(_cell(row["at_score"]))
         values += [
             f"{row['gc_content']:.2f}", _cell(row["gc_hint"]),
             _cell(row["inv_rep"]), _cell(row["self_comp_hint"]),
@@ -582,8 +567,6 @@ def main():
             "off_target_specificity", "legacy_total_score", "qid", "position_count",
             "query_seq", "total_matches", "valid_matches", "sum_mismatch",
         ]
-        if include_at_score:
-            unique_header.append("AT_score")
         unique_header += [
             "GC-content", "GC-hint", "Self-complementarity", "Self-comp-hint",
             "Annotation", "Nearest-TSS", "Isoforms", "Downstream-ATG",
@@ -603,8 +586,6 @@ def main():
                 _cell(row["total_matches"]), _cell(row["valid_matches"]),
                 _cell(row["sum_mismatch"]),
             ]
-            if include_at_score:
-                values.append(_cell(row["at_score"]))
             values += [
                 f"{row['gc_content']:.2f}", _cell(row["gc_hint"]),
                 _cell(row["inv_rep"]), _cell(row["self_comp_hint"]),

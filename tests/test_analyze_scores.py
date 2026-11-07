@@ -212,22 +212,7 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
         self.assertEqual(
             mod.guide_spacer("TGG" + spacer20, 3, "downstream"), spacer20)
 
-    def test_at_score_only_uses_tnpb_preset(self):
-        mod = _load_module()
-        self.assertFalse(mod.should_output_at_score("preset", "cas9"))
-        self.assertFalse(mod.should_output_at_score("free", "tnpb"))
-        self.assertTrue(mod.should_output_at_score("preset", "tnpb"))
-        self.assertTrue(mod.should_output_at_score("free", "custom", "tnpb"))
-        self.assertFalse(mod.should_output_at_score("preset", "tnpb", "cas9"))
-        self.assertEqual(
-            mod.compute_at_score_from_flank("AAG", "upstream", "plus"), 3)
-        self.assertEqual(
-            mod.compute_at_score_from_flank("AAG", "upstream", "minus"), 1)
-        self.assertEqual(
-            mod.compute_at_score_from_flank("AAG", "downstream", "plus"), 1)
-        self.assertEqual(
-            mod.compute_at_score_from_flank("AAG", "downstream", "minus"), 3)
-
+    def test_at_score_column_is_not_emitted(self):
         with tempfile.TemporaryDirectory() as tmp:
             query = "ATGCATGCATGCATGCATGC" + "TTGAT"
             genome = os.path.join(tmp, "genome.fa")
@@ -273,7 +258,7 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
                 writer.writeheader()
                 writer.writerows(rows)
 
-            for preset, expected in (("cas9", False), ("tnpb", True)):
+            for preset in ("cas9", "tnpb"):
                 with self.subTest(preset=preset):
                     outdir = os.path.join(tmp, preset)
                     result = subprocess.run(
@@ -300,9 +285,8 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
                     ) as handle:
                         reader = csv.DictReader(handle, delimiter="\t")
                         scored = list(reader)
-                    self.assertEqual(("AT_score" in reader.fieldnames), expected)
-                    if expected:
-                        self.assertGreater(int(scored[0]["AT_score"]), 0)
+                    self.assertTrue(scored)
+                    self.assertNotIn("AT_score", reader.fieldnames)
 
     def test_apply_crispai_scores_overrides_rows(self):
         mod = _load_module()

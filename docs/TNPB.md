@@ -198,8 +198,12 @@ TAM motif 与 side。
 | `spacer_len_score` | guide 长度规则分 | 14-18 nt 为 1；12-20 nt 为 0.75；其他按 `1-abs(L-16)/16` |
 | `guide_structure_penalty` | guide 自身发夹/反向互补惩罚 | `clamp((guide_hairpin_len-3)/6, 0, 1)`，越低越好 |
 | `repeat_hairpin_score` | direct repeat 的发夹结构分数 | `min(1, repeat_hairpin_len/6)`；没有 direct repeat 时为空，整列可能被隐藏 |
-| `AT_score` | TnpB preset 的 flanking AT 分数 | 仅当对应侧 system preset 为 `tnpb` 时计算和输出；Pattern A 列名为 `left_AT_score` / `right_AT_score`，Y-ZBP 为逐侧 `AT_score` |
 | `omega_model` | 本地模型标识 | `library_scores.tsv` 中的值为 `omega_rna_rules`；`Single-anchor pattern` 和 paired pattern 候选表会过滤该内部列 |
+
+旧版的 `AT_score` / `left_AT_score` / `right_AT_score` 已移除。它是程序内部的
+AT 权重启发式，没有可引用的文献公式。TnpB 对 AT-rich 双链的体外切割偏好见
+Nakagawa et al., *Nature* 2023（doi:10.1038/s41586-023-05933-9），但该结果
+不是这个定量分数的来源。
 
 ### 4.2 Gap-anchored pair / Centered-anchor pair 的左、右列
 
@@ -214,7 +218,6 @@ paired pattern 对每一侧独立评分并加前缀：
 - `left_spacer_len_score`、`right_spacer_len_score`
 - `left_guide_structure_penalty`、`right_guide_structure_penalty`
 - `left_repeat_hairpin_score`、`right_repeat_hairpin_score`
-- `left_AT_score`、`right_AT_score`（仅在该侧 preset 为 TnpB 时）
 
 左右两侧可以选择不同的 nuclease 和模型。配对结果使用 PairRank 综合两侧
 证据、脱靶风险和兼容性；一侧不是 TnpB 时，不应把 TnpB 列与该侧混用。

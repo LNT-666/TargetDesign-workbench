@@ -34,9 +34,6 @@ from scoring.scoring import (
     compute_guide_scores, apply_guide_feature_columns, rank_rows,
     filter_hints, passes_filter, OUTPUT_GUIDE_FEATURE_COLUMNS,
 )
-from scoring.at_score import (
-    compute_at_score_from_flank, should_output_at_score,
-)
 from design.system_presets import get_preset
 from data.candidate_annotation import (
     build_annotation_index, annotate_interval, nearest_tss,
@@ -93,26 +90,6 @@ def _guide_from_window(sequence, positions):
     if guide_len <= 0:
         return sequence
     return sequence[len(sequence) - guide_len:]
-
-
-def _at_score_from_occurrence(sequence, positions):
-    """Return the AT score for the flank stored in an occurrence window."""
-    if not sequence or not positions:
-        return 0
-    pos0 = positions[0]
-    if len(pos0) < 6:
-        return 0
-    full_start = int(pos0[2])
-    motif_start = int(pos0[4])
-    motif_end = int(pos0[5])
-    motif_strand = pos0[1]
-    if motif_start > full_start:
-        flank = sequence[:motif_start - full_start]
-        flank_side = "upstream"
-    else:
-        flank = sequence[motif_end - full_start:]
-        flank_side = "downstream"
-    return compute_at_score_from_flank(flank, flank_side, motif_strand)
 
 
 def _fetch_guide_and_pam(genome, target, start, guide_len, hit_strand, pam_side,
@@ -256,10 +233,6 @@ def main():
     right_nuclease = args.right_nuclease or args.nuclease
     left_tnpb = args.left_tnpb_subtype or args.tnpb_subtype
     right_tnpb = args.right_tnpb_subtype or args.tnpb_subtype
-    left_at_score_enabled = should_output_at_score(
-        args.mode, args.preset, args.left_preset)
-    right_at_score_enabled = should_output_at_score(
-        args.mode, args.preset, args.right_preset)
     left_otm = args.left_off_target_model or args.off_target_model
     right_otm = args.right_off_target_model or args.off_target_model
     left_on_otm = args.left_on_target_model or args.on_target_model
@@ -520,7 +493,6 @@ def main():
         'y_chrom', 'y_start', 'y_end', 'y_strand', 'y_seq',
         'qid', 'motif_seq', 'distance',
         'GC-content', 'GC-hint', 'Self-complementarity', 'Self-comp-hint',
-        'AT_score',
         'Annotation', 'Nearest-TSS', 'Isoforms', 'Downstream-ATG',
         'nuclease',
         'valid', 'search_complete', 'forbidden_hits',
@@ -558,14 +530,6 @@ def main():
             reverse_complement(guide)
             if motif_strand == 'minus' else guide
         )
-        at_score_enabled = (
-            left_at_score_enabled if side == 'left' else right_at_score_enabled
-        )
-        at_score = (
-            _at_score_from_occurrence(seq, positions)
-            if at_score_enabled else ""
-        )
-
         # ??
         if side == 'left':
             distance = motif_start - y_end if strand == '-' else y_start - motif_end
@@ -675,7 +639,6 @@ def main():
             'GC-hint': hints['gc_hint'],
             'Self-complementarity': ir,
             'Self-comp-hint': hints['self_comp_hint'],
-            'AT_score': at_score,
             'Annotation': format_annotation(ann),
             'Nearest-TSS': format_tss(tss),
             'Isoforms': ann['isoforms'] if ann else '',
@@ -814,7 +777,6 @@ def main():
             'rank', 'occurrence_count', 'occurrence', 'side', 'y_chrom',
             'y_start', 'y_end', 'y_strand', 'qid', 'motif_seq', 'distance',
             'GC-content', 'GC-hint', 'Self-complementarity', 'Self-comp-hint',
-            'AT_score',
             'Annotation', 'Nearest-TSS', 'Isoforms', 'Downstream-ATG',
             'nuclease', 'score',
             *OUTPUT_GUIDE_FEATURE_COLUMNS,

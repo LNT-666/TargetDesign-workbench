@@ -193,9 +193,11 @@ Pattern Designer 的模型选择支持多选。最终结果表中的每个勾选
 `off_target_specificity_<model>`；列命名与内部字段的取舍见 `docs/OUTPUTS.md`
 的「3.2 特异性与 on-target 分数列」「3.6 旧列与不再输出的内容」。
 
-`AT_score` 仅在对应 system preset 为 `tnpb` 时计算和输出。`Single-anchor pattern` 使用
-`AT_score`，`Gap-anchored pair` 使用 `left_AT_score` / `right_AT_score`，`Centered-anchor pair` 的
-逐侧行使用 `AT_score` 配合 `side` 列；其他 preset 不生成对应列。
+旧版 TnpB preset 曾额外输出 `AT_score`（paired pattern 为 `left_AT_score` /
+`right_AT_score`）。该分数是程序内部的 AT 权重启发式，没有可引用的文献公式，
+现已从评分和输出中移除。TnpB 在体外偏好切割 AT-rich 双链的证据见
+Nakagawa et al., *Nature* 2023（doi:10.1038/s41586-023-05933-9），但该结果
+不构成这个定量分数的依据。
 
 `legacy_total_score` 是旧版匹配压力分，公式为：
 
