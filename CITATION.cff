@@ -2,11 +2,12 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "TargetDesign-workbench"
 abstract: >-
-  A toolkit for motif-driven CRISPR guide design: motif patterns are defined
-  first, candidate regions are extracted, exact, indexed, BLAST-based and
-  model-based off-target searches are run, candidates are scored, filtered and
-  ranked, and results are exported through a desktop workbench, a local web UI
-  and command-line tools.
+  TargetDesign-workbench is a motif-first toolkit for CRISPR guide design.
+  Motif patterns are defined first, candidate regions are extracted, exact,
+  indexed, BLAST-based and model-based off-target searches are run, and
+  candidates are scored, filtered, ranked and exported. The software provides
+  a desktop workbench, a local web interface and command-line tools backed by
+  the same analysis modules.
 type: software
 authors:
   - family-names: "Song"
@@ -26,10 +27,11 @@ contact:
 license: MIT
 repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
-version: "0.3.3"
+version: "0.3.4"
 date-released: "2026-11-07"
-doi: "10.5281/zenodo.24025587"
-# Concept DOI covering every version of this software: 10.5281/zenodo.23231712
+# Concept DOI covering every version. Replace with the v0.3.4 version DOI after
+# Zenodo archives the release.
+doi: "10.5281/zenodo.23231712"
 # The author list, the affiliations and the ORCID follow the manuscript (Ji Song,
 # Shasha Shi, Saisai Wang); keep .zenodo.json in step.
 keywords:

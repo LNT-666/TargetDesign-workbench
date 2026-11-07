@@ -1,6 +1,6 @@
 [project]
 name = "targetdesign-workbench"
-version = "0.3.3"
+version = "0.3.4"
 description = "TargetDesign motif analysis and off-target workbench"
 requires-python = ">=3.12,<3.14"
 

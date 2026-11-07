@@ -43,7 +43,7 @@ release/
 
 `code/` 收录当前工作树中的程序本体：
 
-- 根目录入口与依赖清单：`README.md`、`main.py`、`unified_gui.py`、
+- 根目录入口与依赖清单：`README.md`、`README.zh-CN.md`、`main.py`、`unified_gui.py`、
   `designer_workbench.py`、`run_tests.py`、`requirements*.txt`、`pyproject.toml`、
   `Dockerfile`、`docker-compose.yml`、`LICENSE`、`CITATION.cff` 等。
 - 代码目录：`basic/`、`shared/`、`webapp/`、`tools/`、`tests/`、`native/`、

@@ -1,10 +1,10 @@
 {
   "title": "TargetDesign-workbench",
-  "description": "<p>A toolkit for motif-driven CRISPR guide design: motif patterns are defined first, candidate regions are extracted, exact, indexed, BLAST-based and model-based off-target searches are run, candidates are scored, filtered and ranked, and results are exported through a desktop workbench, a local web UI and command-line tools.</p><p>Documentation is provided in the repository under the <code>docs/</code> directory.</p>",
+  "description": "<p>TargetDesign-workbench is a motif-first toolkit for CRISPR guide design. Motif patterns are defined first, candidate regions are extracted, exact, indexed, BLAST-based and model-based off-target searches are run, and candidates are scored, filtered, ranked and exported. The software provides a desktop workbench, a local web interface and command-line tools backed by the same analysis modules.</p><p>English help is provided under <code>docs/help_en/</code>; the Chinese overview is in <code>README.zh-CN.md</code> and reference documentation is under <code>docs/</code>.</p>",
   "upload_type": "software",
   "access_right": "open",
   "license": "mit",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "language": "eng",
   "creators": [
     {

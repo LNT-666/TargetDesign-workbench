@@ -54,6 +54,7 @@ STORED_SUFFIXES = {
 #: Files kept at the bundle root of ``code/``.
 ROOT_FILES = (
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "CITATION.cff",
     "GLOSSARY.md",
