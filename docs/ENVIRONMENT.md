@@ -43,6 +43,16 @@ pip install -r requirements-linux.txt
 | biopython / pyfaidx | FASTA、基因组和注释处理 |
 | openpyxl | Excel 输出 |
 
+测试前先编译 native 引擎（可选运行，但回归测试会检查它；需要 CMake 3.20+ 与
+C++20 编译器）：
+
+```powershell
+cmake -S native -B native/build
+cmake --build native/build
+```
+
+平台细节与 `PROGRAMFILE_*` 环境变量见 `docs/OFFTARGET_ENGINES.md`。
+
 运行全部测试：
 
 ```powershell

@@ -52,6 +52,14 @@ requirements/requirements-linux-cpu.txt, and
 requirements/constraints-linux-cuda.txt with
 requirements/requirements-linux-cuda.txt.
 
+Fastest path without a local build:
+
+```bash
+docker pull ghcr.io/lnt-666/targetdesign-workbench:latest
+```
+
+Run commands for the image are in [`docs/CONTAINER.md`](docs/CONTAINER.md).
+
 ### Windows
 
 ```powershell
@@ -69,6 +77,18 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements-linux.txt
 ```
+
+The native indexed engine is optional at runtime but is exercised by the
+regression suite. Build it before running the tests:
+
+```bash
+cmake -S native -B native/build
+cmake --build native/build
+```
+
+CMake 3.20+ and a C++20 compiler are required; see
+[`docs/OFFTARGET_ENGINES.md`](docs/OFFTARGET_ENGINES.md) for platform-specific
+commands and environment variables.
 
 NCBI BLAST+ is optional. Install it only when using the `blast` engine and make
 sure `blastn` and `makeblastdb` are available on `PATH`.
@@ -207,6 +227,14 @@ Chinese mirror and reference documentation:
 
 ## Tests and release checks
 
+Build the native engine first if you have not already done so (see
+Installation):
+
+```bash
+cmake -S native -B native/build
+cmake --build native/build
+```
+
 Run the Python regression suite:
 
 ```bash
@@ -221,10 +249,15 @@ python -m coverage run run_tests.py
 python -m coverage report
 ```
 
+`python-docx` is used only by the manuscript seal check in `run_tests.py`. When
+it is absent, `tests/test_manuscript_lineage.py` skips explicitly and the rest
+of the suite still runs.
+
 Optional release checks:
 
 ```bash
 python tools/check_release_metadata.py
+python tools/check_release_notes.py release-notes.md
 python tools/dep_scan.py --check
 python tools/batch_run.py --spec sample_data/demo_batch.json --dry-run
 ```

@@ -3,6 +3,14 @@
 把一个可以直接交给导师或合作者查看的包打出来：当前工作区的代码（包含尚未
 提交的改动）加上投稿用的稿件、补充材料和图件。
 
+## 前置条件
+
+- 仓库根目录可读，`git` 可用；`native/bin/` 下至少有一个已编译的
+  `offtarget-engine` 或 `offtarget-engine.exe`。
+- 稿件门禁依赖 `tools/manuscript_lineage.py` 记录的印章状态。
+- `docs/submission/` 与 `docs/figures/` 是本机内部材料。只打纯代码包时使用
+  `--skip-submission`；缺少这些材料且未加该开关时，脚本会直接退出并提示。
+
 ## 使用
 
 ```powershell
@@ -12,6 +20,7 @@ python tools\build_release_bundle.py --date 2026-10-27
 python tools\build_release_bundle.py --no-zip     # 只保留目录
 python tools\build_release_bundle.py --zip-only   # 只出 zip，不落目录（最快）
 python tools\build_release_bundle.py --jobs 8     # 并发复制线程数
+python tools\build_release_bundle.py --skip-submission     # 纯代码包，不收录投稿材料
 python tools\build_release_bundle.py --skip-lineage       # 跳过稿件印章检查
 python tools\build_release_bundle.py --skip-import-smoke  # 跳过入口导入冒烟
 python tools\build_release_bundle.py --skip-leak-scan     # 跳过站点信息扫描
@@ -77,6 +86,7 @@ release/
   `__pycache__/`、`*.pyc`。注意 `shared/output/` 是源码，不在此列。
 - 构建树：`native/build*/`（CMake 配置与编译中间产物，含 `build/`、`build-windows/`、`build-x86_64/`）。
 - 本机专用文件：`docs/SSH_ACCESS.md`、`tools/release_scan_denylist.local.txt`。
+  排除清单本身是公开信息，只写文件名，不含主机名、IP 或账号。
 - 内部材料：`docs/submission/`、`docs/figures/`、`docs/qa/`、`docs/handoff/`、
   `docs/archive/`、`docs/PAPER_*`、`docs/FIGURE_TABLE_PLAN.md`、
   `docs/NAR_FORMAT_CHECKLIST.md` 等。
@@ -87,16 +97,21 @@ release/
 1. 清单脱敏：`MANIFEST.md` 记录 git HEAD、分支、未提交改动列表与每个文件的
    大小和 SHA256；repository/output 两行只写 `<redacted build-machine path>`。
 2. 关键文件必检：`shared/output/` 四个模块、`.gitignore`、两个 workflow、
-   `shared/scoring/deepcrispr_convert.py`、`webapp/services/models.py`、两个
-   native 引擎、`SUBMISSION_SHORT_v1.docx`、`SUPPLEMENTARY_v1.pdf` 和第一张
-   正文图；缺任何一项直接失败。
+   `shared/scoring/deepcrispr_convert.py`、`webapp/services/models.py`、任一个
+   native 引擎（`offtarget-engine` 或 `offtarget-engine.exe`）、
+   `SUBMISSION_SHORT_v1.docx`、`SUPPLEMENTARY_v1.pdf` 和第一张正文图；缺任何
+   一项直接失败。`TargetDesign-workbench.exe` 只在源文件存在时必检。
 3. 入口导入冒烟：在复制后的 `code/` 中实际导入 `schema`、
    `designer_workbench` 和 `webapp.app`，避免再发出缺 `shared/output/` 的包。
 4. 整包脱敏扫描：对目录（或 `--zip-only` 解出的临时目录）运行
    `build_release_stage.scan()`；站点身份类命中直接拒发，其余仅报告。
+   缺少未跟踪的 `tools/release_scan_denylist.local.txt` 时降级为只跑仓库内
+   通用规则，并打印 warning，不再中止。
 5. 执行位保真：`native/bin/offtarget-engine` 与 `tools/*.sh` 在目录和 zip 中都
    保持 0755。
 6. `unzip -t` / `Expand-Archive` 可验证 zip 完整性。
+7. 发布说明脱敏：`python tools/check_release_notes.py <notes.md>` 用同一组
+   通用规则加本地 denylist 检查拟发布的 release notes / tag message。
 
 ## 稿件准入规则（印章）
 

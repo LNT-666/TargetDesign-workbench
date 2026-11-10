@@ -135,7 +135,8 @@ BINARY_NEEDLES = [
 ]
 # The site-specific half of the gate (host names, account names, workflow-role
 # wording) lives in an untracked local file, so this script and every staged
-# copy stay free of it.  See tools/release_scan_denylist.local.txt.
+# copy stay free of it.  When that file is absent (for example on a fresh
+# clone), the tracked generic rules below still run.
 DENYLIST = REPO / "tools" / "release_scan_denylist.local.txt"
 BINARY_EXT = {".exe", ".dll", ".so", ".bin", ""}
 TEXT_EXT = {".md", ".txt", ".json", ".tsv", ".py", ".cff", ".yml", ".yaml", ".cfg", ".toml", ""}
@@ -224,7 +225,9 @@ def json_strings(path: Path) -> str:
 def denylist() -> tuple:
     """Untracked local half of the gate: (text patterns, binary needles)."""
     if not DENYLIST.is_file():
-        raise SystemExit(f"missing local denylist: {DENYLIST} (untracked; one label<TAB>pattern per line)")
+        print(f"warning: local denylist not found: {DENYLIST}; "
+              "using the tracked generic leak patterns only", file=sys.stderr)
+        return [], []
     text_patterns: list = []
     binary_needles: list = []
     for lineno, raw in enumerate(DENYLIST.read_text(encoding="utf-8").splitlines(), 1):

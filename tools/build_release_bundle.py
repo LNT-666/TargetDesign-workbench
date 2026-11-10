@@ -11,6 +11,7 @@ genomes, logs, job state, the virtualenv, Git metadata) stays out.
     python tools/build_release_bundle.py
     python tools/build_release_bundle.py --out D:\\handoff
     python tools/build_release_bundle.py --no-zip
+    python tools/build_release_bundle.py --skip-submission
 
 Layout produced under ``<out>/TargetDesign-workbench_<YYYY-MM-DD>/``::
 
@@ -18,6 +19,7 @@ Layout produced under ``<out>/TargetDesign-workbench_<YYYY-MM-DD>/``::
     PACKAGE_CONTENTS.md      what is inside and how to start it
     code/                    the working tree subset plus native binaries
     submission/              manuscript, supplementary file and figures
+                             (omitted with --skip-submission)
 
 The folder is also written as ``<out>/TargetDesign-workbench_<YYYY-MM-DD>.zip``
 unless ``--no-zip`` is given.  Exit code 1 when a required path is missing.
@@ -172,10 +174,16 @@ REQUIRED_CODE = (
     ".github/workflows/portability.yml",
     "shared/scoring/deepcrispr_convert.py",
     "webapp/services/models.py",
-    "TargetDesign-workbench.exe",
+)
+
+#: The native engine is built in place; Windows runners use the .exe suffix.
+REQUIRED_ENGINE_BINS = (
     "native/bin/offtarget-engine",
     "native/bin/offtarget-engine.exe",
 )
+
+#: Local-only launcher (`*.exe` is ignored), required only when it exists.
+CONDITIONAL_REQUIRED_CODE = ("TargetDesign-workbench.exe",)
 
 #: Files that stay executable in the zip even when the build machine cannot
 #: represent POSIX permission bits (Windows).
@@ -212,7 +220,7 @@ PACKAGE_CONTENTS = """# TargetDesign-workbench 交付包
 ## 目录
 
 - `code/`：当前工作区的完整代码（含尚未提交的改动），可直接运行。
-- `submission/`：投稿用稿件、补充材料和图件。
+- `submission/`：{submission}
 - `MANIFEST.md`：构建时的 Git 状态、文件清单与 SHA256。
 
 ## Windows 快速启动
@@ -381,11 +389,19 @@ def _submission_files():
     sys.path.insert(0, str(REPO / "tools"))
     import build_release_stage as stage  # noqa: WPS433 (deliberate sibling import)
 
-    for rel in stage.submission_files(stage.DEFAULT_VERSION):
+    submission = list(stage.submission_files(stage.DEFAULT_VERSION))
+    figures = list(stage.SUBMISSION_FIGURES_SHORT)
+    missing = [rel for rel in submission + figures if not (REPO / rel).is_file()]
+    if missing:
+        raise SystemExit(
+            "submission material is local-only; add --skip-submission for a "
+            "code-only bundle (missing: %s)" % ", ".join(missing[:5]))
+
+    for rel in submission:
         path = REPO / rel
         stat = path.stat()
         yield rel.replace("docs/submission/", "", 1), path, stat.st_size, stat.st_mtime
-    for rel in stage.SUBMISSION_FIGURES_SHORT:
+    for rel in figures:
         path = REPO / rel
         stat = path.stat()
         yield rel.replace("docs/figures/", "figures/", 1), path, stat.st_size, stat.st_mtime
@@ -447,7 +463,8 @@ def _copy_items(items, target: Path, jobs: int, materialize: bool = True):
 
 
 def _manifest_text(day: str, head: str, branch: str, changes,
-                   code_rows, submission_rows, out_dir: Path):
+                   code_rows, submission_rows, out_dir: Path,
+                   submission_skipped: bool = False):
     total = sum(row[1] for row in code_rows + submission_rows)
     lines = [
         "# Release bundle manifest",
@@ -456,7 +473,9 @@ def _manifest_text(day: str, head: str, branch: str, changes,
         "- repository: `%s`" % _redact_site_path(REPO),
         "- git HEAD: `%s` (branch `%s`)" % (head, branch),
         "- pending changes included: %d" % len(changes),
-        "- files: %d code + %d submission" % (len(code_rows), len(submission_rows)),
+        "- files: %d code + %d submission%s"
+        % (len(code_rows), len(submission_rows),
+           " (skipped)" if submission_skipped else ""),
         "- size before zip: %d B" % total,
         "- output: `%s`" % _redact_site_path(out_dir),
         "",
@@ -469,7 +488,10 @@ def _manifest_text(day: str, head: str, branch: str, changes,
         lines.append("```")
     else:
         lines.append("Working tree clean at build time.")
-    for title, rows in (("code", code_rows), ("submission", submission_rows)):
+    sections = [("code", code_rows)]
+    if not submission_skipped:
+        sections.append(("submission", submission_rows))
+    for title, rows in sections:
         lines.extend([
             "",
             "## %s inventory" % title.capitalize(),
@@ -562,6 +584,8 @@ def main(argv=None):
                         help="reuse an existing bundle folder instead of rebuilding")
     parser.add_argument("--jobs", type=int, default=8,
                         help="parallel copy workers (default: %(default)s)")
+    parser.add_argument("--skip-submission", action="store_true",
+                        help="omit submission/ when the local manuscript material is absent")
     parser.add_argument("--skip-lineage", action="store_true",
                         help="do not require the sealed manuscript head")
     parser.add_argument("--skip-import-smoke", action="store_true",
@@ -601,26 +625,42 @@ def main(argv=None):
     code_rows, code_staged = _copy_items(
         list(_code_files()), folder / "code", args.jobs, materialize)
     code_done = time.perf_counter()
-    submission_rows, submission_staged = _copy_items(
-        list(_submission_files()), folder / "submission", args.jobs, materialize)
+    if args.skip_submission:
+        submission_rows, submission_staged = [], {}
+        print("submission: skipped")
+    else:
+        submission_rows, submission_staged = _copy_items(
+            list(_submission_files()), folder / "submission", args.jobs, materialize)
     submission_done = time.perf_counter()
 
     for rel in REQUIRED_CODE:
         if (materialize and not (folder / "code" / rel).is_file()) \
                 or rel not in code_staged:
             raise SystemExit("bundle is missing code/%s" % rel)
-    for rel in REQUIRED_SUBMISSION:
-        if (materialize and not (folder / "submission" / rel).is_file()) \
-                or rel not in submission_staged:
-            raise SystemExit("bundle is missing submission/%s" % rel)
+    if not any(rel in code_staged for rel in REQUIRED_ENGINE_BINS):
+        raise SystemExit("bundle is missing a native engine binary (%s)"
+                         % " or ".join(REQUIRED_ENGINE_BINS))
+    for rel in CONDITIONAL_REQUIRED_CODE:
+        if (REPO / rel).is_file() and rel not in code_staged:
+            raise SystemExit("bundle is missing code/%s" % rel)
+    if not args.skip_submission:
+        for rel in REQUIRED_SUBMISSION:
+            if (materialize and not (folder / "submission" / rel).is_file()) \
+                    or rel not in submission_staged:
+                raise SystemExit("bundle is missing submission/%s" % rel)
 
-    contents = PACKAGE_CONTENTS.format(day=day)
+    contents = PACKAGE_CONTENTS.format(
+        day=day,
+        submission=("未包含（使用 --skip-submission 构建的纯代码包）。"
+                    if args.skip_submission else
+                    "投稿用稿件、补充材料和图件。"))
     if materialize:
         (folder / "PACKAGE_CONTENTS.md").write_text(contents, encoding="utf-8")
 
     head, branch, changes = _git_state()
     manifest = _manifest_text(day, head, branch, changes,
-                              code_rows, submission_rows, out_dir)
+                              code_rows, submission_rows, out_dir,
+                              submission_skipped=args.skip_submission)
     if materialize:
         (folder / "MANIFEST.md").write_text(manifest, encoding="utf-8")
 

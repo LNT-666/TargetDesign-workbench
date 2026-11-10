@@ -144,8 +144,8 @@ docs/submission/
 docs/figures/
 docs/qa/
 docs/archive/
-# Internal audit record: ignored by pattern so its name never appears in a
-# published ignore list (the file on disk keeps its original name).
+# Internal audit record. The exclusion pattern is public information; only the
+# file contents stay out of the repository.
 docs/*APPLICABILITY_AUDIT.md
 
 # ---- Internal process records -------------------------------------------

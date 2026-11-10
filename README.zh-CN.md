@@ -119,6 +119,15 @@ pip install -r requirements-linux.txt
 `python-docx` 只服务 `run_tests.py` 的稿件密封检查；缺它时
 `tests/test_manuscript_lineage.py` 会明确 skip，其余测试照常运行。
 
+测试前请先编译 native 引擎（需要 CMake 3.20+ 与 C++20 编译器）：
+
+```bash
+cmake -S native -B native/build
+cmake --build native/build
+```
+
+平台差异与环境变量见 `docs/OFFTARGET_ENGINES.md`。
+
 ## 启动
 
 ```powershell
@@ -196,6 +205,8 @@ Cas9 PAM 支持 `strict_ngg`（只搜索 NGG）、`guidescan2_nrg`（搜索 NRG 
 
 ## 测试
 
+跑测试前先按「环境」一节编译 native 引擎：
+
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-test.txt
 .\.venv\Scripts\python.exe -m coverage run run_tests.py
@@ -251,3 +262,13 @@ $env:PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS='1'
 - `docs/help_en/README.md`：英文帮助概览
 - `docs/help_en/tutorial.md`：英文教程
 - `docs/help_en/sample_output/README.md`：英文示例输出说明
+
+## 引用
+
+Release v0.3.4 归档于 <https://doi.org/10.5281/zenodo.24026181>。覆盖所有版本的
+概念 DOI 为 <https://doi.org/10.5281/zenodo.23231712>。引用元数据维护在
+`CITATION.cff`。
+
+## 许可
+
+TargetDesign-workbench 以 MIT 许可发布。见 `LICENSE`。
