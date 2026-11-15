@@ -103,6 +103,10 @@ def _bundle_root(target: Path):
 
 def check(target: Path) -> int:
     root, cleanups = _bundle_root(Path(target).expanduser().resolve())
+    # The zip branch extracts into a fresh temp directory that is not resolved
+    # yet; on macOS /var/folders and on Windows short 8.3 temp names are links,
+    # so every entry would look like it escaped once _within() resolves it.
+    root = root.resolve()
     try:
         manifest_path = root / "MANIFEST.md"
         if not manifest_path.is_file():
@@ -156,9 +160,10 @@ def check(target: Path) -> int:
 
 def _within(path: Path, root: Path) -> bool:
     try:
-        return root in path.resolve().parents or path.resolve() == root
+        resolved = path.resolve()
     except OSError:
         return False
+    return resolved == root or root in resolved.parents
 
 
 def main(argv=None) -> int:
