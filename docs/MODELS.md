@@ -198,6 +198,18 @@ Web API 的主入口是 `POST /api/models/<key>/setup`；旧的
 `POST /api/models/<key>/download` 保留为兼容别名。模型文件仍写入固定的
 `models/` 目录，不提供任意本地路径覆盖。
 
+### 模型没跑起来时的可追溯性
+
+状态不是 `ready` 的深度模型不会静默顶替 CFD 结果：off-target 模型标识会带
+`_unavailable` / `_error` 后缀，`off_target_model_note` 写明原因，一次运行只输出
+一条 `off-target scoring fallback: …` WARNING，`basic/analyze_scores.py` 另存
+`scoring_provenance.json`（`requested_models`、`models_used`、`fallback_rows`、
+`fell_back`、`degraded_models`、`value_columns`），库级运行把同一份汇总写进
+`library_summary.json` 的 `off_target_provenance`。因此拿到结果后可以判断主分究竟
+来自所请求的模型，还是来自回退路径；`value_columns` 会逐个点名「列名是所请求模型、
+值是 CFD 回退」的列，引用这类结果时必须按 CFD 口径描述。
+列定义见 `docs/OUTPUTS.md`，回退规则见 `docs/SCORING_GUIDE.md`。
+
 ## 状态定义
 
 以下词表与当前注册表和 Web 模型服务的实现一致：

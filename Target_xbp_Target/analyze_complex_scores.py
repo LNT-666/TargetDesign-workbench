@@ -16,6 +16,8 @@ import tempfile
 
 import csv
 
+import json
+
 from collections import defaultdict
 
 from Bio import SeqIO
@@ -44,6 +46,7 @@ from scoring.scoring import (
     filter_hints, passes_filter, OUTPUT_GUIDE_FEATURE_COLUMNS,
     compute_off_target_activities,
     specificity_from_off_target_activities,
+    OFF_TARGET_PROVENANCE_COLUMNS, summarize_off_target_provenance,
 )
 from scoring.pair_ranking import (
     PREDICTION_ONLY_OUTPUT_FIELDS, rank_prediction_only,
@@ -550,6 +553,7 @@ def main():
             "on_target_model": "no_flank",
             "reference_only": False,
             "reference_note": "",
+            "off_target_model_note": "",
         }, "", [])
 
 
@@ -572,6 +576,7 @@ def main():
                 "on_target_model": "no_matches",
                 "reference_only": False,
                 "reference_note": "",
+                "off_target_model_note": "",
             }, "", [])
             score_cache[cache_key] = result
             return result
@@ -922,6 +927,7 @@ def main():
             "left_sum_mismatch": left_mm_sum,
             "left_off_target_specificity": left_gs["off_target_specificity"],
             "left_off_target_model": left_gs["off_target_model"],
+            "left_off_target_model_note": left_gs["off_target_model_note"],
             "left_on_target_score": left_gs["on_target_score"],
             "left_on_target_model": left_gs["on_target_model"],
             "left_reference_only": left_gs["reference_only"],
@@ -937,6 +943,7 @@ def main():
             "right_sum_mismatch": right_mm_sum,
             "right_off_target_specificity": right_gs["off_target_specificity"],
             "right_off_target_model": right_gs["off_target_model"],
+            "right_off_target_model_note": right_gs["off_target_model_note"],
             "right_on_target_score": right_gs["on_target_score"],
             "right_on_target_model": right_gs["on_target_model"],
             "right_reference_only": right_gs["reference_only"],
@@ -1038,6 +1045,7 @@ def main():
                         if as_primary:
                             item["%s_off_target_specificity" % side] = specificity
                             item["%s_off_target_model" % side] = "crispai"
+                            item["%s_off_target_model_note" % side] = ""
                         filled += 1
                 print("crispAI backfilled %s-side %d/%d candidates (%s)"
                       % (side, filled, len(scored_rows),
@@ -1070,6 +1078,43 @@ def main():
     )
     for rank, item in enumerate(scored_rows, start=1):
         item["rank"] = rank
+
+    # ---- run 级 off-target 溯源（与 basic/analyze_scores.py 同一口径）----
+
+    provenance = {
+        "nuclease": args.nuclease,
+        "pattern": "motif_gap_motif",
+        "off_target_requested": {"left": left_otm, "right": right_otm},
+        "off_target": summarize_off_target_provenance(
+            [
+                {"off_target_model": item.get("%s_off_target_model" % side, ""),
+                 "off_target_model_note":
+                     item.get("%s_off_target_model_note" % side, "")}
+                for item in scored_rows
+                for side in ("left", "right")
+            ],
+            requested=[left_otm, right_otm]),
+        "per_guide_columns": [
+            "%s_%s" % (side, column)
+            for side in ("left", "right")
+            for column in OFF_TARGET_PROVENANCE_COLUMNS
+        ],
+    }
+    provenance_file = os.path.join(output_dir, "scoring_provenance.json")
+    with open(provenance_file, "w", encoding="utf-8") as handle:
+        json.dump(provenance, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    if provenance["off_target"]["fell_back"]:
+        degraded = provenance["off_target"]["degraded_models"]
+        columns = ("; %s carry the CFD fallback value"
+                   % ", ".join("off_target_specificity_%s" % model
+                               for model in degraded)
+                   if degraded else "")
+        print("WARNING: off-target scoring fell back for %d/%d candidates%s; "
+              "see %s and the <side>_off_target_model columns"
+              % (provenance["off_target"]["fallback_rows"],
+                 provenance["off_target"]["scored_rows"], columns,
+                 provenance_file))
 
     # ---- 输出排序后的 TSV ----
 

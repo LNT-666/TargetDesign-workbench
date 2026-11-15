@@ -33,6 +33,7 @@ from design.library_preflight import MAX_EXACT_GENOME_BYTES
 from scoring.scoring import (
     compute_guide_scores, apply_guide_feature_columns, rank_rows,
     filter_hints, passes_filter, OUTPUT_GUIDE_FEATURE_COLUMNS,
+    OFF_TARGET_PROVENANCE_COLUMNS, summarize_off_target_provenance,
 )
 from design.system_presets import get_preset
 from data.candidate_annotation import (
@@ -744,6 +745,7 @@ def main():
                         if as_primary:
                             row["off_target_specificity"] = f"{specificity:.2f}"
                             row["off_target_model"] = "crispai"
+                            row["off_target_model_note"] = ""
                         filled += 1
                 print("crispAI backfilled %s-side %d/%d candidates (%s)"
                       % (side, filled, len(out_rows),
@@ -756,6 +758,34 @@ def main():
         writer.writerows(format_output_row(row) for row in out_rows)
 
     print(f"Wrote {len(out_rows)} rows to {args.output}")
+
+    # Same run-level provenance as basic/analyze_scores.py: without it a
+    # degraded deep model is invisible in the paired-pattern artefacts.
+    provenance_dir = os.path.dirname(os.path.abspath(args.output))
+    provenance = {
+        "nuclease": args.nuclease,
+        "pattern": "y_centered_motifs",
+        "off_target_requested": {"left": left_otm, "right": right_otm},
+        "off_target": summarize_off_target_provenance(
+            out_rows, requested=[left_otm, right_otm]),
+        "per_guide_columns": list(OFF_TARGET_PROVENANCE_COLUMNS),
+    }
+    provenance_file = os.path.join(provenance_dir, "scoring_provenance.json")
+    with open(provenance_file, "w", encoding="utf-8") as handle:
+        json.dump(provenance, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    if provenance["off_target"]["fell_back"]:
+        degraded = provenance["off_target"]["degraded_models"]
+        columns = ("; %s carry the CFD fallback value"
+                   % ", ".join("off_target_specificity_%s" % model
+                               for model in degraded)
+                   if degraded else "")
+        print("WARNING: off-target scoring fell back for %d/%d candidates%s; "
+              "see %s and the off_target_model/off_target_model_note columns"
+              % (provenance["off_target"]["fallback_rows"],
+                 provenance["off_target"]["scored_rows"], columns,
+                 provenance_file))
+
     print("PROGRESS: done 100", flush=True)
 
     if args.unique_guides:

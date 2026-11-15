@@ -92,6 +92,16 @@ preset/identity 规则。TnpB 的 on-target 通过该侧的 `reference_only_mode
   需在 Linux 服务器上运行。
 - 非 Cas9 预设（Cas12/Cas13/TnpB 等）通常使用 identity/seed 启发式分数，不再套用 SpCas9 CFD。
 
+选择 `crispr_m` 或 `deepcrispr` 而模型未就绪、或推理抛错时，off-target 主分回退 CFD；
+`auto` 在两个深度模型都不可用时同样回退。回退不再只体现在数值上：模型标识写成
+`crispr_m_unavailable` / `deepcrispr_error` 等，`off_target_model_note` 给出原因，一次
+运行只在日志里输出一条 `off-target scoring fallback: …` WARNING，`basic/analyze_scores.py`
+还把请求模型与实际模型汇总进 `scoring_provenance.json`。显式选择 `cfd`（Cas9 下的
+`rules` 等价）得到的就是 CFD 聚合，不算回退，备注为空。回退时按请求模型命名的
+`off_target_specificity_<model>` 列里是 CFD 值，`scoring_provenance.json` 用
+`degraded_models` 与 `value_columns` 点名这些列，run 级 WARNING 也会列出它们。
+列定义与文件的取舍见 `docs/OUTPUTS.md`「3.2 特异性与 on-target 分数列」。
+
 `Gap-anchored pair`（Pattern A）会按 `(flank_qid, strand, model)` 缓存一次
 flank 扫描，并对该 guide 的脱靶位点按 PAM 分组执行一次批量深度模型推理。
 逐位点活性会在一次扫描中生成，随后同时用于 aggregate specificity 和

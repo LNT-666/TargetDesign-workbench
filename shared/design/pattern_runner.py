@@ -235,6 +235,7 @@ class PatternRunner:
                 "unique_guides.xlsx",
                 "top_offtargets.tsv",
                 "top_offtargets.xlsx",
+                "scoring_provenance.json",
                 "blast_results.tsv",
             )
         elif self.spec.kind is PatternKind.MOTIF_GAP_MOTIF:
@@ -245,6 +246,7 @@ class PatternRunner:
                 "unique_guides.xlsx",
                 "top_offtargets.tsv",
                 "top_offtargets.xlsx",
+                "scoring_provenance.json",
             )
         else:
             names = (
@@ -254,6 +256,7 @@ class PatternRunner:
                 "unique_guides.xlsx",
                 "top_offtargets.tsv",
                 "top_offtargets.xlsx",
+                "scoring_provenance.json",
             )
         for name in names:
             old_path = os.path.join(source_dir, name)
@@ -264,6 +267,7 @@ class PatternRunner:
                 "query_scores_sorted": "scores",
                 "unique_guides": "guides",
                 "top_offtargets": "offtargets",
+                "scoring_provenance": "provenance",
             }.get(stem, stem)
             new_path = os.path.join(
                 output_dir, "%s_%s%s" % (label, short_stem, ext))
@@ -287,6 +291,7 @@ class PatternRunner:
                 "guides": None,
                 "offtargets": None,
                 "blast_results": None,
+                "provenance": None,
             }
         output_dir = self._outdir()
         if self.spec.kind is PatternKind.SINGLE_MOTIF_FLANK:
@@ -295,6 +300,7 @@ class PatternRunner:
                 "guides": "%s_guides.tsv" % label,
                 "offtargets": "%s_offtargets.tsv" % label,
                 "blast_results": "%s_blast_results.tsv" % label,
+                "provenance": "%s_provenance.json" % label,
             }
         elif self.spec.kind is PatternKind.MOTIF_GAP_MOTIF:
             names = {
@@ -302,6 +308,7 @@ class PatternRunner:
                 "guides": "%s_guides.tsv" % label,
                 "offtargets": "%s_offtargets.tsv" % label,
                 "blast_results": None,
+                "provenance": "%s_provenance.json" % label,
             }
         else:
             names = {
@@ -309,6 +316,7 @@ class PatternRunner:
                 "guides": "%s_guides.tsv" % label,
                 "offtargets": "%s_offtargets.tsv" % label,
                 "blast_results": None,
+                "provenance": "%s_provenance.json" % label,
             }
         return {
             key: (os.path.join(output_dir, name) if name else None)

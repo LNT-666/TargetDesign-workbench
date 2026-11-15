@@ -265,9 +265,8 @@ $env:PROGRAMFILE_RUN_LEGACY_LIBRARY_TESTS='1'
 
 ## 引用
 
-Release v0.3.4 归档于 <https://doi.org/10.5281/zenodo.24026181>。覆盖所有版本的
-概念 DOI 为 <https://doi.org/10.5281/zenodo.23231712>。引用元数据维护在
-`CITATION.cff`。
+请引用所用版本对应的版本 DOI；覆盖所有版本的概念 DOI 为
+<https://doi.org/10.5281/zenodo.23231712>。引用元数据维护在 `CITATION.cff`。
 
 ## 许可
 

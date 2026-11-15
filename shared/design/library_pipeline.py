@@ -34,10 +34,12 @@ from design.system_presets import (
 from output.output_columns import format_output_row, nonempty_columns
 from scoring.scoring import (
     MODEL_SCORE_COLUMNS,
+    OFF_TARGET_PROVENANCE_COLUMNS,
     compute_guide_scores,
     filter_hints,
     passes_filter,
     rank_rows,
+    summarize_off_target_provenance,
 )
 
 from search.blast_utils import (check_blast_installed, ensure_blastdb,
@@ -704,6 +706,7 @@ def main():
                         if as_primary:
                             guide["off_target_specificity"] = specificity
                             guide["off_target_model"] = "crispai"
+                            guide["off_target_model_note"] = ""
                         filled += 1
                 print("crispAI backfilled %d/%d guides (%s)"
                       % (filled, len(scored),
@@ -734,6 +737,7 @@ def main():
               "input_offtargets", "substitution_offtargets",
               "bulge_hits", "scored_bulge_hits", "unscored_bulge_hits",
               "calibration_status", "bulge_score_method"] \
+        + list(OFF_TARGET_PROVENANCE_COLUMNS) \
         + list(MODEL_SCORE_COLUMNS)
     for guide in scored:
         guide["total_matches"] = len(matches.get(guide["qid"], []))
@@ -767,8 +771,8 @@ def main():
         scored[0].get("subtype_note", "") if scored else "")
     summary["omega_model"] = (
         scored[0].get("omega_model", "") if scored else "")
-    summary["off_target_model_note"] = (
-        scored[0].get("off_target_model_note", "") if scored else "")
+    summary["off_target_provenance"] = summarize_off_target_provenance(
+        scored, requested=args.off_target_model)
     executed_engine = str(run_report.get("engine_used") or engine)
     hit_engines = {
         str(hit.get("engine"))

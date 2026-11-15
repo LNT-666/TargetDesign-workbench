@@ -783,6 +783,70 @@ class PatternRunnerTests(unittest.TestCase):
             self.assertEqual({row["side"] for row in rows}, {"left", "right"})
 
 
+class DeliverablePathTests(unittest.TestCase):
+    """The webapp publishes these paths, so each one must be listed exactly
+    when the step that writes it is in the pipeline."""
+
+    @staticmethod
+    def _spec(kind):
+        if kind is PatternKind.SINGLE_MOTIF_FLANK:
+            return PatternSpec(kind=kind,
+                               motif=MotifSpec("TTAT", 10, Side.UPSTREAM))
+        if kind is PatternKind.MOTIF_GAP_MOTIF:
+            return PatternSpec(
+                kind=kind, left=MotifSpec("ATCG", 5, Side.UPSTREAM),
+                right=MotifSpec("CCGG", 7, Side.DOWNSTREAM),
+                min_gap=10, max_gap=20)
+        return PatternSpec(
+            kind=kind, y_sequence="GGTACC",
+            left=MotifSpec("RAC", 6, Side.DOWNSTREAM),
+            right=MotifSpec("GYN", 8, Side.UPSTREAM),
+            left_min_distance=2, left_max_distance=30,
+            right_min_distance=0, right_max_distance=25)
+
+    def _paths(self, kind, run_label="Q1"):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = make_config(output_dir=tmp, run_label=run_label)
+            return PatternRunner(
+                self._spec(kind), config).deliverable_paths()
+
+    def test_single_motif_publishes_labeled_provenance(self):
+        paths = self._paths(PatternKind.SINGLE_MOTIF_FLANK)
+        self.assertTrue(paths["provenance"].endswith(
+            os.sep + "Q1_provenance.json"), paths["provenance"])
+
+    def test_every_scored_kind_publishes_labeled_provenance(self):
+        for kind in (PatternKind.MOTIF_GAP_MOTIF, PatternKind.Y_CENTERED_MOTIFS):
+            paths = self._paths(kind)
+            self.assertTrue(paths["provenance"].endswith(
+                os.sep + "Q1_provenance.json"), (kind, paths["provenance"]))
+
+    def test_paired_kinds_publish_the_analyzer_provenance(self):
+        """The paired analyzers write ``scoring_provenance.json`` into the run
+        workdir; finalizing must move it to the published deliverable."""
+        for kind in (PatternKind.MOTIF_GAP_MOTIF, PatternKind.Y_CENTERED_MOTIFS):
+            with tempfile.TemporaryDirectory() as tmp:
+                runner = PatternRunner(
+                    self._spec(kind),
+                    make_config(output_dir=tmp, run_label="Q1"))
+                with open(
+                        os.path.join(runner._workdir(),
+                                     "scoring_provenance.json"),
+                        "w", encoding="utf-8") as handle:
+                    handle.write('{"pattern": "x"}\n')
+                runner._finalize_labeled_outputs()
+                published = runner.deliverable_paths()["provenance"]
+                self.assertTrue(os.path.isfile(published), (kind, published))
+                self.assertFalse(
+                    os.path.exists(
+                        os.path.join(runner._workdir(),
+                                     "scoring_provenance.json")))
+
+    def test_unlabeled_run_publishes_nothing(self):
+        paths = self._paths(PatternKind.SINGLE_MOTIF_FLANK, run_label="")
+        self.assertTrue(all(value is None for value in paths.values()), paths)
+
+
 class PipelineConfirmationTests(unittest.TestCase):
     """CONFIRM_REQUIRED requests from engine steps must be answered."""
 

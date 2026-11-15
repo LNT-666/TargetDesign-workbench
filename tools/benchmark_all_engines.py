@@ -142,8 +142,12 @@ def generate_fixture(fixture_dir, total_bases=5000000,
             for start in range(0, len(sequence), 80):
                 handle.write(sequence[start:start + 80] + "\n")
     with open(guides_path, "w", encoding="ascii", newline="") as handle:
+        # The lineterminator matches the LF bytes tracked in the repository, so
+        # regenerating the fixture reproduces the published guides_sha256 on
+        # every platform; csv would otherwise default to CRLF.
         writer = csv.DictWriter(
-            handle, fieldnames=["qid", "guide_seq"], delimiter="\t")
+            handle, fieldnames=["qid", "guide_seq"], delimiter="\t",
+            lineterminator="\n")
         writer.writeheader()
         writer.writerows(guides)
     metadata = {
@@ -167,7 +171,7 @@ def generate_fixture(fixture_dir, total_bases=5000000,
             "target plus one one-mismatch target per guide"
         ),
     }
-    with open(metadata_path, "w", encoding="utf-8") as handle:
+    with open(metadata_path, "w", encoding="utf-8", newline="") as handle:
         json.dump(metadata, handle, indent=2)
     return genome_path, guides_path
 

@@ -29,9 +29,9 @@
     "contigs": 4,
     "command": "python tools/benchmark_all_engines.py --fixture-dir example/engine_benchmark_small --genome-mb 1 --contigs 4 --guides 12 --seed 20260914 --generate-only",
     "genome_sha256": "b9196a5857dbc12dab4c032b445c8602b006c0c984b6aa189b0e096dc2093299",
-    "guides_sha256": "5728148559dbddfed66b5f32a08e3780dd1e1d61cda880dfa43ffee700693531",
+    "guides_sha256": "e5f02c50730ad43b458795b0df9316ebfa0de256295c7492f59eea0cf932e26b",
     "genome_size_bytes": 1012524,
-    "guides_size_bytes": 327
+    "guides_size_bytes": 314
   },
   "protocol": {
     "grid": {

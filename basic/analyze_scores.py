@@ -22,6 +22,8 @@ from scoring.scoring import (
     compute_guide_scores, apply_guide_feature_columns, rank_rows,
     filter_hints, passes_filter,
     OUTPUT_GUIDE_FEATURE_COLUMNS,
+    OFF_TARGET_PROVENANCE_COLUMNS,
+    summarize_off_target_provenance,
 )
 from design.system_presets import resolve_run_nuclease
 from data.candidate_annotation import (
@@ -116,6 +118,7 @@ def apply_crispai_scores(query_rows, motif_plus, side, nuclease, output_dir,
             if as_primary:
                 row["off_target_specificity"] = specificity
                 row["off_target_model"] = "crispai"
+                row["off_target_model_note"] = ""
             filled += 1
     print("crispAI backfilled %d/%d candidates (%s)"
           % (filled, len(query_rows), "as primary score" if as_primary else "additional columns only"))
@@ -543,6 +546,30 @@ def main():
         for vals in query_cell_rows:
             f.write("\t".join(vals[i] for i in kept_columns) + "\n")
     print(f"\nSorted scores written to: {out_file}")
+
+    provenance = {
+        "nuclease": args.nuclease,
+        "preset": args.preset if args.mode == "preset" else "custom",
+        "off_target_requested": args.off_target_model,
+        "off_target": summarize_off_target_provenance(
+            query_rows, requested=off_models),
+        "per_guide_columns": list(OFF_TARGET_PROVENANCE_COLUMNS),
+    }
+    provenance_file = os.path.join(output_dir, "scoring_provenance.json")
+    with open(provenance_file, "w", encoding="utf-8") as handle:
+        json.dump(provenance, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    if provenance["off_target"]["fell_back"]:
+        degraded = provenance["off_target"]["degraded_models"]
+        columns = ("; %s carry the CFD fallback value"
+                   % ", ".join("off_target_specificity_%s" % model
+                               for model in degraded)
+                   if degraded else "")
+        print("WARNING: off-target scoring fell back for %d/%d candidates%s; "
+              "see %s and the off_target_model/off_target_model_note columns"
+              % (provenance["off_target"]["fallback_rows"],
+                 provenance["off_target"]["scored_rows"], columns,
+                 provenance_file))
     print("Top 5 highest-scoring results:")
     for row in query_rows[:5]:
         print(f"  {row['pos_id']}: "

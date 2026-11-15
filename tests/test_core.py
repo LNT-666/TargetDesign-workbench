@@ -24,12 +24,15 @@ from design.system_presets import (  # noqa: E402
 from design.guide_design import find_guides, filter_guides  # noqa: E402
 from scoring.scoring import (  # noqa: E402
     ALL_OFF_TARGET_MODELS, ALL_ON_TARGET_MODELS,
+    DEEP_OFF_TARGET_FALLBACK_NOTES,
+    OFF_TARGET_PROVENANCE_COLUMNS,
     TRADITIONAL_MODELS,
     aggregate_off_target_specificity, compute_guide_scores,
-    compute_off_target_activities,
+    compute_off_target_activities, degraded_off_target_models,
     apply_guide_feature_columns, GUIDE_FEATURE_COLUMNS,
     MODEL_NAME_COLUMNS,
     OUTPUT_GUIDE_FEATURE_COLUMNS,
+    summarize_off_target_provenance,
     model_choices_for_preset,
 )
 from design.library_utils import deduplicate_guides  # noqa: E402
@@ -625,6 +628,119 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(result["off_target_model"],
                          "crispr_m_unavailable_reference_only")
         self.assertTrue(result["reference_only"])
+        # The fallback reason must survive the reference-only relabeling.
+        self.assertIn("fell back to CFD scoring",
+                      result["off_target_model_note"])
+
+    def test_off_target_provenance_columns_are_exported(self):
+        for column in OFF_TARGET_PROVENANCE_COLUMNS:
+            self.assertIn(column, GUIDE_FEATURE_COLUMNS)
+            self.assertIn(column, OUTPUT_GUIDE_FEATURE_COLUMNS)
+
+    def test_provenance_columns_reach_scored_rows(self):
+        with mock.patch("scoring.deep_models.crispr_m_status",
+                        return_value="load_error"):
+            scores = compute_guide_scores(
+                "GAACACAAAGCATAGACTGC",
+                [("GAACACAAAGCATAGACTGA", "NGG")],
+                nuclease="cas9", off_target_model="crispr_m")
+        row = apply_guide_feature_columns({}, scores)
+        self.assertEqual(row["off_target_model"], "crispr_m_unavailable")
+        self.assertIn(
+            "fell back to CFD scoring", row["off_target_model_note"])
+
+    def test_requested_cfd_or_rules_is_not_reported_as_fallback(self):
+        for choice in ("rules", "cfd"):
+            scores = compute_guide_scores(
+                "GAACACAAAGCATAGACTGC",
+                [("GAACACAAAGCATAGACTGA", "NGG")],
+                nuclease="cas9", off_target_model=choice)
+            self.assertEqual(scores["off_target_model"], "cfd", choice)
+            self.assertEqual(scores["off_target_model_note"], "", choice)
+
+    def test_bulge_penalty_note_is_not_counted_as_model_fallback(self):
+        row = {
+            "off_target_model": "cfd",
+            "off_target_model_note": (
+                "Bulge hits use an uncalibrated conservative penalty."),
+        }
+        summary = summarize_off_target_provenance([row], requested="cfd")
+        self.assertEqual(summary["fallback_rows"], 0)
+        self.assertFalse(summary["fell_back"])
+        self.assertEqual(len(summary["notes"]), 1)
+
+    def test_run_provenance_summary_reports_requested_and_used(self):
+        fallback_note = DEEP_OFF_TARGET_FALLBACK_NOTES["deepcrispr_unavailable"]
+        rows = [
+            {"off_target_model": "deepcrispr_unavailable",
+             "off_target_model_note": fallback_note},
+            {"off_target_model": "deepcrispr_unavailable",
+             "off_target_model_note": fallback_note},
+            {"off_target_model": "cfd", "off_target_model_note": ""},
+        ]
+        summary = summarize_off_target_provenance(
+            rows, requested="auto,deepcrispr")
+        self.assertEqual(summary["requested_models"], ["auto", "deepcrispr"])
+        self.assertEqual(summary["scored_rows"], 3)
+        self.assertEqual(summary["models_used"],
+                         {"cfd": 1, "deepcrispr_unavailable": 2})
+        self.assertEqual(summary["fallback_rows"], 2)
+        self.assertTrue(summary["fell_back"])
+        self.assertEqual(summary["notes"], {fallback_note: 2})
+        self.assertEqual(summary["degraded_models"], ["deepcrispr"])
+        self.assertEqual(
+            summary["value_columns"],
+            {"off_target_specificity_deepcrispr":
+             "carries the CFD fallback value, not deepcrispr output"})
+        self.assertIn("off_target_specificity_<model>", summary["column_note"])
+
+    def test_degradation_tag_alone_counts_as_fallback_row(self):
+        # The paired analyzers can hand over rows whose note is empty (older
+        # artefacts, side-prefixed rows); the model tag must still be enough to
+        # report the fallback, and must not be counted twice when the note is
+        # present as well.
+        without_note = summarize_off_target_provenance(
+            [{"off_target_model": "deepcrispr_unavailable",
+              "off_target_model_note": ""}],
+            requested="deepcrispr")
+        self.assertEqual(without_note["fallback_rows"], 1)
+        self.assertTrue(without_note["fell_back"])
+        self.assertEqual(without_note["notes"], {})
+        self.assertEqual(without_note["degraded_models"], ["deepcrispr"])
+
+        note = DEEP_OFF_TARGET_FALLBACK_NOTES["deepcrispr_unavailable"]
+        with_note = summarize_off_target_provenance(
+            [{"off_target_model": "deepcrispr_unavailable",
+              "off_target_model_note": note}],
+            requested="deepcrispr")
+        self.assertEqual(with_note["fallback_rows"], 1)
+        self.assertEqual(with_note["notes"], {note: 1})
+
+    def test_value_column_degradation_tags(self):
+        # Only "<requested>_<unavailable|error>" tags mean the per-model value
+        # column is somebody else's number; reference-only CFD stays honest.
+        tags = ("deepcrispr_unavailable", "crispr_m_error",
+                "deepcrispr_unavailable_reference_only",
+                "cfd_reference_only", "cfd", "rules", "aggregate")
+        self.assertEqual(
+            degraded_off_target_models({tag: 1 for tag in tags}),
+            ["crispr_m", "deepcrispr"])
+        self.assertEqual(degraded_off_target_models({"cfd": 3}), [])
+        self.assertEqual(degraded_off_target_models({}), [])
+
+    def test_fallback_is_warned_once_per_reason(self):
+        from scoring import scoring as scoring_module
+        note = DEEP_OFF_TARGET_FALLBACK_NOTES["crispr_m_unavailable"]
+        seen = scoring_module._warned_fallbacks
+        scoring_module._warned_fallbacks = set()
+        try:
+            with self.assertLogs("scoring.scoring", level="WARNING") as logs:
+                for _ in range(3):
+                    scoring_module._warn_off_target_fallback(note)
+            messages = [line for line in logs.output if "fell back" in line]
+            self.assertEqual(len(messages), 1)
+        finally:
+            scoring_module._warned_fallbacks = seen
 
     def test_custom_model_catalog_contains_every_preset_model(self):
         custom_on = set(model_choices_for_preset("custom", "on_target"))

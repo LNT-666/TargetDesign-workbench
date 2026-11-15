@@ -4,7 +4,7 @@
   "upload_type": "software",
   "access_right": "open",
   "license": "mit",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "language": "eng",
   "creators": [
     {
@@ -13,12 +13,16 @@
       "orcid": "https://orcid.org/0009-0007-5408-9580"
     },
     {
+      "name": "Ma, Jiayue",
+      "affiliation": "State Key Laboratory of Microbial Diversity and Innovative Utilization, Institute of Microbiology, Chinese Academy of Sciences, Beijing, China"
+    },
+    {
       "name": "Shi, Shasha",
       "affiliation": "College of Bioscience & Biotechnology, Yangzhou University, Yangzhou, Jiangsu 225009, China"
     },
     {
       "name": "Wang, Saisai",
-      "affiliation": "Institute of Microbiology, Chinese Academy of Sciences"
+      "affiliation": "State Key Laboratory of Microbial Diversity and Innovative Utilization, Institute of Microbiology, Chinese Academy of Sciences, Beijing, China"
     }
   ],
   "keywords": [

@@ -5,12 +5,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+#: Zenodo concept DOI; it resolves to every archived version of the software.
+CONCEPT_DOI = "10.5281/zenodo.23231712"
+DOI_RE = re.compile(r"^10\.\d{4,5}/zenodo\.\d+$")
+#: Comment wording that means the value below it still has to be filled in.
+PLACEHOLDER_MARKERS = (
+    "replace with", "tbd", "todo", "fixme", "fill in", "待补", "待回填",
+)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -34,6 +45,55 @@ def _orcid(value: Any) -> str:
         if text.startswith(prefix):
             return text[len(prefix):]
     return text
+
+
+def _tagged_locally(root: Path, version: str) -> bool | None:
+    """Whether ``v<version>`` is a local git tag; ``None`` when that is unknown.
+
+    Release staging copies a plain directory and a bundle has no ``.git``, so an
+    unreadable answer downgrades to "not verifiable" rather than a false error.
+    """
+    tag = f"v{version}"
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--list", tag], cwd=str(root), capture_output=True,
+            text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return tag in result.stdout.split()
+
+
+def check_dois(root: Path, citation: dict[str, Any]) -> list[str]:
+    """Check the archived DOI of a version that has already been released."""
+    errors: list[str] = []
+    cff_path = root / "CITATION.cff"
+    try:
+        lines = cff_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return [f"CITATION.cff read failed: {exc}"]
+    for line in lines:
+        if not line.lstrip().startswith("#"):
+            continue
+        lowered = line.lower()
+        for marker in PLACEHOLDER_MARKERS:
+            if marker in lowered:
+                errors.append(
+                    f"CITATION.cff still carries an unresolved placeholder "
+                    f"({marker!r}); publish the reserved version DOI first")
+
+    version = str(citation.get("version", "") or "")
+    doi = str(citation.get("doi", "") or "").strip()
+    if doi and not DOI_RE.match(doi):
+        errors.append(f"CITATION.cff doi is not a Zenodo DOI: {doi!r}")
+    released = _tagged_locally(root, version) if version else None
+    if released and (not doi or doi == CONCEPT_DOI):
+        errors.append(
+            f"v{version} is tagged locally but CITATION.cff still cites the "
+            "concept DOI; fill in the reserved version DOI before publishing")
+    return errors
 
 
 def check_metadata(root: Path) -> list[str]:
@@ -97,6 +157,7 @@ def check_metadata(root: Path) -> list[str]:
                 f"CITATION.cff={_orcid(author.get('orcid')) or '<missing>'}; "
                 f".zenodo.json={_orcid(creator.get('orcid')) or '<missing>'}")
 
+    errors.extend(check_dois(root, citation))
     return errors
 
 

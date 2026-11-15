@@ -23,6 +23,15 @@ def _load_module():
     return mod
 
 
+def _deepcrispr_ready():
+    """True when local DeepCRISPR weights make the CFD fallback impossible."""
+    shared = os.path.join(ROOT, "shared")
+    if shared not in sys.path:
+        sys.path.insert(0, shared)
+    from scoring.deep_models import DeepCrisprPredictor
+    return DeepCrisprPredictor.status(load=False) == "ready"
+
+
 class AnalyzeScoresPositionTests(unittest.TestCase):
     def test_rich_bulge_match_keeps_stats_and_cigar(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -419,6 +428,127 @@ class AnalyzeScoresPositionTests(unittest.TestCase):
             # the bases after the window.
             self.assertLess(float(row["off_target_specificity_cfd"]), 1.0)
             self.assertNotIn("cfd_specificity", row)
+
+
+class AnalyzeScoresProvenanceTests(unittest.TestCase):
+    """A deep model that could not run must be visible in the artefacts."""
+
+    def _fixture(self, tmp, with_hit=True):
+        genome = os.path.join(tmp, "genome.fa")
+        with open(genome, "w", encoding="utf-8") as handle:
+            handle.write(">chr1\n")
+            handle.write("A" * 120 + "\n")
+        fieldnames = [
+            "qid", "sequence", "positions", "matches",
+            "motif_plus", "motif_minus", "flank_len", "side",
+            "rdna_intervals", "genome_file",
+        ]
+        blast_results = os.path.join(tmp, "blast_results.tsv")
+        rows = [
+            {
+                "qid": "metadata",
+                "sequence": "",
+                "positions": "",
+                "matches": "",
+                "motif_plus": "NGG",
+                "motif_minus": "CCN",
+                "flank_len": "20",
+                "side": "upstream",
+                "rdna_intervals": "{}",
+                "genome_file": genome,
+            },
+            {
+                "qid": "uniq_0",
+                "sequence": "C" * 20 + "GGG",
+                "positions": json.dumps([["chr1", "plus", 20, 0]]),
+                "matches": json.dumps(
+                    [["chr1", 20, 1, "+"]] if with_hit else []),
+                "motif_plus": "",
+                "motif_minus": "",
+                "flank_len": "",
+                "side": "",
+                "rdna_intervals": "",
+                "genome_file": "",
+            },
+        ]
+        with open(blast_results, "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle, fieldnames=fieldnames, delimiter="\t")
+            writer.writeheader()
+            writer.writerows(rows)
+        return blast_results
+
+    def _run(self, blast_results, outdir, off_target_model):
+        return subprocess.run(
+            [sys.executable, SCRIPT, blast_results, outdir,
+             "--max-mismatch", "0", "--no-require-pam",
+             "--off-target-model", off_target_model],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace")
+
+    def test_requested_rules_run_records_no_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            blast_results = self._fixture(tmp)
+            outdir = os.path.join(tmp, "out")
+            result = self._run(blast_results, outdir, "rules")
+            self.assertEqual(result.returncode, 0,
+                             result.stdout + result.stderr)
+            with open(os.path.join(outdir, "scoring_provenance.json"),
+                      encoding="utf-8") as handle:
+                provenance = json.load(handle)
+            summary = provenance["off_target"]
+            self.assertEqual(summary["requested_models"], ["rules"])
+            self.assertEqual(summary["models_used"], {"cfd": 1})
+            self.assertFalse(summary["fell_back"])
+            self.assertEqual(summary["fallback_rows"], 0)
+            self.assertEqual(summary["degraded_models"], [])
+            self.assertEqual(summary["value_columns"], {})
+            with open(os.path.join(outdir, "query_scores_sorted.tsv"),
+                      encoding="utf-8") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                scored = list(reader)
+                fieldnames = reader.fieldnames
+            self.assertIn("off_target_model", fieldnames)
+            # An all-empty note column is dropped rather than shipped blank.
+            self.assertNotIn("off_target_model_note", fieldnames)
+            self.assertEqual(scored[0]["off_target_model"], "cfd")
+
+    @unittest.skipIf(
+        _deepcrispr_ready(),
+        "DeepCRISPR weights are installed; the fallback cannot be forced")
+    def test_unavailable_deep_model_reports_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            blast_results = self._fixture(tmp)
+            outdir = os.path.join(tmp, "out")
+            result = self._run(blast_results, outdir, "deepcrispr")
+            self.assertEqual(result.returncode, 0,
+                             result.stdout + result.stderr)
+            self.assertIn("off-target scoring fallback", result.stderr)
+            self.assertIn("WARNING: off-target scoring fell back",
+                          result.stdout)
+            # The WARNING must name the column whose values are not the
+            # requested model's output, so the artefact cannot misattribute it.
+            self.assertIn("off_target_specificity_deepcrispr carry the CFD "
+                          "fallback value", result.stdout)
+            with open(os.path.join(outdir, "scoring_provenance.json"),
+                      encoding="utf-8") as handle:
+                summary = json.load(handle)["off_target"]
+            self.assertTrue(summary["fell_back"])
+            self.assertEqual(summary["degraded_models"], ["deepcrispr"])
+            self.assertIn("off_target_specificity_deepcrispr",
+                          summary["value_columns"])
+            self.assertIn("column_note", summary)
+            self.assertEqual(summary["requested_models"], ["deepcrispr"])
+            self.assertEqual(summary["fallback_rows"],
+                             summary["scored_rows"])
+            self.assertIn("deepcrispr_unavailable", summary["models_used"])
+            with open(os.path.join(outdir, "query_scores_sorted.tsv"),
+                      encoding="utf-8") as handle:
+                scored = list(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual(scored[0]["off_target_model"],
+                             "deepcrispr_unavailable")
+            self.assertIn("fell back to CFD scoring",
+                          scored[0]["off_target_model_note"])
 
 
 if __name__ == "__main__":

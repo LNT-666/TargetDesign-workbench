@@ -259,7 +259,7 @@ units 顺序：`assignments` 生成 **每个 pattern 一个组**（`group_id = G
   | `dataprep.extract-mask` | `mask_fasta`、`output_dir`（固定 `output`） |
   | `dataprep.build-blastdb` | `blastdb`、`output_dir`（固定 `output`） |
   | `dataprep.build-index` | `index_path`、`output_dir`（固定 `resource`） |
-  | `designer.find` / `designer.score` | `search_fasta`（sequence 模式）或 `bed_regions`（bed 模式）、`output_dir`、`extract_output`、`run_dir`、`params_file`，有则加 `scores` / `guides` / `offtargets` / `blast_results` |
+  | `designer.find` / `designer.score` | `search_fasta`（sequence 模式）或 `bed_regions`（bed 模式）、`output_dir`、`extract_output`、`run_dir`、`params_file`，有则加 `scores` / `guides` / `offtargets` / `blast_results` / `provenance`（`<label>_provenance.json`，off-target 模型溯源汇总） |
 
   只写绝对路径，且只写实际存在的产物（`build-index` 的前缀按其
   `<prefix>.ggi` / `<prefix>.json` 兄弟文件判断）。`result` 里的 `run_dir` /

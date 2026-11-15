@@ -257,20 +257,24 @@ Optional release checks:
 
 ```bash
 python tools/check_release_metadata.py
-python tools/check_release_notes.py release-notes.md
+python tools/check_release_notes.py <release-notes.md>
 python tools/dep_scan.py --check
 python tools/batch_run.py --spec sample_data/demo_batch.json --dry-run
 ```
+
+`check_release_notes.py` takes the drafted notes or tag message as an argument
+(or `-` for stdin) and exits 1 only on a blocking site-identity leak; drive
+letters and other report-only labels are listed without refusing publication.
 
 The release bundle builder is documented in
 [`docs/PACKAGING.md`](docs/PACKAGING.md).
 
 ## Citation
 
-Release v0.3.4 is archived at
-<https://doi.org/10.5281/zenodo.24026181>. The concept DOI covering all
-versions is <https://doi.org/10.5281/zenodo.23231712>. Citation metadata is
-maintained in [`CITATION.cff`](CITATION.cff).
+Please cite the version-specific DOI archived for the release used in your
+study. The concept DOI covering all versions is
+<https://doi.org/10.5281/zenodo.23231712>. Citation metadata is maintained in
+[`CITATION.cff`](CITATION.cff).
 
 ## License
 

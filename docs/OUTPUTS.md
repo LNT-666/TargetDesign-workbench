@@ -61,6 +61,7 @@ pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
 | `unique_guides.tsv` | 按 `qid` 去重；用 `position_count` 取代 `pos_id` |
 | `top_offtargets.tsv` | `qid, position_count, rank, target, start, mismatch, annotation` |
 | `query_scores.bed` | `seq_id, motif_pos, motif_pos+len(query_seq), pos_id, 分数, strand`；分数为 `1/off_target_specificity`，越高表示风险越大 |
+| `scoring_provenance.json` | 本次运行的 off-target 溯源汇总：请求的模型、实际产生主分的模型、降级行数与原因；逐候选明细在同目录 `query_scores_sorted.tsv` 的 `off_target_model` / `off_target_model_note` 列 |
 
 ### 2.2 Gap-anchored pair（Pattern A，`Target_xbp_Target/`，`motif_gap_motif`）
 
@@ -130,14 +131,42 @@ pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
 | 列 | 含义 |
 | --- | --- |
 | `off_target_specificity` | 主分，值越大越特异；1 表示除预期位点外没有额外相似位点 |
-| `off_target_specificity_<model>` | 每个勾选 off-target 模型的独立结果；`crispai` 作为第一个模型时其值同时覆盖主分 |
+| `off_target_specificity_<model>` | 每个勾选 off-target 模型的独立结果；`crispai` 作为第一个模型时其值同时覆盖主分。**该列名记录的是所请求的模型**：模型降级时列里是 CFD 回退值，生产者以 `off_target_model_<model>` 为准 |
 | `on_target_score_<model>` | 每个勾选 on-target 模型的独立结果；`Single-anchor pattern` 表没有不带后缀的 `on_target_score` 列 |
 | `crispai_aggregate_score` | crispAI 上游原始聚合值，用于核对；换算关系为 `off_target_specificity_crispai = 1/(1+aggregate)` |
+| `off_target_model` | 产生 `off_target_specificity` 的模型标识；请求的模型没能运行时带 `_unavailable` / `_error` 后缀，例如 `deepcrispr_unavailable` |
+| `off_target_model_note` | 降级原因，例如 `DeepCRISPR model not ready; off-target fell back to CFD scoring`；整表为空时该列不出现 |
 
 特异性聚合统一为 GuideScan2 风格 `1 / (1 + sum(模型分数))`；存在 1 个 on-target site 时
 先减掉完全匹配位点的贡献，因此分数反映除该 site 外的额外风险。CFD 使用位置特异错配
 权重乘积再乘 PAM 权重，实际传入的是靠近 spacer 的 2 nt（`NGG` 用 `GG`、`NAG` 用
 `AG`），因此 `guidescan2_nrg` 不会把 NAG 当成 NGG。
+
+请求的深度模型（CRISPR-M、DeepCRISPR）没就绪或推理失败时，off-target 主分回退 CFD。
+这一回退不再静默：模型标识带 `_unavailable` / `_error` 后缀、`off_target_model_note`
+写明原因、同一次运行只在日志里输出一条 `off-target scoring fallback: …` WARNING，
+`scoring_provenance.json` 则给出 `requested_models`、`models_used`、`fallback_rows`
+与 `fell_back`，不打开逐候选表也能判断本次结果是否用了所请求的模型。请求 `rules` 或
+`cfd` 时得到的就是 CFD 聚合分，不算降级，`off_target_model` 为 `cfd` 且备注为空；
+bulge 保守 penalty 的说明也会写进 `off_target_model_note`，但不会被计入 `fallback_rows`。
+
+汇总里另有三个字段专门处理「列名按请求模型命名、值却来自回退」这一归因风险：
+`degraded_models` 列出降级的模型名，`value_columns` 把受影响的列名逐个映射到
+`carries the CFD fallback value, not <model> output`（未降级时为空字典），
+`column_note` 是不变的口径说明。`basic/analyze_scores.py` 的 run 级 WARNING 会直接
+点名这些列。按模型列取数前先看 `value_columns` 或 `off_target_model_<model>`，
+否则会把 CFD 结果当成深度模型结果引用。
+
+以上两列在 `Single-anchor pattern` 的 `query_scores_sorted.tsv` 与 `unique_guides.tsv`
+中直接给出；paired pattern 的候选表按侧前缀为 `left_off_target_model` /
+`left_off_target_model_note` 与 `right_off_target_model` / `right_off_target_model_note`。
+三种模式都会写 `scoring_provenance.json`：`basic/analyze_scores.py`（Single-anchor
+pattern）、`Target_xbp_Target/analyze_complex_scores.py`（`motif_gap_motif`）与
+`Target_xbp_Y_zbp_Target/blast_combined.py`（`y_centered_motifs`）。后两者的 JSON
+放在各自输出目录／输出表旁边，用 `pattern` 与 `off_target_requested.left` /
+`.right` 记录两侧请求的模型，逐行溯源仍按侧前缀读候选表。库级运行把同一份汇总写进
+`library_summary.json` 的 `off_target_provenance` 字段。带 run label 时，
+`<label>_provenance.json` 会作为 `provenance` 交付物发布。
 
 ### 3.3 bulge 与校准列
 
@@ -198,7 +227,10 @@ pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
 - `combined_score`、`left_rank` / `right_rank`
 - `AT_score`，以及 paired pattern 的 `left_AT_score` / `right_AT_score`
 - `on_target_model_<model>`、`off_target_model_<model>`、`on_target_model`、
-  `off_target_model`、`rna_model`、`omega_model`
+  `rna_model`、`omega_model`
+
+不带后缀的 `off_target_model` 与新增的 `off_target_model_note` 是例外：它们重新写进候选表，
+因为不导出这两个列就无法从交付产物区分「深度模型的真实得分」与「回退 CFD 的得分」。
 - `reference_only`、`reference_note`、`rule_source`、`rule_reference`、
   `rule_summary`、`subtype_note`、`tnpb_subtype`
 - 固定子特征列 `cfd_specificity`、`crispr_m_off_target`、`deepcrispr_off_target`、
@@ -216,8 +248,12 @@ pattern 名称按 `GLOSSARY.md`：`Single-anchor pattern`、`Gap-anchored pair`
 
 ## 四、按结果判断的推荐顺序
 
-1. 确认运行使用了正确的核酸酶与模型组合；未勾选的模型不会产生列。
-2. 先看对应模型的 `off_target_specificity_<model>`，优先保留接近 1 的候选。
+1. 确认运行使用了正确的核酸酶与模型组合；未勾选的模型不会产生列。用请求了 CRISPR-M、
+   DeepCRISPR 等深度模型时，先看 `scoring_provenance.json` 的 `fell_back`（库级运行看
+   `library_summary.json` 的 `off_target_provenance`）；为 `true` 说明主分实际来自 CFD，
+   不能当作深度模型结果引用。
+2. 先看对应模型的 `off_target_model_<model>` 标识，再读 `off_target_specificity_<model>`：
+   标识带 `_unavailable` / `_error` 时该列是 CFD 回退值。确认无误后优先保留接近 1 的候选。
 3. 检查 `MM0`：开启 PAM 过滤时普通 unique guide 通常为 1；明显偏高时先排查重复
    序列、PAM 设置，以及搜索是否重新运行过。
 4. 在特异性相近的候选中，再比较 `on_target_score_<model>`。

@@ -245,7 +245,7 @@ paired pattern 对每一侧独立评分并加前缀：
 | `library_scores.tsv` | Library 流程结果；额外保留 `omega_model`，TnpB 子特征和其他模型评分同样存在 |
 | `top_offtargets.tsv` | 每个 guide 排名靠前的 off-target hit，不包含 on-target 模型分数 |
 | `query_scores.bed` | 候选区间和归一化 BED 分数，不展开 TnpB 子特征 |
-| `library_summary.json` | 包含主 `off_target_model`、`rule_source`、`rule_reference`、`subtype_note`、`omega_model`、搜索引擎等摘要字段 |
+| `library_summary.json` | 包含主 `off_target_model`、`off_target_model_note`、`off_target_provenance`（请求模型 / 实际模型 / 降级行数）、`rule_source`、`rule_reference`、`subtype_note`、`omega_model`、搜索引擎等摘要字段 |
 
 当前统一的候选表不输出以下内部字段：
 

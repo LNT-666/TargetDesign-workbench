@@ -14,12 +14,15 @@ authors:
     given-names: "Ji"
     affiliation: "School of Mathematics, Sun Yat-sen University, Guangzhou, Guangdong 510275, China"
     orcid: "https://orcid.org/0009-0007-5408-9580"
+  - family-names: "Ma"
+    given-names: "Jiayue"
+    affiliation: "State Key Laboratory of Microbial Diversity and Innovative Utilization, Institute of Microbiology, Chinese Academy of Sciences, Beijing, China"
   - family-names: "Shi"
     given-names: "Shasha"
     affiliation: "College of Bioscience & Biotechnology, Yangzhou University, Yangzhou, Jiangsu 225009, China"
   - family-names: "Wang"
     given-names: "Saisai"
-    affiliation: "Institute of Microbiology, Chinese Academy of Sciences"
+    affiliation: "State Key Laboratory of Microbial Diversity and Innovative Utilization, Institute of Microbiology, Chinese Academy of Sciences, Beijing, China"
 contact:
   - family-names: "Song"
     given-names: "Ji"
@@ -27,12 +30,14 @@ contact:
 license: MIT
 repository-code: "https://github.com/LNT-666/TargetDesign-workbench"
 url: "https://github.com/LNT-666/TargetDesign-workbench"
-version: "0.3.4"
-date-released: "2026-11-07"
-doi: "10.5281/zenodo.24026181"
-# Concept DOI covering every version of this software: 10.5281/zenodo.23231712
+version: "0.3.5"
+date-released: "2026-11-15"
+# Zenodo concept DOI: it resolves to every archived version. Once a release is
+# published, this field carries that release's own archived DOI instead; see
+# docs/PACKAGING.md, "发布顺序：预留 DOI".
+doi: "10.5281/zenodo.23231712"
 # The author list, the affiliations and the ORCID follow the manuscript (Ji Song,
-# Shasha Shi, Saisai Wang); keep .zenodo.json in step.
+# Jiayue Ma, Shasha Shi, Saisai Wang); keep .zenodo.json in step.
 keywords:
   - CRISPR
   - guide RNA design

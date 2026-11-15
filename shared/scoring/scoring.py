@@ -9,6 +9,7 @@ input sequence is a 30mer, and falls back to a deterministic feature heuristic
 for the variable-length motif windows produced by this toolkit.
 """
 
+import logging
 import math
 import json
 import urllib.request
@@ -581,17 +582,50 @@ def _cas9_on_target_score(seq, model_choice):
     return heuristic_on_target_score(seq), "heuristic"
 
 
+#: Notes written into ``off_target_model_note`` when a model that was asked for
+#: could not run and the off-target score fell back to another aggregator.
+DEEP_OFF_TARGET_FALLBACK_NOTES = {
+    "cfd": "Local deep model unavailable; off-target fell back to CFD scoring",
+    "crispr_m_unavailable": "CRISPR-M model not ready; off-target fell back to CFD scoring",
+    "crispr_m_error": "CRISPR-M prediction failed; off-target fell back to CFD scoring",
+    "deepcrispr_unavailable": "DeepCRISPR model not ready; off-target fell back to CFD scoring",
+    "deepcrispr_error": "DeepCRISPR prediction failed; off-target fell back to CFD scoring",
+    "reference_only": "Requested deep model not ready; kept the reference-only CFD score",
+    "reference_only_error": "Requested deep model failed; kept the reference-only CFD score",
+    "model_unspecified": "Specified off-target model unavailable; fell back to CFD scoring",
+}
+
+_fallback_log = logging.getLogger(__name__)
+_warned_fallbacks = set()
+
+
+def _warn_off_target_fallback(note):
+    """Log one WARNING per distinct off-target fallback reason in this process.
+
+    Scoring runs over tens of thousands of guides, so repeating the message per
+    guide would bury every other log line; the per-guide and run-level fields
+    still record it.
+    """
+    text = str(note or "").strip()
+    if not text or text in _warned_fallbacks:
+        return
+    _warned_fallbacks.add(text)
+    _fallback_log.warning("off-target scoring fallback: %s", text)
+
+
 def _deep_off_target_score(seq, off_pairs, model_choice, assume_one_primary):
-    """Score off-targets with a local deep model when it is usable."""
-    fallback_notes = {
-        "cfd": "Local deep model unavailable; off-target fell back to CFD scoring",
-        "crispr_m_unavailable": "CRISPR-M model not ready; off-target fell back to CFD scoring",
-        "crispr_m_error": "CRISPR-M prediction failed; off-target fell back to CFD scoring",
-        "deepcrispr_unavailable": "DeepCRISPR model not ready; off-target fell back to CFD scoring",
-        "deepcrispr_error": "DeepCRISPR prediction failed; off-target fell back to CFD scoring",
-    }
+    """Score off-targets with a local deep model when it is usable.
+
+    Returns ``(specificity, model_tag, note)``.  ``note`` is empty when the
+    requested model actually ran and carries a member of
+    :data:`DEEP_OFF_TARGET_FALLBACK_NOTES` when it did not, so a fallback is
+    always visible in the artefacts instead of only in the score value.
+    """
+    fallback_notes = DEEP_OFF_TARGET_FALLBACK_NOTES
     choice = (model_choice or "auto").lower()
-    if choice == "rules":
+    if choice in ("rules", "cfd", "aggregate"):
+        # CFD is also what every fallback below lands on, so asking for it by
+        # name is not a degradation and must not be reported as one.
         spec = aggregate_off_target_specificity(
             seq, off_pairs, assume_one_primary)
         return spec, "cfd", ""
@@ -1199,37 +1233,52 @@ def custom_nuc_off_target_score(seq, off_pairs, model_choice,
     ``reference_only`` because they were validated for another nuclease.
     ``crispai`` is a batch pipeline model and falls back to identity here.
     Unavailable models fall back while keeping the reference-only marker.
+
+    Returns ``(specificity, model_tag, reference_only, note)``; ``note`` says
+    which model failed to run, so the fallback survives the reference-only
+    relabeling instead of being discarded.
     """
+    fallback_notes = DEEP_OFF_TARGET_FALLBACK_NOTES
     choice = (model_choice or "auto").lower()
     if choice in ("auto", "rules", "identity", "identity_heuristic",
                   "nuc_features"):
         return (identity_off_target_specificity(
             seq, off_pairs, assume_one_primary),
-            "identity_heuristic", False)
+            "identity_heuristic", False, "")
     if choice == "cfd":
         spec = aggregate_off_target_specificity(
             seq, off_pairs, assume_one_primary)
-        return spec, "cfd_reference_only", True
+        return spec, "cfd_reference_only", True, ""
     if choice == "crispai":
         return (identity_off_target_specificity(
             seq, off_pairs, assume_one_primary),
-            "identity_heuristic", True)
+            "identity_heuristic", True,
+            "crispAI is a batch pipeline model; off-target used the "
+            "identity/seed heuristic (reference only)")
     if choice in ("crispr_m", "deepcrispr"):
         deep_result = _deep_off_target_score(
             seq, off_pairs, choice, assume_one_primary)
         if deep_result is not None:
-            spec, model, _note = deep_result
-            return spec, model + "_reference_only", True
+            spec, model, note = deep_result
+            reference_note = ""
+            if note:
+                reference_note = fallback_notes["reference_only"]
+            return spec, model + "_reference_only", True, (
+                "; ".join(part for part in (note, reference_note) if part)
+            )
         spec = aggregate_off_target_specificity(
             seq, off_pairs, assume_one_primary)
-        return spec, "cfd_reference_only", True
+        return (spec, "cfd_reference_only", True,
+                fallback_notes["reference_only_error"])
     if choice in ("tiger", "tiger13"):
         spec, model = _cas13_off_target_score(
             seq, off_pairs, choice, assume_one_primary, seed_start, seed_end)
-        return spec, model + "_reference_only", True
+        return spec, model + "_reference_only", True, ""
     return (identity_off_target_specificity(
         seq, off_pairs, assume_one_primary),
-        "%s_unavailable" % choice, True)
+        "%s_unavailable" % choice, True,
+        "Unknown off-target model '%s'; used the identity/seed heuristic "
+        "(reference only)" % choice)
 
 
 def _is_heuristic_model(model_name):
@@ -1406,7 +1455,7 @@ def _compute_guide_scores_single(
                 off_specificity = aggregate_off_target_specificity(
                     seq, off_pairs, assume_one_primary)
                 off_target_model = "cfd"
-                off_note = "Specified off-target model unavailable; fell back to CFD scoring"
+                off_note = DEEP_OFF_TARGET_FALLBACK_NOTES["model_unspecified"]
         on_target, on_target_model = _cas9_on_target_score(seq, on_target_model)
     elif nuclease == "tnpb":
         cfd_specificity = ""
@@ -1442,7 +1491,7 @@ def _compute_guide_scores_single(
             off_target_model = precomputed_model
             off_ref = precomputed_reference_only
         else:
-            off_specificity, off_target_model, off_ref = \
+            off_specificity, off_target_model, off_ref, off_note = \
                 custom_nuc_off_target_score(
                     seq, off_pairs, off_target_model, assume_one_primary,
                     seed_start=seed_start, seed_end=seed_end)
@@ -1491,6 +1540,10 @@ def _compute_guide_scores_single(
         ai_off_target["deepcrispr_off_target"] = off_specificity
     elif off_target_model == "tiger13":
         tiger_off_target = off_specificity
+
+    if not off_note:
+        off_note = _off_target_degradation_note(off_target_model)
+    _warn_off_target_fallback(off_note)
 
     bulge_risk = sum(_bulge_risk(seq, hit) for hit in bulge_hits)
     if bulge_risk:
@@ -1694,8 +1747,16 @@ MODEL_NAME_COLUMNS = tuple(
     + ["off_target_model_%s" % model for model in _OUTPUT_OFF_TARGET_MODELS]
 )
 
+#: Per-guide provenance of ``off_target_specificity``: the model tag that
+#: produced it plus the reason it is not the model that was asked for.  These
+#: are exported on purpose -- without them a CFD fallback is indistinguishable
+#: from a real deep-model score in the delivered artefacts.
+OFF_TARGET_PROVENANCE_COLUMNS = ("off_target_model", "off_target_model_note")
+
 GUIDE_FEATURE_COLUMNS = (
     "cfd_specificity",
+    "off_target_model",
+    "off_target_model_note",
     "calibration_status",
     "bulge_score_method",
     "input_offtargets",
@@ -1765,6 +1826,118 @@ _TNPB_FEATURE_KEYS = (
 )
 
 
+def _is_off_target_fallback_note(note):
+    """Return True when a per-guide note reports that a model could not run."""
+    text = str(note or "")
+    return any(marker and marker in text
+               for marker in DEEP_OFF_TARGET_FALLBACK_NOTES.values())
+
+
+#: A model tag equal to a public model name plus one of these suffixes says the
+#: delivered value came from CFD instead of that model.
+_OFF_TARGET_DEGRADATION_SUFFIXES = ("unavailable", "error")
+
+OFF_TARGET_VALUE_COLUMN_NOTE = (
+    "off_target_specificity_<model> is named after the model that was asked for; "
+    "when that model degraded, the column carries the CFD fallback value and "
+    "off_target_model_<model> / off_target_model name the producer."
+)
+
+
+def _strip_reference_only(tag):
+    """Drop the ``_reference_only`` suffix, which qualifies how CFD was
+    computed rather than which producer supplied the number."""
+    text = str(tag or "")
+    return (text[: -len("_reference_only")]
+            if text.endswith("_reference_only") else text)
+
+
+def _degraded_off_target_model(tag):
+    """Return the model a degradation tag refers to, or ``None``.
+
+    ``reference_only`` is stripped before the lookup because it modifies *how*
+    CFD was computed, not which producer supplied the number, so
+    ``cfd_reference_only`` stays honest.
+    """
+    base = _strip_reference_only(tag)
+    for model in _OUTPUT_OFF_TARGET_MODELS:
+        if (base.startswith(model + "_")
+                and base[len(model) + 1:] in _OFF_TARGET_DEGRADATION_SUFFIXES):
+            return model
+    return None
+
+
+def _off_target_degradation_note(tag):
+    """Return the fallback note a degradation tag implies, or ``""``.
+
+    The precomputed-activity path -- which both paired analyzers use -- carries
+    the tag but not the note, so the note has to be recoverable from the tag.
+    """
+    if _degraded_off_target_model(tag) is None:
+        return ""
+    return DEEP_OFF_TARGET_FALLBACK_NOTES.get(_strip_reference_only(tag), "")
+
+
+def degraded_off_target_models(models_used):
+    """Return the models whose per-model value column is not their own output."""
+    return sorted({model for tag in (models_used or {})
+                   for model in (_degraded_off_target_model(tag),)
+                   if model})
+
+
+def summarize_off_target_provenance(rows, requested=None):
+    """Aggregate per-guide off-target provenance into run-level fields.
+
+    ``rows`` are mappings carrying :data:`OFF_TARGET_PROVENANCE_COLUMNS` (scored
+    guide rows or library unit summaries).  The result states which model was
+    asked for and which models actually produced the delivered specificity, so
+    a fallback is visible in the run metadata and not only after opening the
+    per-guide table.
+    """
+    rows = [
+        row for row in (rows or [])
+        if isinstance(row, Mapping) or hasattr(row, "get")
+    ]
+    models = {}
+    notes = {}
+    fallback_rows = 0
+    for row in rows:
+        model = str(row.get("off_target_model") or "").strip() or "none"
+        models[model] = models.get(model, 0) + 1
+        # The degradation tag is authoritative by itself: rows written before
+        # the note columns existed -- and the side-prefixed rows the paired
+        # analyzers feed in -- may carry no note at all.
+        degraded_row = _degraded_off_target_model(model) is not None
+        if degraded_row:
+            fallback_rows += 1
+        note = str(row.get("off_target_model_note") or "").strip()
+        if not note:
+            continue
+        notes[note] = notes.get(note, 0) + 1
+        if not degraded_row and _is_off_target_fallback_note(note):
+            fallback_rows += 1
+    requested_models = []
+    for item in _normalize_model_choices(requested, "") if requested else []:
+        if item:
+            requested_models.append(item)
+    degraded = degraded_off_target_models(models)
+    return {
+        "requested_models": requested_models,
+        "scored_rows": len(rows),
+        "models_used": dict(sorted(models.items())),
+        "fallback_rows": fallback_rows,
+        "fell_back": fallback_rows > 0,
+        "degraded_models": degraded,
+        "value_columns": {
+            "off_target_specificity_%s" % model:
+                "carries the CFD fallback value, not %s output" % model
+            for model in degraded
+        },
+        "column_note": OFF_TARGET_VALUE_COLUMN_NOTE,
+        "notes": dict(sorted(notes.items())),
+    }
+
+
 def apply_guide_feature_columns(row, scores):
     """Copy the library-exclusive per-guide columns from compute_guide_scores().
 
@@ -1781,6 +1954,8 @@ def apply_guide_feature_columns(row, scores):
         row[key] = scores.get(key, "")
     for key in ("crispr_m_off_target", "deepcrispr_off_target",
                 "crispai_off_target"):
+        row[key] = scores.get(key, "")
+    for key in OFF_TARGET_PROVENANCE_COLUMNS:
         row[key] = scores.get(key, "")
     row["deepcas12a_on_target"] = scores.get("deepcas12a_on_target", "")
     row["deepcpf1_on_target"] = scores.get("deepcpf1_on_target", "")

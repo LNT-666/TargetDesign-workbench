@@ -84,6 +84,25 @@ def _write_pair_policy(tmp):
 
 
 class SplitPamSmokeTests(unittest.TestCase):
+    def _assert_provenance(self, path, pattern, expect_fallback=False):
+        """Both paired analyzers must publish the run-level provenance, otherwise
+        a degraded deep model is invisible outside the per-guide table."""
+        self.assertTrue(os.path.isfile(path), path)
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        self.assertEqual(data["pattern"], pattern)
+        self.assertEqual(set(data["off_target_requested"]), {"left", "right"})
+        off = data["off_target"]
+        self.assertEqual(off["fell_back"], expect_fallback, off)
+        if expect_fallback:
+            self.assertGreater(off["fallback_rows"], 0)
+            self.assertTrue(off["notes"], off)
+        else:
+            self.assertEqual(off["degraded_models"], [])
+            self.assertEqual(off["value_columns"], {})
+        self.assertIn("models_used", off)
+        return off
+
     def test_flank_interval_and_get_flank_geometry(self):
         from extract_complex_queries import flank_interval, get_flank
 
@@ -163,6 +182,11 @@ class SplitPamSmokeTests(unittest.TestCase):
         self.assertIn("right_mm0", scored_header)
         self.assertNotIn("left_mm1", scored_header)
         self.assertNotIn("right_mm1", scored_header)
+        off = self._assert_provenance(
+            os.path.join(positive, "scoring_provenance.json"),
+            "motif_gap_motif")
+        self.assertEqual(off["models_used"], {"cfd": off["scored_rows"]})
+        self.assertGreater(off["scored_rows"], 0)
 
         negative = os.path.join(tmp, "negative")
         os.makedirs(negative)
@@ -188,6 +212,9 @@ class SplitPamSmokeTests(unittest.TestCase):
             "--gc-min", "0", "--gc-max", "100", "--self-comp-max", "30",
         ])
         self.assertEqual(_rows(os.path.join(negative, "top_offtargets.tsv")), [])
+        self._assert_provenance(
+            os.path.join(negative, "scoring_provenance.json"),
+            "motif_gap_motif")
 
     @unittest.skipUnless(HAS_RUNTIME_DEPS, "requires numpy/biopython/pyfaidx")
     def test_y_zbp_split_pam_end_to_end(self):
@@ -246,6 +273,11 @@ class SplitPamSmokeTests(unittest.TestCase):
             scored_header = next(csv.reader(handle, delimiter="\t"))
         self.assertIn("MM0", scored_header)
         self.assertNotIn("MM1", scored_header)
+        self.assertNotIn("off_target_model_note", scored_header)
+        off = self._assert_provenance(
+            os.path.join(tmp, "scoring_provenance.json"),
+            "y_centered_motifs")
+        self.assertGreater(off["scored_rows"], 0)
         policy_path = _write_pair_policy(tmp)
         sorted_path = os.path.join(tmp, "positive.sorted.tsv")
         _run([
@@ -295,7 +327,7 @@ class SplitPamSmokeTests(unittest.TestCase):
         self.assertEqual(_rows(os.path.join(tmp, "top_offtargets.tsv")), [])
 
     def _gap_analyze_command(self, query_tsv, genome_fa, outdir, engine,
-                             tmp):
+                             tmp, off_model="cfd"):
         return [
             sys.executable,
             os.path.join(GAP_DIR, "analyze_complex_scores.py"),
@@ -308,11 +340,11 @@ class SplitPamSmokeTests(unittest.TestCase):
             "--right-require-pam",
             "--nuclease", "cas9", "--left-nuclease", "cas9",
             "--right-nuclease", "cas9",
-            "--on-target-model", "cropsr", "--off-target-model", "cfd",
+            "--on-target-model", "cropsr", "--off-target-model", off_model,
             "--left-on-target-model", "cropsr",
             "--right-on-target-model", "cropsr",
-            "--left-off-target-model", "cfd",
-            "--right-off-target-model", "cfd",
+            "--left-off-target-model", off_model,
+            "--right-off-target-model", off_model,
             "--pair-rank-policy", _write_pair_policy(tmp),
             "--mode", "free", "--preset", "custom",
             "--gc-min", "0", "--gc-max", "100", "--self-comp-max", "30",
@@ -340,6 +372,38 @@ class SplitPamSmokeTests(unittest.TestCase):
             "upstream", "20", "downstream", "20", query_tsv,
         ])
         return genome_fa, query_tsv
+
+    @unittest.skipUnless(HAS_RUNTIME_DEPS, "requires numpy/biopython/pyfaidx")
+    def test_gap_degraded_model_reports_notes_rows_and_warning(self):
+        """A degraded deep model must be visible in the gap artefacts.
+
+        Regression for the run-level summary naming ``deepcrispr`` as degraded
+        while reporting no fallback row: the per-side note columns were never
+        exported, so the summary had nothing to count and the WARNING stayed
+        silent.
+        """
+        from scoring import deep_models
+        if deep_models.DeepCrisprPredictor.available():
+            self.skipTest("DeepCRISPR weights are installed")
+        tmp = tempfile.mkdtemp()
+        genome_fa, query_tsv = self._write_gap_fixture(tmp)
+        outdir = os.path.join(tmp, "degraded")
+        os.makedirs(outdir)
+        log = _run(self._gap_analyze_command(
+            query_tsv, genome_fa, outdir, "exact", tmp, off_model="deepcrispr"))
+        self.assertIn("WARNING: off-target scoring fell back", log)
+        off = self._assert_provenance(
+            os.path.join(outdir, "scoring_provenance.json"),
+            "motif_gap_motif", expect_fallback=True)
+        self.assertEqual(off["degraded_models"], ["deepcrispr"])
+        self.assertIn("off_target_specificity_deepcrispr", off["value_columns"])
+        self.assertEqual(
+            off["models_used"], {"deepcrispr_unavailable": off["scored_rows"]})
+        with open(os.path.join(outdir, "query_scores_sorted.tsv"),
+                  encoding="utf-8") as handle:
+            header = next(csv.reader(handle, delimiter="\t"))
+        self.assertIn("left_off_target_model_note", header)
+        self.assertIn("right_off_target_model_note", header)
 
     @unittest.skipUnless(HAS_RUNTIME_DEPS, "requires numpy/biopython/pyfaidx")
     @unittest.skipUnless(HAS_BLAST, "requires blastn/makeblastdb")
@@ -419,6 +483,60 @@ class SplitPamSmokeTests(unittest.TestCase):
         self.assertIn("auto engine: running", y_log)
         self.assertTrue(
             os.path.isfile(os.path.join(tmp, "top_offtargets.tsv")))
+
+
+    @unittest.skipUnless(HAS_RUNTIME_DEPS, "requires numpy/biopython/pyfaidx")
+    def test_y_degraded_model_reports_notes_rows_and_warning(self):
+        """Same guarantee for the Y-centred flow, whose rows carry the note
+        column directly instead of per-side prefixes."""
+        from scoring import deep_models
+        if deep_models.DeepCrisprPredictor.available():
+            self.skipTest("DeepCRISPR weights are installed")
+        tmp = tempfile.mkdtemp()
+        genome = ("A" * 40 + self.LEFT_FLANK + "TGG" + "A" * 5
+                  + "GGTACC" + "A" * 5 + "TTTA" + self.RIGHT_FLANK + "A" * 40)
+        genome_fa = os.path.join(tmp, "genome.fa")
+        _write_fasta(genome_fa, genome)
+        occ_dir = os.path.join(tmp, "yout", "occurrence")
+        _run([
+            sys.executable,
+            os.path.join(Y_DIR, "extract_motifs.py"),
+            genome_fa, "GGTACC", "20", "20",
+            "TGG", "20", "upstream", "TTTA", "20", "downstream",
+            "--min_left", "0", "--min_right", "0",
+            "--outdir", os.path.dirname(occ_dir),
+        ])
+        out_tsv = os.path.join(tmp, "degraded.tsv")
+        log = _run([
+            sys.executable,
+            os.path.join(Y_DIR, "blast_combined.py"),
+            "--input_dir", occ_dir,
+            "--genome", genome_fa,
+            "--target-fasta", genome_fa,
+            "-o", out_tsv,
+            "--engine", "exact", "--max-mismatch", "0", "--seed-len", "12",
+            "--left-pam-motif", "TGG", "--left-pam-side", "3prime",
+            "--left-require-pam",
+            "--right-pam-motif", "TTTA", "--right-pam-side", "5prime",
+            "--right-require-pam",
+            "--nuclease", "cas9", "--left-nuclease", "cas9",
+            "--right-nuclease", "cas9",
+            "--on-target-model", "cropsr", "--off-target-model", "deepcrispr",
+            "--left-on-target-model", "cropsr",
+            "--right-on-target-model", "cropsr",
+            "--left-off-target-model", "deepcrispr",
+            "--right-off-target-model", "deepcrispr",
+            "--mode", "free", "--preset", "custom",
+            "--gc-min", "0", "--gc-max", "100", "--self-comp-max", "30",
+        ])
+        self.assertIn("WARNING: off-target scoring fell back", log)
+        off = self._assert_provenance(
+            os.path.join(tmp, "scoring_provenance.json"),
+            "y_centered_motifs", expect_fallback=True)
+        self.assertEqual(off["degraded_models"], ["deepcrispr"])
+        with open(out_tsv, encoding="utf-8") as handle:
+            header = next(csv.reader(handle, delimiter="\t"))
+        self.assertIn("off_target_model_note", header)
 
 
 if __name__ == "__main__":
