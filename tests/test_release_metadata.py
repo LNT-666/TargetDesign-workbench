@@ -52,23 +52,27 @@ class ReleaseMetadataTests(unittest.TestCase):
 
     def test_unresolved_placeholder_comment_is_rejected(self) -> None:
         text = re.sub(
-            r"^# Zenodo concept DOI.*(?:\n#.*\n)*",
-            '# Concept DOI. Replace with the version DOI after archiving.\n',
+            r"^(doi: .*)$",
+            "# Concept DOI. Replace with the version DOI after archiving.\n\\1",
             self.read_cff(), count=1, flags=re.MULTILINE)
         self.write_cff(text)
         errors = check_metadata(self.root)
         self.assertTrue(any("unresolved placeholder" in error for error in errors), errors)
 
     def test_malformed_doi_is_rejected(self) -> None:
-        self.write_cff(self.read_cff().replace(
-            'doi: "10.5281/zenodo.23231712"', 'doi: "not-a-doi"'))
+        self.write_cff(re.sub(
+            r'^doi: ".*"$', 'doi: "not-a-doi"',
+            self.read_cff(), count=1, flags=re.MULTILINE))
         errors = check_metadata(self.root)
         self.assertTrue(any("not a Zenodo DOI" in error for error in errors), errors)
 
     @unittest.skipUnless(shutil.which("git"), "git is not available")
     def test_tagged_version_must_not_cite_the_concept_doi(self) -> None:
-        version = re.search(r'^version: "(.*)"$', self.read_cff(),
-                            re.MULTILINE).group(1)
+        text = self.read_cff()
+        version = re.search(r'^version: "(.*)"$', text, re.MULTILINE).group(1)
+        self.write_cff(re.sub(
+            r'^doi: ".*"$', 'doi: "10.5281/zenodo.23231712"',
+            text, count=1, flags=re.MULTILINE))
 
         def git(*args: str) -> subprocess.CompletedProcess:
             return subprocess.run(
@@ -85,8 +89,9 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertTrue(
             any("still cites the concept DOI" in error for error in errors), errors)
 
-        self.write_cff(self.read_cff().replace(
-            "10.5281/zenodo.23231712", "10.5281/zenodo.24026181"))
+        self.write_cff(re.sub(
+            r'^doi: ".*"$', 'doi: "10.5281/zenodo.24026181"',
+            self.read_cff(), count=1, flags=re.MULTILINE))
         self.assertEqual(check_metadata(self.root), [])
 
 
